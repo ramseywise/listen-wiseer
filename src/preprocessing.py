@@ -2,11 +2,14 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 from sklearn.preprocessing import MinMaxScaler, OneHotEncoder
-from modeling.const import *
+from const import *
+import logger
+
+log = logger.get_logger("app")
 
 
 def return_first_genre(df):
-    print("Return first genre")
+    log.info("Return first genre")
     df["genres"] = [",".join(map(str, l)) for l in df["genres"]]
     df["first_genre"] = df["genres"].apply(
         lambda x: x.split(",")[0].replace("[", "").replace("]", "").replace("'", "")
@@ -19,7 +22,7 @@ def map_genres(df):
     # prepare genre feature
     df = return_first_genre(df)
 
-    print("Mapping genres")
+    log.info("Mapping genres")
     # load genre map
     gm = pd.read_csv(
         "/Users/wiseer/Documents/playground/listen-wiseer/src/data/genre_map_source.csv",
@@ -43,7 +46,7 @@ def map_genres(df):
 
 
 def engineer_features(df):
-    print("Engineering features")
+    log.info("Engineering features")
     # prepare genre features
     df = map_genres(df)
 
@@ -82,7 +85,7 @@ def engineer_features(df):
 
 
 def preprocess_numerical_features(df):
-    print("Preprocessing numerical features")
+    log.info("Preprocessing numerical features")
     # set index
     df = df.set_index(["id"])
     # select features
@@ -96,12 +99,12 @@ def preprocess_numerical_features(df):
 
 
 def preprocess_cat_features(df):
-    print("Preprocessing categorical features")
+    log.info("Preprocessing categorical features")
     ohe = OneHotEncoder(categories="auto")
     values = ohe.fit_transform(df[cat_features]).toarray()
     labels = pd.unique(df[cat_features].values.ravel())
     features = pd.DataFrame(values, columns=labels)
-    #features.drop([np.nan], axis=1, inplace=True)
+    # features.drop([np.nan], axis=1, inplace=True)
 
     return features
 
@@ -118,7 +121,7 @@ def transform_feature_data(df):
         else:
             continue
 
-    print("Combining dfs")
+    log.info("Combining dfs")
     new_df = num_df.join(cat_df).fillna(0)
     new_df = new_df.set_index(["id"])
 

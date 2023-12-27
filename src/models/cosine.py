@@ -1,7 +1,7 @@
 import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
 from preprocessing import *
-from modeling.const import *
+from const import *
 
 
 class Cosine_Similarity_Recommendation:

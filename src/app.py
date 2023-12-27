@@ -3,9 +3,12 @@ import requests
 from datetime import datetime
 from flask import Flask, request, redirect, jsonify, session
 from dotenv import load_dotenv
-from api.data import *
+from data import *
 from models.cosine import *
 from preprocessing import *
+import logger
+
+log = logger.get_logger("app")
 
 load_dotenv(".env")
 client_id = os.getenv("CLIENT_ID")
@@ -40,7 +43,7 @@ def login():
         "redirect_uri": redirect_uri,
         "scope": scope,
     }
-    print("Requesting authorization code")
+    log.info("Requesting authorization code")
     response = requests.get(auth_url, params=params)
 
     return redirect(response.url)
@@ -60,7 +63,7 @@ def get_access_token():
             "client_id": client_id,
             "client_secret": client_secret,
         }
-        print("Requesting access token")
+        log.info("Requesting access token")
         response = requests.post(token_url, data=params)
 
         if "error" in request.args:
@@ -70,26 +73,28 @@ def get_access_token():
             token_info = response.json()
             session["access_token"] = token_info["access_token"]
             session["refresh_token"] = token_info["refresh_token"]
-            session["expires_at"] = (datetime.now().timestamp() + token_info["expires_in"])
+            session["expires_at"] = (
+                datetime.now().timestamp() + token_info["expires_in"]
+            )
             return redirect("/recommend")
 
 
 @app.route("/recommend")
 def recommend_new_tracks():
-    print("Loading playlist data")
+    log.info("Loading playlist data")
     headers = {"Authorization": "Bearer {token}".format(token=session["access_token"])}
     playlist_id = "0N1llBQMoJX2d9BW3wKHIL"  # cosine similarity
     df = return_playlist_features(headers, playlist_id)
 
-    print("Begin data preprocessing")
+    log.info("Begin data preprocessing")
     y = transform_feature_data(df)
 
-    print("Calculating cosine similarity")
+    log.info("Calculating cosine similarity")
     model = Cosine_Similarity_Recommendation()
     track_uris = model.return_track_uris(y)
     data = json.dumps({"uris": list(set(track_uris))})
 
-    print("Posting recommended tracks to playlist")
+    log.info("Posting recommended tracks to playlist")
     playlist_id = "0N1llBQMoJX2d9BW3wKHIL"  # cosine similarity
     headers = {"Authorization": "Bearer {token}".format(token=session["access_token"])}
     response = requests.post(
@@ -101,6 +106,7 @@ def recommend_new_tracks():
         return {"message": "Track added successfully!"}
     else:
         return {"error": response.json()}
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000, debug=True)

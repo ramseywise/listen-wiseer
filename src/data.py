@@ -1,6 +1,9 @@
 import json
 import requests
 import pandas as pd
+import logger
+
+log = logger.get_logger("app")
 
 
 def _request_playlist_data(headers, playlist_id):
@@ -27,7 +30,7 @@ def _request_audio_features(headers, track_ids):
 
 
 def return_playlist_features(headers, playlist_id):
-    print("Requesting playlist track ids")
+    log.info("Requesting playlist track ids")
     r = _request_playlist_data(headers, playlist_id)
     df = pd.DataFrame(r["items"])[["track"]]
     track_ids = []
@@ -50,13 +53,13 @@ def return_playlist_features(headers, playlist_id):
         artist_name = row["artists"][0]["name"]
         artist_names.append(artist_name)
 
-    print("Requesting artist info for tracks")
+    log.info("Requesting artist info for tracks")
     for artist_id in artist_ids:
         r = _request_artist_info(headers, artist_id)  # artist id
         genres.append(r["genres"])
         popularity.append(r["popularity"])
 
-    print("Requesting audio features for track ids")
+    log.info("Requesting audio features for track ids")
     data = _request_audio_features(headers, track_ids)
     data["id"] = track_ids
     data["track_name"] = track_names
@@ -65,5 +68,7 @@ def return_playlist_features(headers, playlist_id):
     data["artist_names"] = artist_names
     data["genres"] = genres
     data["popularity"] = popularity
+
+    # TODO: store features in DB
 
     return data
