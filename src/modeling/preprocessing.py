@@ -1,10 +1,12 @@
+import os
 import numpy as np
 import pandas as pd
 from datetime import datetime
 from sklearn.preprocessing import MinMaxScaler, OneHotEncoder
-from const import *
+from modeling.const import *
 import logger
 
+os.chdir("/Users/wiseer/Documents/github/listen-wiseer/src/")
 log = logger.get_logger("app")
 
 
@@ -25,7 +27,7 @@ def map_genres(df):
     log.info("Mapping genres")
     # load genre map
     gm = pd.read_csv(
-        "/Users/wiseer/Documents/playground/listen-wiseer/src/data/genre_map_source.csv",
+        "data/genre_map_source.csv",
         index_col=0,
     )
     gm = gm.sort_values("genre").reset_index(drop=True)

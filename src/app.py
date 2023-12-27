@@ -3,9 +3,9 @@ import requests
 from datetime import datetime
 from flask import Flask, request, redirect, jsonify, session
 from dotenv import load_dotenv
-from data import *
-from models.cosine import *
-from preprocessing import *
+from modeling.data import *
+from modeling.models.cosine import *
+from modeling.preprocessing import *
 import logger
 
 log = logger.get_logger("app")

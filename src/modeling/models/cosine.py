@@ -1,7 +1,10 @@
+import os
 import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
-from preprocessing import *
-from const import *
+from modeling.preprocessing import *
+from modeling.const import *
+
+os.chdir("/Users/wiseer/Documents/github/listen-wiseer/src/")
 
 
 class Cosine_Similarity_Recommendation:
@@ -11,7 +14,7 @@ class Cosine_Similarity_Recommendation:
     def return_track_uris(self, y):
         # load train data for recommendation
         X = pd.read_csv(
-            "/Users/wiseer/Documents/playground/listen-wiseer/src/data/train_transformed.csv",
+            "data/train_transformed.csv",
             index_col=0,
         )
         X = X[top_features]
