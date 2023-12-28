@@ -69,6 +69,7 @@ def return_playlist_features(headers, playlist_id):
     data["genres"] = genres
     data["popularity"] = popularity
 
-    # TODO: store features in DB
+    # TODO: store features in DB with table for each playlist with features + "currently in playlist"
+    # save and append to this file for now: data.to_csv('data/cosin_similarity_recommendations.csv')
 
     return data

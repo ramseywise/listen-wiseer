@@ -12,10 +12,10 @@ log = logger.get_logger("app")
 
 def return_first_genre(df):
     log.info("Return first genre")
-    df["genres"] = [",".join(map(str, l)) for l in df["genres"]]
-    df["first_genre"] = df["genres"].apply(
-        lambda x: x.split(",")[0].replace("[", "").replace("]", "").replace("'", "")
-    )
+    df["first_genre"] = [
+        genre.split(",")[0].replace("[", "").replace("]", "").replace("'", "")
+        for genre in df.genres
+    ]
 
     return df
 
@@ -87,6 +87,7 @@ def engineer_features(df):
 
 
 def preprocess_numerical_features(df):
+    # TODO: add this to sklearn pipeline
     log.info("Preprocessing numerical features")
     # set index
     df = df.set_index(["id"])
@@ -101,12 +102,13 @@ def preprocess_numerical_features(df):
 
 
 def preprocess_cat_features(df):
+    # TODO: add this to sklearn pipeline
     log.info("Preprocessing categorical features")
     ohe = OneHotEncoder(categories="auto")
     values = ohe.fit_transform(df[cat_features]).toarray()
     labels = pd.unique(df[cat_features].values.ravel())
     features = pd.DataFrame(values, columns=labels)
-    # features.drop([np.nan], axis=1, inplace=True)
+    features.drop([np.nan], axis=1, inplace=True)
 
     return features
 

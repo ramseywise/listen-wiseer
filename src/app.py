@@ -76,6 +76,7 @@ def get_access_token():
             session["expires_at"] = (
                 datetime.now().timestamp() + token_info["expires_in"]
             )
+            print(session["access_token"])
             return redirect("/recommend")
 
 
