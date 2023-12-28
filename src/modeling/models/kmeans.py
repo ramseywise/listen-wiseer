@@ -43,24 +43,25 @@ def kmean_classification(df):
     df["kmean"] = predicted_clusters
     return df
 
+# TODO: make report for cluster classifications
 
-def impute_genre(df):
-    test = df[["id", "track_name", "artist_names", "genres", "top_genre"]].merge(
-        df[["id", "kmean"]], on="id", how="inner"
-    )
-
-    test["genre"] = test.top_genre
-    test.genre = np.where(test.kmean == 0, test.genre.fillna("ambient"), test.genre)
-    test.genre = np.where(test.kmean == 1, test.genre.fillna("rock"), test.genre)
-    test.genre = np.where(test.kmean == 2, test.genre.fillna("folk"), test.genre)
-    test.genre = np.where(test.kmean == 4, test.genre.fillna("bachata"), test.genre)
-    test.genre = np.where(test.kmean == 5, test.genre.fillna("electronica"), test.genre)
-    test.genre = np.where(test.kmean == 6, test.genre.fillna("kizomba"), test.genre)
-    test.genre = np.where(test.kmean == 7, test.genre.fillna("lo-fi beats"), test.genre)
-    test.genre = np.where(test.kmean == 8, test.genre.fillna("acoustic"), test.genre)
-    test.genre = np.where(
-        test.kmean == 8, test.genre.fillna("turkish alt pop"), test.genre
-    )
-    test.top_genre = test.genre
-
-    return df
+#def impute_genre(df):
+#    test = df[["id", "track_name", "artist_names", "genres", "top_genre"]].merge(
+#        df[["id", "kmean"]], on="id", how="inner"
+#    )
+#
+#    test["genre"] = test.top_genre
+#    test.genre = np.where(test.kmean == 0, test.genre.fillna("ambient"), test.genre)
+#    test.genre = np.where(test.kmean == 1, test.genre.fillna("rock"), test.genre)
+#    test.genre = np.where(test.kmean == 2, test.genre.fillna("folk"), test.genre)
+#    test.genre = np.where(test.kmean == 4, test.genre.fillna("bachata"), test.genre)
+#    test.genre = np.where(test.kmean == 5, test.genre.fillna("electronica"), test.genre)
+#    test.genre = np.where(test.kmean == 6, test.genre.fillna("kizomba"), test.genre)
+#    test.genre = np.where(test.kmean == 7, test.genre.fillna("lo-fi beats"), test.genre)
+#    test.genre = np.where(test.kmean == 8, test.genre.fillna("acoustic"), test.genre)
+#    test.genre = np.where(
+#        test.kmean == 8, test.genre.fillna("turkish alt pop"), test.genre
+#    )
+#    test.top_genre = test.genre
+#
+#    return df

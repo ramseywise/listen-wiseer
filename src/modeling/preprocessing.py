@@ -12,11 +12,11 @@ log = logger.get_logger("app")
 
 def return_first_genre(df):
     log.info("Return first genre")
+    df["genres"] = [",".join(map(str, l)) for l in df["genres"]] # remove for jupyter
     df["first_genre"] = [
         genre.split(",")[0].replace("[", "").replace("]", "").replace("'", "")
         for genre in df.genres
     ]
-
     return df
 
 
@@ -108,7 +108,7 @@ def preprocess_cat_features(df):
     values = ohe.fit_transform(df[cat_features]).toarray()
     labels = pd.unique(df[cat_features].values.ravel())
     features = pd.DataFrame(values, columns=labels)
-    features.drop([np.nan], axis=1, inplace=True)
+    #features.drop([np.nan], axis=1, inplace=True) # 
 
     return features
 

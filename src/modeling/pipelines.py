@@ -25,7 +25,7 @@ os.chdir("/Users/wiseer/Documents/github/listen-wiseer/src/")
 log = logger.get_logger("app")
 
 
-# TODO: Turn into class and separate functions
+# TODO: Turn into class and separate functions with models defined
 
 
 def fit_and_evaluate(y_true, y_pred):
@@ -41,8 +41,8 @@ def fit_and_evaluate(y_true, y_pred):
     return accuracy, precision, recall, f1, roc_auc  # specificicty
 
 
-def return_model_metrics(scores):
-    results = pd.DataFrame(scores)
+def return_model_metrics(metrics):
+    results = pd.DataFrame(metrics)
     results["model"] = [
         "Logistic Regression",
         "Decision Tree",
@@ -52,10 +52,14 @@ def return_model_metrics(scores):
     return results
 
 
-def return_feature_selection(selected_features):
+def return_feature_selection(rfe_features):
     log.info("Selecting features")
-    feature_selection = pd.DataFrame(selected_features).T
-    feature_selection.columns = ["Logistic", "Decision Tree", "Random Forest"]
+    feature_selection = pd.DataFrame(rfe_features).T
+    feature_selection.columns = [
+        "Logistic",
+        "Decision Tree",
+        "Random Forest",
+    ]
 
     return feature_selection
 
@@ -131,6 +135,12 @@ def fit_models(df):
 
     # TODO: add smote/k-fold validation
 
+    ## Drop features with correlation greater than 0.95
+    # corr_matrix = X.corr().abs()
+    # upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
+    # to_drop = [column for column in upper.columns if any(upper[column] > 0.95)]
+    # df.drop(to_drop, axis=1, inplace=True)
+
     # Splitting Dataset
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.3, random_state=0
@@ -138,17 +148,20 @@ def fit_models(df):
 
     log.info("Fitting models")
     pipelines = config_model_pipeline()
-    scores = []
-    selected_features = []
+    metrics = []
+    rfe_features = []
+    rfe_values = []
     for model in pipelines:
         model.fit(X_train, y_train)
-        feature_importance = model.named_steps["rfe"].support_
-        rfe_features = list(X.columns[feature_importance])
-        selected_features.append(rfe_features)
+        rfe_features = model.named_steps["rfe"].support_
+        rfe_features = list(X.columns[rfe_features])
+        rfe_features.append(rfe_features)
+        rfe_values = list(model.named_steps["rfe"].estimator_.feature_importances_)
+        rfe_values.append(rfe_values)
         y_true = y_test
         y_pred = model.predict(X_test)
         accuracy, precision, recall, f1, roc_auc = fit_and_evaluate(y_true, y_pred)
-        scores.append(
+        metrics.append(
             {
                 "accuracy": accuracy,
                 "precision": precision,
@@ -157,7 +170,9 @@ def fit_models(df):
                 "roc_auc": roc_auc,
             }
         )
-    metrics = return_model_metrics(scores)
-    feature_selection = return_feature_selection(selected_features)
+    metrics = return_model_metrics(metrics)
+    feature_selection = return_feature_selection(rfe_features)
+
     # TODO: add model selection and hyperparameter tuning; when model is selected retraino on selected features
+
     return metrics, feature_selection
