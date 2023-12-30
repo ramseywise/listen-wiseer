@@ -22,7 +22,9 @@ class Cosine_Similarity_Recommendation:
 
         # create df for score results to filter
         result = train[["id", "first_genre", "track_name", "genre"]]
-        filter = set(test.track_name)
+        # names = pd.read_csv("data/recommended_tracks.csv", index_col=0)
+        # filter = list(names.track_name)
+        filter = list(test.track_name)
 
         # calculate cosine simularity
         for i in range(len(y)):
@@ -30,7 +32,7 @@ class Cosine_Similarity_Recommendation:
             scores = cosine_similarity(X, y[i:j], dense_output=True).flatten()
             result[i] = scores
 
-        # add track recommendations
+        # recommendation tracks
         for ind, row in test.iterrows():
             r = result[result.first_genre == row[["first_genre"]].item()]
             r = r[~r.track_name.isin(filter)]
@@ -40,7 +42,7 @@ class Cosine_Similarity_Recommendation:
                 track = r[:1]["id"].item()
                 track_uri = "spotify:track:" + track
                 self.track_uris.append(track_uri)
-                filter.update(r[:1]["track_name"].item())
+                filter.append(r[:1]["track_name"].item())
             else:
                 r = result[result.genre == row[["genre"]].item()]
                 r = r[~r.track_name.isin(filter)]
@@ -50,15 +52,14 @@ class Cosine_Similarity_Recommendation:
                     track = r[:1]["id"].item()
                     track_uri = "spotify:track:" + track
                     self.track_uris.append(track_uri)
-                    filter.update(r[:1]["track_name"].item())
+                    filter.append(r[:1]["track_name"].item())
                 else:
                     ## TODO: if genre unmatched, add to genre source map
                     continue
-                    # r = result[~result.track_name.isin(filter)]
-                    # r = r.sort_values(ind, ascending=False)
-                    # track = r[:1]["id"].item()
-                    # track_uri = "spotify:track:" + track
-                    # self.track_uris.append(track_uri)
-                    # filter.update(r[:1]["track_name"].item())
+
+        # save recommendations to filter future recommendations
+        result[result.track_name.isin(filter)][["track_name"]].reset_index(
+            drop=True
+        ).to_csv("data/recommended_tracks.csv")
 
         return self.track_uris
