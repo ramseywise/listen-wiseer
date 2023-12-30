@@ -87,12 +87,12 @@ def recommend_new_tracks():
     playlist_id = "0N1llBQMoJX2d9BW3wKHIL"  # cosine similarity
     df = return_playlist_features(headers, playlist_id)
 
-    log.info("Begin data preprocessing")
-    y = transform_feature_data(df)
+    #log.info("Begin data preprocessing")
+    #y = transform_feature_data(df)
 
     log.info("Calculating cosine similarity")
     model = Cosine_Similarity_Recommendation()
-    track_uris = model.return_track_uris(y)
+    track_uris = model.return_track_uris(df)
     data = json.dumps({"uris": list(set(track_uris))})
 
     log.info("Posting recommended tracks to playlist")
