@@ -3,7 +3,7 @@ import requests
 from datetime import datetime
 from flask import Flask, request, redirect, jsonify, session
 from dotenv import load_dotenv
-from modeling.data import *
+from api.data import *
 from modeling.models.cosine import *
 from modeling.preprocessing import *
 import logger
@@ -77,36 +77,53 @@ def get_access_token():
                 datetime.now().timestamp() + token_info["expires_in"]
             )
             print(session["access_token"])
-            return redirect("/recommend")
+            return redirect("/data")
 
 
-@app.route("/recommend")
+@app.route("/data")
 def recommend_new_tracks():
     log.info("Loading playlist data")
     headers = {"Authorization": "Bearer {token}".format(token=session["access_token"])}
-    playlist_id = "0N1llBQMoJX2d9BW3wKHIL"  # cosine similarity
-    df = return_playlist_features(headers, playlist_id)
 
-    #log.info("Begin data preprocessing")
-    #y = transform_feature_data(df)
+    playlists = {
+        "1wqGHI2nMMUarvo79ptIxh": "zoukini",
+        "5hqTEgPgI3rpxu3mHegHcU": "kizombamama",
+        "61PZdnZQTNSgi2LVapULAE": "¡zapatos! ¡zapatos!",
+    }
 
-    log.info("Calculating cosine similarity")
-    model = Cosine_Similarity_Recommendation()
-    track_uris = model.return_track_uris(df)
-    data = json.dumps({"uris": list(set(track_uris))})
+    for k, v in playlists.items():  # get set of ids from my_playlists.csv
+        df = return_full_playlist_df(headers, k, v)
+        log.info(v + " updated successfully!")
 
-    log.info("Posting recommended tracks to playlist")
-    playlist_id = "0N1llBQMoJX2d9BW3wKHIL"  # cosine similarity
-    headers = {"Authorization": "Bearer {token}".format(token=session["access_token"])}
-    response = requests.post(
-        f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks",
-        headers=headers,
-        data=data,
-    )
-    if response.status_code == 201:
-        return {"message": "Track added successfully!"}
-    else:
-        return {"error": response.json()}
+    return redirect("/recommend")
+
+
+# @app.route("/recommend")
+# def recommend_new_tracks():
+#    log.info("Loading playlist data")
+#    headers = {"Authorization": "Bearer {token}".format(token=session["access_token"])}
+#    playlist_id = "0N1llBQMoJX2d9BW3wKHIL"  # cosine similarity
+#    df = return_playlist_features(headers, playlist_id)
+#
+#    #log.info("Begin data preprocessing")
+#    #y = transform_feature_data(df)
+#
+#    log.info("Calculating cosine similarity")
+#    model = Cosine_Similarity_Recommendation()
+#    track_uris = model.return_track_uris(df)
+#    data = json.dumps({"uris": list(set(track_uris))})
+#
+#    log.info("Posting recommended tracks to playlist")
+#    headers = {"Authorization": "Bearer {token}".format(token=session["access_token"])}
+#    response = requests.post(
+#        f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks",
+#        headers=headers,
+#        data=data,
+#    )
+#    if response.status_code == 201:
+#        return {"message": "Track added successfully!"}
+#    else:
+#        return {"error": response.json()}
 
 
 if __name__ == "__main__":
