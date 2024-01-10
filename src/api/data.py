@@ -12,13 +12,13 @@ log = logger.get_logger("app")
 
 def _request_playlist_data(headers, playlist_id):
     endpoint = "https://api.spotify.com/v1/playlists/" + playlist_id + "/tracks"
-    response = requests.get(endpoint, headers=headers)
+    response = requests.get(endpoint, headers=headers)  # get first 100 songs
     if "error" in request.args:
         return jsonify({"error": request.args["error"]})
     else:
         r = response.json()
         tracks = r["items"]
-        while r["next"]:
+        while r["next"]:  # get next 100 songs
             response = requests.get(r["next"], headers=headers)
             if "error" in request.args:
                 return jsonify({"error": request.args["error"]})
@@ -29,11 +29,13 @@ def _request_playlist_data(headers, playlist_id):
 
 
 def _request_artist_info(headers, artist_id):  # genre, popularity
+    print(artist_id)
     endpoint = "https://api.spotify.com/v1/artists/" + artist_id
     response = requests.get(endpoint, headers=headers)
     if "error" in request.args:
         return jsonify({"error": request.args["error"]})
     else:
+        print(response)
         return response.json()
 
 
@@ -116,7 +118,7 @@ def return_artist_data(headers, my_tracks):
         genres = {}
         popularity = {}
         for artist_id in filtered_artist_ids:
-            for i in range(len(artist_id)):
+            for _ in range(len(artist_id)):
                 r = _request_artist_info(headers, artist_id)
                 genres.update({artist_id: r["genres"]})
                 popularity.update({artist_id: str(r["popularity"])})
@@ -130,11 +132,9 @@ def return_artist_data(headers, my_tracks):
             header=False,
         )
 
-        return my_new_artists
 
-
-def return_audio_features(headers, my_tracks):
-    log.info("Requesting audio features for track ids")
+def update_audio_features(headers, my_tracks):
+    log.info("Requesting audio features")
     audio_features = pd.read_csv(
         "/Users/wiseer/Documents/github/listen-wiseer/src/data/api/audio_features.csv",
         index_col=0,
@@ -175,60 +175,16 @@ def return_audio_features(headers, my_tracks):
             mode="a",
             header=False,
         )
-        return data
-    else:
-        data = pd.read_csv(
-            "/Users/wiseer/Documents/github/listen-wiseer/src/data/api/audio_features.csv",
-            index_col=0,
-        )
-        return data
 
 
-def return_full_playlist_df(headers, playlist_id, playlist_name):
+def return_track_features(headers, playlist_id, playlist_name):
     my_tracks = return_playlist_data(headers, playlist_id, playlist_name)
-    # my_new_artists = return_artist_data(headers, my_tracks)
-    data = return_audio_features(headers, my_tracks)
-
-    log.info("Preparing categorical variables")
-    # reload this with all artists
-    my_artists = pd.read_csv(
-        "/Users/wiseer/Documents/github/listen-wiseer/src/data/api/my_artists.csv",
+    update_audio_features(headers, my_tracks)
+    data = pd.read_csv(
+        "/Users/wiseer/Documents/github/listen-wiseer/src/data/api/audio_features.csv",
         index_col=0,
     )
-    # get artist genres
-    artists = my_tracks[["artist_ids"]]
-    genres = []
-    for row in artists["artist_ids"]:
-        genre = my_artists[my_artists.id.isin(row)]["genre"].values
-        genres.append(genre)
-    artists.loc[:, "genres"] = genres
-    artists.loc[:, "genres"] = [", ".join(map(str, l)) for l in artists["genres"]]
-    artists.loc[:, "first_genre"] = artists.genres.str.split(",", expand=True)[0]
-    artists.first_genre = artists.first_genre.replace("nan", np.nan)
-
-    # search for my genres as categories
-    for genre in my_genres:
-        artists.loc[artists["genres"].str.contains(genre), "genre_cat"] = genre
-    # artists.genre_cat.replace("", np.nan, inplace=True)
-
-    # get artist popularity
-    my_artists["popularity"] = pd.to_numeric(my_artists["popularity"], errors="coerce")
-
-    popu_avg = []
-    for row in artists.artist_ids:
-        popu_avg.append(my_artists[my_artists.id.isin(row)].popularity.mean())
-    artists.loc[:, "popularity"] = popu_avg
-
-    # prepare merge
-    my_tracks.loc[:, "artist_ids"] = [
-        ", ".join(map(str, l)) for l in my_tracks["artist_ids"]
-    ]
-    artists.loc[:, "artist_ids"] = [
-        ", ".join(map(str, l)) for l in artists["artist_ids"]
-    ]
-    my_artists.columns = ["artist_ids", "popularity", "genre"]
-    df = my_tracks.merge(artists, on="artist_ids", how="left")
-    df = df.merge(data, on="id", how="left")
+    df = my_tracks.merge(data, on="id", how="left")
 
     # Prepare other categorical variables
     df["release_date"] = pd.to_datetime(df["release_date"], format="ISO8601")
@@ -250,12 +206,61 @@ def return_full_playlist_df(headers, playlist_id, playlist_name):
         10: "Bb",
         11: "B",
     }
+    df["key"] = pd.to_numeric(df["key"], errors="coerce")
     df["key_labels"] = df["key"].map(keys)
+    print(df.key_labels)
     modes = {0: "Minor", 1: "Major"}
+    df["mode"] = pd.to_numeric(df["mode"], errors="coerce")
     df["mode_labels"] = df["mode"].map(modes)
-
-    # create a column that concatonates key with mode
     df["key_mode"] = df["key_labels"] + " " + df["mode_labels"]
+    print(df.key_mode)
+
+    return df
+
+
+def update_artist_features(headers, df):
+    log.info("Merging artist data to track data")
+    my_new_artists = return_artist_data(headers, df)
+    my_artists = pd.read_csv(
+        "/Users/wiseer/Documents/github/listen-wiseer/src/data/api/audio_features.csv",
+        index_col=0,
+    )
+
+    # get artist genres
+    artists = df[["artist_ids"]]
+    genres = []
+    for row in artists["artist_ids"]:
+        # filter if artist info is already stored, otherwise return genre and popularity
+        genre = my_artists[my_artists.id.isin([row])]["genre"].values
+        genres.append(genre)
+    artists.loc[:, "genres"] = genres
+    artists.loc[:, "genres"] = [", ".join(map(str, l)) for l in artists["genres"]]
+    artists.loc[:, "first_genre"] = artists.genres.str.split(",", expand=True)[0]
+    artists.first_genre = artists.first_genre.replace("nan", np.nan)
+    # search for my genres as categories
+    for genre in my_genres:
+        artists.loc[artists["genres"].str.contains(genre), "genre_cat"] = genre
+    # artists.genre_cat.replace("", np.nan, inplace=True)
+
+    # get artist popularity
+    my_artists["popularity"] = pd.to_numeric(my_artists["popularity"], errors="coerce")
+    popu_avg = []
+    for row in artists.artist_ids:
+        popu_avg.append(my_artists[my_artists.id.isin([row])].popularity.mean())
+    artists.loc[:, "popularity"] = popu_avg
+
+
+def return_full_playlist_df(headers, playlist_id, playlist_name):
+    df = return_track_features(headers, playlist_id, playlist_name)
+    # update_artist_features(df)
+    my_artists = pd.read_csv(
+        "/Users/wiseer/Documents/github/listen-wiseer/src/data/api/my_artists.csv",
+        index_col=0,
+    )
+    # prepare merge
+    df.loc[:, "artist_ids"] = [", ".join(map(str, l)) for l in df["artist_ids"]]
+    my_artists.columns = ["artist_ids", "popularity", "genre"]
+    df = df.merge(my_artists, on="artist_ids", how="left")
 
     # save playlist data
     df = df[df.playlist_name == playlist_name].drop_duplicates(subset=["id"])

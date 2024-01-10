@@ -26,8 +26,8 @@ num_features = [
 ]
 cat_features = [
     "decade",
-    "key_mode",
-    #"genre",
+    "key_mode"
+    # "genre",
 ]
 
 features = ["id"] + num_features + cat_features
@@ -38,16 +38,14 @@ my_genres = [
     "jazz",
     "blues",
     "folk",
-    "arab",
     "indie",
     "house",
     "electronica",
-    "downtempo",
-    "lo-fi beats",
+    "lo-fi",
     "alternative rock",
     "bossa nova",
-    "funk",
     "soul",
+    "funk",
     "zouk",
     "bachata",
     "kizomba",

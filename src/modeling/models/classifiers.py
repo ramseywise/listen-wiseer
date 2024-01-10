@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 from sklearn.pipeline import Pipeline
 from sklearn.ensemble import RandomForestClassifier
@@ -18,7 +19,6 @@ from sklearn.metrics import (
     accuracy_score,
 )
 from modeling.const import *
-from modeling.preprocessing import *
 import logger
 
 os.chdir("/Users/wiseer/Documents/github/listen-wiseer/src/")

@@ -5,7 +5,6 @@ from flask import Flask, request, redirect, jsonify, session
 from dotenv import load_dotenv
 from api.data import *
 from modeling.models.cosine import *
-from modeling.preprocessing import *
 import logger
 
 log = logger.get_logger("app")
@@ -86,9 +85,9 @@ def recommend_new_tracks():
     headers = {"Authorization": "Bearer {token}".format(token=session["access_token"])}
 
     playlists = {
-        "1wqGHI2nMMUarvo79ptIxh": "zoukini",
-        "5hqTEgPgI3rpxu3mHegHcU": "kizombamama",
-        "61PZdnZQTNSgi2LVapULAE": "¡zapatos! ¡zapatos!",
+        "0bSPcUdxDq7xbOVXTt0JT6": "zoukini", #1wqGHI2nMMUarvo79ptIxh
+        "4oBTLUak282wPIZKxge1EA": "kizombamama", #5hqTEgPgI3rpxu3mHegHcU
+        "0HQjD6fO1LLO1yFqrqLDTb": "¡zapatos! ¡zapatos!", #61PZdnZQTNSgi2LVapULAE
     }
 
     for k, v in playlists.items():  # get set of ids from my_playlists.csv
