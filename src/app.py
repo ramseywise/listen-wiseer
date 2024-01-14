@@ -3,7 +3,7 @@ import requests
 from datetime import datetime
 from flask import Flask, request, redirect, jsonify, session
 from dotenv import load_dotenv
-from api.data import *
+from api.playlists import *
 from modeling.models.cosine import *
 import logger
 
@@ -81,16 +81,23 @@ def get_access_token():
 
 @app.route("/data")
 def recommend_new_tracks():
-    log.info("Loading playlist data")
     headers = {"Authorization": "Bearer {token}".format(token=session["access_token"])}
 
+    dance_playlists = {
+        "0bSPcUdxDq7xbOVXTt0JT6": "zoukini",  # 1wqGHI2nMMUarvo79ptIxh
+        "4oBTLUak282wPIZKxge1EA": "kizombamama",  # 5hqTEgPgI3rpxu3mHegHcU
+        "0HQjD6fO1LLO1yFqrqLDTb": "¡zapatos! ¡zapatos!",  # 61PZdnZQTNSgi2LVapULAE
+    }
     playlists = {
-        "0bSPcUdxDq7xbOVXTt0JT6": "zoukini", #1wqGHI2nMMUarvo79ptIxh
-        "4oBTLUak282wPIZKxge1EA": "kizombamama", #5hqTEgPgI3rpxu3mHegHcU
-        "0HQjD6fO1LLO1yFqrqLDTb": "¡zapatos! ¡zapatos!", #61PZdnZQTNSgi2LVapULAE
+        "7lTZ9kdDXhD5QFwen86pY3": "kozmic blues",
+        "1ipYsue7fX009BDxTX43pN": "pink moon",
+        "3OKp4BoFeq3pw7yxI1ODG9": "lebanese blonde",
+        "0eRuzZsUFgsX2LH8Ik3aih": "lady stardust",
+        "5T5rQUgCGCsqRx6utNZ7BU": "hollow sound of morning chimes",
     }
 
     for k, v in playlists.items():  # get set of ids from my_playlists.csv
+        log.info(f"Loading {v}")
         df = return_full_playlist_df(headers, k, v)
         log.info(v + " updated successfully!")
 
