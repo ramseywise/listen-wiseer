@@ -180,28 +180,28 @@ def update_artist_data(headers, my_tracks):
         )
 
     # api request for new artists
-    if len(filtered_artist_ids) > 0:
-        genres = {}
-        popularity = {}
+    genres = {}
+    popularity = {}
+    if len(filtered_artist_ids) > 0 :
         for artist_id in filtered_artist_ids:
             for _ in range(len(artist_id)):
                 r = _request_artist_info(headers, artist_id)
-                if r is None:
+                if "error" in request.args: # sometimes queries too often and drops requests
                     continue
                 else:
                     genres.update({artist_id: r["genres"]})
                     popularity.update({artist_id: str(r["popularity"])})
-                    my_new_artists = pd.DataFrame([popularity, genres]).T.reset_index()
-                    my_new_artists.columns = ["artist_id", "popularity", "genre"]
 
-                    # append new artists to my_artists
-                    my_new_artists.reset_index(drop=True).to_csv(
-                        "/Users/wiseer/Documents/github/listen-wiseer/src/data/api/my_artists.csv",
-                        mode="a",
-                        header=False,
-                    )
+    # append new artists to my_artists
+    my_new_artists = pd.DataFrame([popularity, genres]).T.reset_index()
+    my_new_artists.columns = ["artist_id", "popularity", "genre"]
+    my_new_artists.reset_index(drop=True).to_csv(
+        "/Users/wiseer/Documents/github/listen-wiseer/src/data/api/my_artists.csv",
+        mode="a",
+        header=False,
+    )
 
-                    return my_new_artists
+    return my_new_artists
 
 
 def merge_artist_features(headers, df):
