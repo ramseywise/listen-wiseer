@@ -4,7 +4,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 from sklearn.manifold import TSNE
-from modeling.const import *
+from modeling.utils.const import *
 import warnings
 
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -32,6 +32,7 @@ def plot_pairplot(df, hue):
 
 
 def boxplot_playlist_by_decade(df):
+    # NOTE: should subplots be done on a loop?
     # plot scatter sublots
     fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(14, 8))
     axes = axes.flatten()

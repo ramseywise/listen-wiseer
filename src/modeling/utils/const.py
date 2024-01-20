@@ -1,3 +1,6 @@
+#from pydantic import BaseSettings
+ 
+## NOTE: This is getting ridiculously long, also put with model version???
 audio_features = [
     "id",
     "key",
@@ -144,7 +147,7 @@ playlist_group_dict = {
         "lebanese blonde",
         "lady stardust",
         "hollow sound of morning chimes",
-    ]
+    ],
 }
 order = [
     "1920s",

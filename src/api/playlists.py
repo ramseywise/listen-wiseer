@@ -3,7 +3,7 @@ import requests
 import numpy as np
 import pandas as pd
 from flask import jsonify, request
-from modeling.const import *
+from modeling.utils.const import *
 import logger
 
 log = logger.get_logger("app")

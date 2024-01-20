@@ -1,9 +1,14 @@
 import os
+import pdfkit
+import subprocess
 import pandas as pd
 import numpy as np
 import seaborn as sns
+from datetime import datetime
 from scipy.spatial.distance import pdist, squareform
-from modeling.const import *
+from modeling.utils.const import *
+from modeling.eda import *
+from modeling.utils.plotting import *
 
 
 def load_playlist_data():
@@ -231,3 +236,125 @@ def append_best_enoa_match(
         ", ".join(map(str, l)) for l in new_genres_df["best_enoa_match"]
     ]
     return new_genres_df
+
+
+#### Spotify Playlist EDA
+
+gm = return_genre_map()
+df = merge_playlist_data_genre_map(gm)
+
+## 1 | Review feature distribution by genre
+plot_pairplot(df, hue="gen_4")
+plt.savefig(f"analysis/gen_4_pairplot.png")
+
+plot_pairplot(df, hue="gen_8")
+plt.savefig(f"analysis/gen_8_pairplot.png")
+
+
+## 2 | Plot ENOA data
+# get enoa data (> 6k genres)
+data = return_enoa_coordinates(df)
+
+# group genres to play min, max coordinates
+genre_groups = data.groupby("gen_4")[["top", "left"]].agg({"min", "max"})
+genre_groups.columns = genre_groups.columns.map("_".join)
+plot_enoa_area(genre_groups)
+plt.savefig(f"analysis/enoa_gen_4.png")
+
+# group genres to play min, max coordinates
+genre_groups = data.groupby("gen_8")[["top", "left"]].agg({"min", "max"})
+genre_groups.columns = genre_groups.columns.map("_".join)
+plot_enoa_area(genre_groups)
+plt.savefig(f"analysis/enoa_gen_8.png")
+
+# group genres to play min, max coordinates
+genre_groups = data.groupby("my_genre")[["top", "left"]].agg({"min", "max"})
+genre_groups.columns = genre_groups.columns.map("_".join)
+plot_enoa_area(genre_groups)
+plt.savefig(f"analysis/enoa_my_genre.png")
+
+# plot new genres
+new_genres = return_new_genres(data)
+plot_enao_new_genres(data, new_genres, group="gen_8")
+plt.savefig(f"analysis/enoa_new_genres.png")
+
+# Calculate distance
+# NOTE: also cosine similarity matrix
+dm = calculate_first_genre_distances(data, ["top", "left"])
+
+# return new genre df to review
+new_genres_df = return_new_genres_df(data, new_genres)
+
+# append best matches
+# NOTE: this is based on enoa distance!!!
+playlist_first_genre_map, enoa_sub_genre_map = create_subgenre_maps(df, gm)
+new_genres_df = append_best_playlist_match(new_genres_df, playlist_first_genre_map, dm)
+new_genres_df = append_best_enoa_match(
+    new_genres_df, playlist_first_genre_map, enoa_sub_genre_map, dm
+)
+new_genres_df.to_csv(
+    "/Users/wiseer/Documents/github/listen-wiseer/src/data/genres/genre_map_review.csv"
+)  # TODO: add date?
+new_genres_df
+
+# TODO: automate genre map update
+
+
+## 3 | Analyze Playlists
+boxplot_playlist_by_decade(df)
+plt.savefig(f"analysis/decade_popularity_by_playlist.png")
+
+plot_playlist_artist_popularity(df)
+plt.savefig(f"analysis/artist_popularity_by_playlist.png")
+
+plot_my_genre_by_playlist_group(df, playlist_group_dict, order=None)
+plt.savefig(f"analysis/my_genres_by_playlist.png")
+
+df["playlist_group"] = df["playlist_name"].map(
+    lambda x: next((k for k, v in playlist_group_dict.items() if x in v), None)
+)
+plot_pairplot(df, hue="playlist_group")
+plt.savefig(f"analysis/pairplot_by_playlist.png")
+
+
+## 3 | Outliers
+# TODO: add method for flagging songs that don't belong in playlist; for now, send as csv for review
+# df = identify_outliers(df, playlists)
+# outliers_df = pd.DataFrame(
+#     df[df.outliers == 1]
+#     .groupby("playlist")[["id", "track_name", "artist_names", "genres"]]
+#     .value_counts()
+#     .reset_index()
+#     .drop("count", axis=1)
+# ).to_csv(f"analysis/{group}/outlier_df.csv")
+#
+# data = return_enoa_outliers(df)
+# plot_enoa_outliers(data, playlists)
+# plt.savefig(f"analysis/{group}/6_enoa_outliers.png")
+
+
+## 4 | Dimensionality Reduction
+# TODO: add method for splitting convulated playlist into two --> which later will be used to create new playlist and remove songs from old
+# playlist = playlists[0]
+# data = calculate_tsne(df, playlist)
+# plot_tsne(data, playlist)
+# plt.savefig(f"analysis/{group}/{playlist}/tsne_scatterplot.png")
+#
+# plot_tsne_groupy_by_genres(data)
+# plt.savefig(f"analysis/{group}/{playlist}/tsne_by_genre.png")
+#
+# plot_pairplot(data, hue="tsne")
+# plt.savefig(f"analysis/{group}/{playlist}/tsne_pairplot.png")
+
+
+### Save analysis to pdf
+subprocess.run(
+    ["jupyter", "nbconvert", "--to", "html", "--no-input", "notebooks/eda.ipynb"]
+)
+
+# Convert HTML to PDF
+current_date_str = datetime.now().strftime("%Y-%m-%d")
+html_file_path = f"notebooks/eda.html"
+pdf_output_path = f"analysis/eda_{current_date_str}.pdf"
+pdfkit.from_file(html_file_path, pdf_output_path)
+print(f"PDF file has been created: {pdf_output_path}")
