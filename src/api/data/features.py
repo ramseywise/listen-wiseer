@@ -10,6 +10,13 @@ log = logger.get_logger("app")
 
 log.info("Requesting playlist data")
 
+data_schema = PlaylistFeaturesSchema()
+data_schema.context = {
+    "artist_schema": ArtistFeaturesSchema(),
+    "audio_schema": AudioFeaturesSchema(),
+    "track_schema": TrackFeaturesSchema(),
+}
+
 
 class PlaylistData(BaseModel):
     headers: dict

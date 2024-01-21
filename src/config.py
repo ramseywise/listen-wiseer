@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 load_dotenv(".env")
 client_id = os.getenv("CLIENT_ID")
 client_secret = os.getenv("CLIENT_SECRET")
+secret_key = client_secret
 user_id = os.getenv("USER_ID")
 scope = os.getenv("SCOPE")
 

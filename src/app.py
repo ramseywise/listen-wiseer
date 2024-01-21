@@ -1,21 +1,18 @@
 import logger
 import requests
-from flask import Flask, redirect, session
-
-from config import *
-from api.playlists import *
+from flask import Flask
+from modeling.utils.const import *
 from api.spotify_client import *
 
-# from modeling.models.cosine import *
 
 log = logger.get_logger("app")
 
 # config app
 app = Flask(__name__)
-app.secret_key = client_secret
 
-spAuth = SpotifyAuth(client_id, client_secret, redirect_uri, token_url)
-spData = SpotifyPlaylistData()
+# initiate spotify client
+spAuth = SpotifyAuth(client_id, client_secret, token_url, redirect_uri)
+spData = SpotifyPlaylistApi()
 
 
 @app.route("/")
@@ -42,21 +39,30 @@ def login():
 @app.route("/callback")
 def return_playlist_data():
     """Return authorization code to exchange for session access token."""
-    session = spAuth.get_access_token()
-    access_token = session["access_token"]
-    print(access_token)
 
     for playlist_id, playlist_name in playlists.items():
         log.info(f"Loading {playlist_name}")
 
-        # access_token = spAuth.refresh_access_token()
-        df = spData.request_playlist_data(playlist_id)
+        # refresh access token to make new api requests is not inheriting session
+        access_token = spAuth.get_access_token()
+        headers = {"Authorization": "Bearer {token}".format(token=access_token)}
 
-        # df = return_full_playlist_df(headers, k, v)
+        # return features from spotify api
+        my_tracks = spData.request_track_features(headers, playlist_id)
+        print(my_tracks)
+        audio_features = spData.request_audio_features(headers, my_tracks["id"])
+        my_artists = [
+            spData.request_artist_features(headers, artist_id)
+            for artist_id in my_tracks["artist_ids"]
+        ]
+
+        ## return as dataframe
+        df = pd.concat([my_tracks] + my_artists + audio_features, axis=1)
         if df.popularity.isnull().sum() > 0:
             log.info(playlist_name + " is still missing artist features!")
         else:
             log.info(playlist_name + " updated successfully!")
+
     return redirect("/eda")
 
 
