@@ -4,7 +4,7 @@ from flask import Flask, redirect, session
 
 from config import *
 from api.playlists import *
-from api.spotify_client import SpotifyAuth
+from api.spotify_client import *
 
 # from modeling.models.cosine import *
 
@@ -14,7 +14,9 @@ log = logger.get_logger("app")
 app = Flask(__name__)
 app.secret_key = client_secret
 
-sp = SpotifyAuth(client_id, client_secret, redirect_uri, token_url)
+spAuth = SpotifyAuth(client_id, client_secret, redirect_uri, token_url)
+spData = SpotifyPlaylistData()
+
 
 @app.route("/")
 def index():
@@ -38,26 +40,23 @@ def login():
 
 
 @app.route("/callback")
-def get_access_token():
-    """Return authorization code to exchange for session access token."""
-    access_token = sp.get_access_token()
-    print(access_token)
-    return redirect("/data")
-
-
-@app.route("/data")
 def return_playlist_data():
-    headers = {"Authorization": "Bearer {token}".format(token=session["access_token"])}
+    """Return authorization code to exchange for session access token."""
+    session = spAuth.get_access_token()
+    access_token = session["access_token"]
+    print(access_token)
 
-    for k, v in playlists.items():
-        log.info(f"Loading {v}")
+    for playlist_id, playlist_name in playlists.items():
+        log.info(f"Loading {playlist_name}")
 
-        # sp.refresh_access_token()
-        df = return_full_playlist_df(headers, k, v)
+        # access_token = spAuth.refresh_access_token()
+        df = spData.request_playlist_data(playlist_id)
+
+        # df = return_full_playlist_df(headers, k, v)
         if df.popularity.isnull().sum() > 0:
-            log.info(v + " is still missing artist features!")
+            log.info(playlist_name + " is still missing artist features!")
         else:
-            log.info(v + " updated successfully!")
+            log.info(playlist_name + " updated successfully!")
     return redirect("/eda")
 
 

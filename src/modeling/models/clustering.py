@@ -60,7 +60,9 @@ def select_pca_n_components(X):
     plt.axhline(y=0.99, color="r", linestyle="-")
     plt.axhline(y=0.95, color="r", linestyle="-")
 
-    n_components = (len(cumulative_explained_variance[cumulative_explained_variance < 0.99]) + 1)
+    n_components = (
+        len(cumulative_explained_variance[cumulative_explained_variance < 0.99]) + 1
+    )
     plt.axvline(x=n_components, color="r", linestyle="--")
     plt.tight_layout()
     plt.show()

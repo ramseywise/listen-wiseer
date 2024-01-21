@@ -68,6 +68,7 @@ def plot_playlist_artist_popularity(df):
             y="artist_names",
             hue="popularity",
             legend=False,
+            # TODO: get top 20 artist instead of random and not as pairs
             data=songs.sample(20).sort_values(by="popularity"),
             palette=sns.color_palette("viridis", n_colors=30),
             ax=axes[i],
@@ -130,6 +131,7 @@ def plot_my_genre_by_playlist_group(df, playlist_group_dict, order=None):
         handles, labels = axes[i].get_legend_handles_labels()
         axes[i].legend(handles[: len(playlists)], labels[: len(playlists)])
         axes[i].set_title(f"{group} playlist genres")
+    # TODO: remove confidence intervals; maybe even stack this into one graph???
     plt.tight_layout()
     plt.suptitle("My Genres by Playlist Group")
 

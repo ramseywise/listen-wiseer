@@ -1,8 +1,10 @@
 import pandas as pd
 import numpy as np
-#from sklearn.preprocessing import MinMaxScaler
-#from sklearn.metrics import euclidean_distances
+
+# from sklearn.preprocessing import MinMaxScaler
+# from sklearn.metrics import euclidean_distances
 from scipy.spatial.distance import pdist, squareform
+
 
 class Euclidean_Distance_Recommendation:
     def __init__(self, track_uris=[]):

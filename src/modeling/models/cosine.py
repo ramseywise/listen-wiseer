@@ -58,6 +58,8 @@ class Cosine_Similarity_Recommendation:
 
         # save recommendations to filter future recommendations
         result = result[result.track_name.isin(filter)]
-        result[["track_name"]].reset_index(drop=True).to_csv("data/recommended_tracks.csv")
+        result[["track_name"]].reset_index(drop=True).to_csv(
+            "data/recommended_tracks.csv"
+        )
 
         return self.track_uris

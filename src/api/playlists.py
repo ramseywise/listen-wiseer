@@ -1,8 +1,7 @@
-import json
 import requests
 import numpy as np
 import pandas as pd
-from flask import jsonify, request
+from flask import request
 from modeling.utils.const import *
 import logger
 
@@ -182,11 +181,13 @@ def update_artist_data(headers, my_tracks):
     # api request for new artists
     genres = {}
     popularity = {}
-    if len(filtered_artist_ids) > 0 :
+    if len(filtered_artist_ids) > 0:
         for artist_id in filtered_artist_ids:
             for _ in range(len(artist_id)):
                 r = _request_artist_info(headers, artist_id)
-                if "error" in request.args: # sometimes queries too often and drops requests
+                if (
+                    "error" in request.args
+                ):  # sometimes queries too often and drops requests
                     continue
                 else:
                     genres.update({artist_id: r["genres"]})
