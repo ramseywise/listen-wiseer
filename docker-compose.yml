@@ -1,4 +1,4 @@
-version: "3.9"
+version: "3.11"
 
 services:
   app:
@@ -11,3 +11,25 @@ services:
     stdin_open: true
     tty: true
     command: [python, app.py]
+
+# TODO:
+#  postgres:
+#    image: add image
+#    environment:
+#      - POSTGRES_DB=spotifyDB
+#    ports:
+#      - "5432:5432"
+#
+#  flyway:
+#    image: add image
+#    command: migrate -url=jdbc:postgresql://postgres:5432/spotifyDB -connectRetries=60
+#    volumes:
+#      - ../src/db/migration:/flyway/sql
+#    depends_on:
+#      - postgres
+#    tty: true
+#
+#  redis:
+#    image: add image
+#    ports:
+#      - "6379:6379"

@@ -1,15 +1,15 @@
-docker-build:
- 	make docker-clean
- 	docker build -t gun-image --no-cache=true .
+COMPOSE_INFRA=docker-compose -f docker-compose.yml
 
-docker-clean:
- 	-docker rm -f gun-container;
- 	-docker rmi gun-image
- 
-docker-run:
- 	docker run --rm -a stdout -a stderr --name gun-container -v $(shell pwd):/gun -i gun-image /bin/bash -c "python gun.py"
- 
-docker-build-and-run:
- 	make docker-build
- 	make docker-run
- 	make docker-clean
+infra-up:
+	${COMPOSE_INFRA} up -d
+
+infra-logs:
+	${COMPOSE_INFRA_DEV} logs -f
+
+infra-down:
+	${COMPOSE_INFRA_DEV} down --volumes --remove-orphans
+
+lint:
+	black .
+	mypy .
+	ruff check .

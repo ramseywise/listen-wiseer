@@ -30,4 +30,3 @@ def get_logger(logger_name):
     """Get logger config."""
     logging.config.dictConfig(log_config)
     return logging.getLogger(logger_name)
-
