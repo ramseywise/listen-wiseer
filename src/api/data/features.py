@@ -1,37 +1,4 @@
-import logger
-import numpy as np
-import pandas as pd
-from flask import request
-from pydantic import BaseModel
-from modeling.utils.const import *
-from api.data.schema import *
 
-log = logger.get_logger("app")
-
-log.info("Requesting playlist data")
-
-data_schema = PlaylistFeaturesSchema()
-data_schema.context = {
-    "artist_schema": ArtistFeaturesSchema(),
-    "audio_schema": AudioFeaturesSchema(),
-    "track_schema": TrackFeaturesSchema(),
-}
-
-
-class PlaylistData(BaseModel):
-    headers: dict
-
-    def __init__(self) -> None:
-        super().__init__()
-
-    class TrackFeatures:
-        def __init__(self, id, uri, name, artist_ids, artist_names, release_date):
-            self.id = id
-            self.uri = uri
-            self.name = name
-            self.artist_names = artist_names
-            self.artist_ids = artist_ids
-            self.release_date = release_date
 
         def get_artist_ids(self):
             return [artist["artist_ids"] for artist in self.artists]
@@ -44,77 +11,6 @@ class PlaylistData(BaseModel):
             artist_names = [track.get_artist_names() for track in tracks]
             return artist_ids, artist_names
 
-        def get_playlist_data(self, headers: dict, playlist_id: str) -> pd.DataFrame:
-            tracks = self._request_playlist_data(headers, playlist_id)
-
-            # append new tracks
-            my_current_tracks = pd.read_csv(
-                "/Users/wiseer/Documents/github/listen-wiseer/src/data/api/my_tracks.csv",
-                index_col=0,
-            )
-            my_current_track_ids = list(my_current_tracks["id"])
-            tracks[~tracks.id.isin(my_current_track_ids)].reset_index(drop=True).to_csv(
-                "/Users/wiseer/Documents/github/listen-wiseer/src/data/api/my_tracks.csv",
-                mode="a",
-                header=False,
-            )
-            return tracks
-
-    log.info("Requesting audio features")
-
-    class AudioFeatures:
-        def __init__(self):
-            self.filtered_track_ids
-
-        def filter_track_ids(self, df: pd.DataFrame) -> pd.DataFrame:
-            audio_features = pd.read_csv(
-                "/Users/wiseer/Documents/github/listen-wiseer/src/data/api/audio_features.csv",
-                index_col=0,
-            )
-            audio_feature_track_ids = list(audio_features["id"])
-
-            # filter artist ids if already in my_artists
-            filtered_track_ids = set(
-                [
-                    element
-                    for element in set(df.id)
-                    if element not in audio_feature_track_ids
-                ]
-            )
-            return filtered_track_ids
-
-        def get_audio_features(self, headers: dict, data: pd.DataFrame) -> pd.DataFrame:
-            filter_track_ids = filter_track_ids(self.df)
-            if len(self.filtered_track_ids) > 0:
-                data = self._request_audio_features(
-                    headers, self.filtered_track_ids
-                ).reset_index()
-                data = data[
-                    [
-                        "id",
-                        "danceability",
-                        "energy",
-                        "loudness",
-                        "speechiness",
-                        "acousticness",
-                        "instrumentalness",
-                        "liveness",
-                        "valence",
-                        "tempo",
-                        "duration_ms",
-                        "time_signature",
-                        "key",
-                        "mode",
-                    ]
-                ]
-                data.reset_index(drop=True).to_csv(
-                    "/Users/wiseer/Documents/github/listen-wiseer/src/data/api/audio_features.csv",
-                    mode="a",
-                    header=False,
-                )
-                return data
-
-    log.info("Requesting artists features")
 
     class ArtistFeatures:
         def __init__(self):

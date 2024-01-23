@@ -39,7 +39,7 @@ def _request_audio_features(headers, track_ids):
 
 
 def return_playlist_data(headers, playlist_id, playlist_name):
-    log.info("Requesting playlist data")
+    #log.info("Requesting playlist data")
     tracks = _request_playlist_data(headers, playlist_id)
     track_ids = []
     track_uris = []
@@ -85,7 +85,7 @@ def return_playlist_data(headers, playlist_id, playlist_name):
 
 
 def update_audio_features(headers, df):
-    log.info("Requesting audio features")
+    #log.info("Requesting audio features")
     audio_features = pd.read_csv(
         "/Users/wiseer/Documents/github/listen-wiseer/src/data/api/audio_features.csv",
         index_col=0,
@@ -164,7 +164,7 @@ def return_track_features(headers, playlist_id, playlist_name):
 
 
 def update_artist_data(headers, my_tracks):
-    log.info("Requesting artist features")
+    #log.info("Requesting artist features")
     my_current_artists = pd.read_csv(
         "/Users/wiseer/Documents/github/listen-wiseer/src/data/api/my_artists.csv",
         index_col=0,

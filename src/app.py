@@ -4,15 +4,19 @@ from flask import Flask
 from modeling.utils.const import *
 from api.spotify_client import *
 
+# from api.data.playlists import *
+from api.playlists_old import *
 
 log = logger.get_logger("app")
 
 # config app
 app = Flask(__name__)
+app.secret_key = client_secret
 
 # initiate spotify client
-spAuth = SpotifyAuth(client_id, client_secret, token_url, redirect_uri)
-spData = SpotifyPlaylistApi()
+spAuth = SpotifyAuth(client_id, client_secret, redirect_uri, token_url, session)
+# spApi = SpotifyPlaylistApi()
+# spData = SpotifyPlaylistData()
 
 
 @app.route("/")
@@ -39,31 +43,42 @@ def login():
 @app.route("/callback")
 def return_playlist_data():
     """Return authorization code to exchange for session access token."""
+    # refresh access token to make new api requests is not inheriting session
+    access_token = spAuth.get_access_token()
+    headers = {"Authorization": "Bearer {token}".format(token=session["access_token"])}
+    print(access_token)
 
     for playlist_id, playlist_name in playlists.items():
         log.info(f"Loading {playlist_name}")
+        df = return_full_playlist_df(headers, playlist_id, playlist_name)
+        
+    return redirect("/recommend")
 
-        # refresh access token to make new api requests is not inheriting session
-        access_token = spAuth.get_access_token()
-        headers = {"Authorization": "Bearer {token}".format(token=access_token)}
 
-        # return features from spotify api
-        my_tracks = spData.request_track_features(headers, playlist_id)
-        print(my_tracks)
-        audio_features = spData.request_audio_features(headers, my_tracks["id"])
-        my_artists = [
-            spData.request_artist_features(headers, artist_id)
-            for artist_id in my_tracks["artist_ids"]
-        ]
+    #        # update track features
+    #        tracks = spApi.request_track_features(headers, playlist_id)
+    #        my_tracks = spData.return_my_tracks(tracks, playlist_id, playlist_name)
+    #
+    #        # update audio features
+    #        filtered_track_ids = spData.filter_new_audio_features(my_tracks)
+    #        audio_features = spApi.request_audio_features(headers, filtered_track_ids)
+    #
+    #        # return artists features
+    #        filtered_artist_ids = spData.filter_new_artist_features(headers, my_tracks)
+    #        my_artists = spApi.request_artist_features(headers, filtered_artist_ids)
 
-        ## return as dataframe
-        df = pd.concat([my_tracks] + my_artists + audio_features, axis=1)
-        if df.popularity.isnull().sum() > 0:
-            log.info(playlist_name + " is still missing artist features!")
-        else:
-            log.info(playlist_name + " updated successfully!")
+    # df = spData.merge_new_features(audio_features)
+
+    # return as dataframe
+    # df = pd.concat([my_tracks] + my_artists + audio_features, axis=1)
+    # if df.popularity.isnull().sum() > 0:
+    #    log.info(playlist_name + " is still missing artist features!")
+    # else:
+    #    log.info(playlist_name + " updated successfully!")
 
     return redirect("/eda")
+
+    # df = sp.Data.merge_audio_features(audio_features)
 
 
 # @app.route("/eda")
