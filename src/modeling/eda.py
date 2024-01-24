@@ -24,7 +24,6 @@ def load_playlist_data():
 
     # Loop through each CSV file and concatenate its data to the DataFrame
     for csv_file in csv_files:
-        playlist_name = csv_file.split(".csv")[0]
         file_path = os.path.join(folder_path, csv_file)
         df = pd.read_csv(file_path, index_col=0)
         concatenated_df = pd.concat([concatenated_df, df], ignore_index=True)

@@ -2,10 +2,11 @@ import logger
 import requests
 from flask import Flask
 from modeling.utils.const import *
-from api.spotify_client import *
 
-# from api.data.playlists import *
-from api.playlists_old import *
+# from api.spotify_client import *
+# from api.spotify_auth import *
+# from api.data.spotify_playlists import *
+from api.data.playlists import *
 
 log = logger.get_logger("app")
 
@@ -14,9 +15,9 @@ app = Flask(__name__)
 app.secret_key = client_secret
 
 # initiate spotify client
-spAuth = SpotifyAuth(client_id, client_secret, redirect_uri, token_url, session)
+# spAuth = SpotifyAuth(client_id, client_secret, redirect_uri, token_url)
 # spApi = SpotifyPlaylistApi()
-# spData = SpotifyPlaylistData()
+spData = SpotifyPlaylistData()
 
 
 @app.route("/")
@@ -42,43 +43,50 @@ def login():
 
 @app.route("/callback")
 def return_playlist_data():
-    """Return authorization code to exchange for session access token."""
-    # refresh access token to make new api requests is not inheriting session
-    access_token = spAuth.get_access_token()
-    headers = {"Authorization": "Bearer {token}".format(token=session["access_token"])}
-    print(access_token)
+    """Request Spotify API to return dfs for my playlists."""
 
-    for playlist_id, playlist_name in playlists.items():
-        log.info(f"Loading {playlist_name}")
-        df = return_full_playlist_df(headers, playlist_id, playlist_name)
-        
-    return redirect("/recommend")
-
-
-    #        # update track features
-    #        tracks = spApi.request_track_features(headers, playlist_id)
-    #        my_tracks = spData.return_my_tracks(tracks, playlist_id, playlist_name)
-    #
-    #        # update audio features
-    #        filtered_track_ids = spData.filter_new_audio_features(my_tracks)
-    #        audio_features = spApi.request_audio_features(headers, filtered_track_ids)
-    #
-    #        # return artists features
-    #        filtered_artist_ids = spData.filter_new_artist_features(headers, my_tracks)
-    #        my_artists = spApi.request_artist_features(headers, filtered_artist_ids)
-
-    # df = spData.merge_new_features(audio_features)
-
-    # return as dataframe
-    # df = pd.concat([my_tracks] + my_artists + audio_features, axis=1)
-    # if df.popularity.isnull().sum() > 0:
-    #    log.info(playlist_name + " is still missing artist features!")
-    # else:
-    #    log.info(playlist_name + " updated successfully!")
+    my_tracks = spData.update_spotify_features()
+    df = spData.update_playlist_data(my_tracks)
 
     return redirect("/eda")
 
-    # df = sp.Data.merge_audio_features(audio_features)
+
+#    # refresh access token to make new api requests is not inheriting session
+#    access_token = spAuth.get_access_token()
+#    headers = {"Authorization": "Bearer {token}".format(token=access_token[0])}
+#    print(headers)
+#
+#    log.info(f"Loading Spotify playlists")
+#    for playlist_id, playlist_name in playlists.items():
+#        # return my playlists' track features
+#        tracks = spApi.request_track_features(headers, playlist_id)
+#        my_tracks = spData.return_my_tracks(tracks, playlist_id, playlist_name)
+#
+#        # update audio features
+#        filtered_track_ids = spData.filter_new_audio_features(my_tracks)
+#        if len(filtered_track_ids) > 0:
+#            new_audio_features = spApi.request_audio_features(
+#                headers, filtered_track_ids
+#            )
+#            _ = spData.append_new_audio_features(new_audio_features)
+#
+#        # update artists features
+#        filtered_artist_ids = spData.filter_new_artist_features(my_tracks)
+#        if len(filtered_track_ids) > 0:
+#            new_artists = spApi.request_artist_features(headers, filtered_artist_ids)
+#            _ = spData.append_new_artist_features(new_artists)
+#
+#        # update playlist dfs
+#        playlist_df = spData.merge_audio_features(my_tracks)
+#        playlist_df = spData.merge_artist_features(playlist_df)
+#        playlist_df = spData.update_playlist_data(playlist_df, playlist_name)
+#
+#        # TODO: verify data with schema - should it be final playlists or when requests are made :/
+#        # TODO: change from csv to DB;
+#        # TODO: add historical table of playlist tracks with column if track was deleted from the playlist (ie to filter future recommendations)
+#        # TODO: also tables for liked, recently listened to (API requests)
+#    log.info("Playlists updated successfully!")
+#    return redirect("/eda")
 
 
 # @app.route("/eda")
