@@ -15,6 +15,23 @@ audio_features = [
     "valence",
     "tempo",
 ]
+audio_features_list = [
+    "id",
+    "danceability",
+    "energy",
+    "loudness",
+    "speechiness",
+    "acousticness",
+    "instrumentalness",
+    "liveness",
+    "valence",
+    "tempo",
+    "duration_ms",
+    "time_signature",
+    "key",
+    "mode",
+]
+
 num_features = [
     "danceability",
     "energy",
@@ -105,6 +122,7 @@ acoustic_playlists = {
     "7lTZ9kdDXhD5QFwen86pY3": "kozmic blues",
     "1ipYsue7fX009BDxTX43pN": "pink moon",
     "3OKp4BoFeq3pw7yxI1ODG9": "lebanese blonde",
+    "3dpEckOnvB7vqVM3r8j7t4": "pajarito del amor",
 }
 instrumental_playlists = {
     "7gKjRHhX5yQ2L2TZiLB8u3": "sinnerman",
@@ -112,6 +130,7 @@ instrumental_playlists = {
     "0ysvvFavIycXfwrzut4VXC": "bossa nova",
     "7p39CDlkJpp9P2FuBBxARh": "bitches brew",
     "0ZU9aRVIabSFCa0AORq9HK": "nightbirds",
+    "6JHE9jVMah3rVa8im2H83v": "searching for the moon",
 }
 electronic_playlists = {
     "2KxAE0Fs33W4YhnGG7NmxQ": "champagne problems",

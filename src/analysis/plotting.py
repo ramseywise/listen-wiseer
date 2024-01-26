@@ -1,15 +1,15 @@
-import os
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
-from sklearn.manifold import TSNE
 from modeling.utils.const import *
+
 import warnings
 
-warnings.filterwarnings("ignore", category=UserWarning)
+warnings.simplefilter(action="ignore", category=FutureWarning)
 
 
+# Plotting Functions for EDA
 def plot_pairplot(df, hue):
     sns.pairplot(
         df.drop_duplicates(subset=["track_name"]).reset_index(drop=True)[

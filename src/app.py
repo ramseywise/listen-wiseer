@@ -1,11 +1,6 @@
 import logger
 import requests
 from flask import Flask
-from modeling.utils.const import *
-
-# from api.spotify_client import *
-# from api.spotify_auth import *
-# from api.data.spotify_playlists import *
 from api.data.playlists import *
 
 log = logger.get_logger("app")
@@ -14,10 +9,7 @@ log = logger.get_logger("app")
 app = Flask(__name__)
 app.secret_key = client_secret
 
-# initiate spotify client
-# spAuth = SpotifyAuth(client_id, client_secret, redirect_uri, token_url)
-# spApi = SpotifyPlaylistApi()
-spData = SpotifyPlaylistData()
+spData = SpotifyTrackFeatures()
 
 
 @app.route("/")
@@ -42,13 +34,32 @@ def login():
 
 
 @app.route("/callback")
-def return_playlist_data():
-    """Request Spotify API to return dfs for my playlists."""
+def update_spotify_playlists():
+    """Request Spotify API to return features for my playlists."""
 
-    my_tracks = spData.update_spotify_features()
-    df = spData.update_playlist_data(my_tracks)
+    # spData.update_spotify_features()
+    # spData.update_playlist_data()
 
-    return redirect("/eda")
+    return redirect("/model")
+
+
+@app.route("/model")
+def analyze_playlist_data():
+    """Analyze Spotify Playlists."""
+    log.info("Analyzing playlists")
+    # new_genres_list = genre.return_new_genres(enoa_data)
+    # genre.save_new_genres_to_review(enoa_data, new_genres_list)
+    # TODO: update genre map
+
+    # enoa.return_best_genre_matches()
+    # enoa.review_genre_map(df)
+
+    return redirect("/recommend")
+
+
+# @app.route("/model")
+# def return_playlist_data():
+#    """Request Spotify API to return dfs for my playlists."""
 
 
 #    # refresh access token to make new api requests is not inheriting session

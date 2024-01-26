@@ -138,3 +138,6 @@ class SpotifyPlaylistApi:
         new_artists = pd.DataFrame([popularity, genres]).T.reset_index()
 
         return new_artists
+
+
+# TODO: add future api calls here as new classes or create different classes for each instead of one client to import?

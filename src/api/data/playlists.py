@@ -11,7 +11,9 @@ log = logger.get_logger("app")
 spAuth = SpotifyAuth(client_id, client_secret, redirect_uri, token_url)
 spApi = SpotifyPlaylistApi()
 
+# TODO: add schema to validate playlist df
 # from api.data.schema import *
+
 
 # import data schema to validate playlist data
 # data_schema = PlaylistFeaturesSchema()
@@ -22,123 +24,72 @@ spApi = SpotifyPlaylistApi()
 # }
 
 
-class SpotifyPlaylistData:
+class SpotifyTrackFeatures:
     """Transforms JSON data from Spotify API to dataframe."""
 
-    track_ids: list
-    track_uris: list
-    track_names: list
-    release_date: list
-    artist_ids: list
-    artist_names: list
+    def __init__(self) -> pd.DataFrame:
+        self.my_tracks = pd.DataFrame(
+            columns=[
+                "id",
+                "track_name",
+                "release_date",
+                "artist_ids",
+                "artist_names",
+                "playlist_id",
+                "playlist_name",
+            ]
+        )
 
-    def __init__(self):
-        self.track_ids = []
-        self.track_uris = []
-        self.track_names = []
-        self.release_dates = []
-        self.artist_ids = []
-        self.artist_names = []
+    @staticmethod
+    def load_artefact(table: str) -> pd.DataFrame:
+        df = pd.read_csv(
+            f"/Users/wiseer/Documents/github/listen-wiseer/src/data/api/{table}.csv",
+            index_col=0,
+        )
+        return df
 
-    def return_my_tracks(self, tracks: dict, playlist_id: str, playlist_name: str):
-        for i in range(len(tracks)):
-            self.track_ids.append(tracks[i]["track"]["id"])
-            self.track_uris.append(tracks[i]["track"]["uri"])
-            self.track_names.append(tracks[i]["track"]["name"])
-            artists = [artist["id"] for artist in tracks[i]["track"]["artists"]]
-            self.artist_ids.append(artists)
-            artists = [artist["name"] for artist in tracks[i]["track"]["artists"]]
-            self.artist_names.append(artists)
-            self.release_dates.append(tracks[i]["track"]["album"]["release_date"])
-
-        my_tracks = pd.DataFrame(
-            {
-                "id": self.track_ids,
-                "track_name": self.track_names,
-                "release_date": self.release_dates,
-                "artist_ids": self.artist_ids,
-                "artist_names": self.artist_names,
+    def return_my_tracks(
+        self, tracks: dict, playlist_id: str, playlist_name: str
+    ) -> pd.DataFrame:
+        for track in tracks:
+            self.my_tracks.loc[len(self.my_tracks)] = {
+                "id": track["track"]["id"],
+                "track_name": track["track"]["name"],
+                "artist_ids": [artist["id"] for artist in track["track"]["artists"]],
+                "artist_names": [
+                    artist["name"] for artist in track["track"]["artists"]
+                ],
+                "release_date": track["track"]["album"]["release_date"],
                 "playlist_id": playlist_id,
                 "playlist_name": playlist_name,
             }
-        )
 
-        # append only new tracks
-        my_current_tracks = pd.read_csv(
-            "/Users/wiseer/Documents/github/listen-wiseer/src/data/api/my_tracks.csv",
-            index_col=0,
-        )
-        new_tracks = my_tracks[
-            ~my_tracks.id.isin(list(my_current_tracks["id"]))
-        ].reset_index(drop=True)
+        # append  new tracks
+        tracks_df = self.load_artefact("tracks")
+        new_tracks = self.my_tracks[~self.my_tracks.id.isin(set(tracks_df["id"]))]
         new_tracks.to_csv(
-            "/Users/wiseer/Documents/github/listen-wiseer/src/data/api/my_tracks.csv",
+            f"/Users/wiseer/Documents/github/listen-wiseer/src/data/api/tracks.csv",
             mode="a",
             header=False,
         )
-        return my_tracks
+        return self.my_tracks
 
-    def filter_new_audio_features(self, my_tracks: pd.DataFrame) -> pd.DataFrame:
-        # append only new tracks and return for audio features
-        my_current_audio = pd.read_csv(
-            "/Users/wiseer/Documents/github/listen-wiseer/src/data/api/audio_features.csv",
-            index_col=0,
-        )
-        filtered_track_ids = my_tracks[
-            ~my_tracks.id.isin(list(my_current_audio["id"]))
-        ].reset_index(drop=True)["id"]
-        return filtered_track_ids
+    def filter_new_audio_features(self) -> list[str]:
+        audio_features_df = self.load_artefact("audio_features")
+        filtered_ids = [
+            x for x in self.my_tracks["id"] if x not in list(audio_features_df["id"])
+        ]
+        return filtered_ids
 
-    ## This starts data transformation
-    def append_new_audio_features(self, new_audio_features: pd.DataFrame) -> None:
-        new_audio_features[
-            "id",
-            "danceability",
-            "energy",
-            "loudness",
-            "speechiness",
-            "acousticness",
-            "instrumentalness",
-            "liveness",
-            "valence",
-            "tempo",
-            "duration_ms",
-            "time_signature",
-            "key",
-            "mode",
-        ].reset_index(drop=True).to_csv(
-            "/Users/wiseer/Documents/github/listen-wiseer/src/data/api/audio_features.csv",
-            mode="a",
-            header=False,
-        )
-
-        return
-
-    def filter_new_artist_features(self, my_tracks: pd.DataFrame) -> list[str]:
+    def filter_new_artist_features(self) -> list[str]:
         # filter artist ids if already in my_artists
-        my_current_artists = pd.read_csv(
-            "/Users/wiseer/Documents/github/listen-wiseer/src/data/api/my_artists.csv",
-            index_col=0,
-        )
-        my_current_artist_ids = list(my_current_artists["id"])
+        my_current_artists = self.load_artefact("artists")
         filtered_artist_ids = set()
-        for row in my_tracks.artist_ids:
+        for row in self.my_tracks["artist_ids"]:
             filtered_artist_ids.update(
-                set(
-                    [element for element in row if element not in my_current_artist_ids]
-                )
+                [x for x in row if x not in list(my_current_artists["artist_id"])]
             )
         return filtered_artist_ids
-
-    def append_new_artist_features(self, new_artists: pd.DataFrame) -> None:
-        # append new artists
-        new_artists.columns = ["artist_id", "popularity", "genre"]
-        new_artists.reset_index(drop=True).to_csv(
-            "/Users/wiseer/Documents/github/listen-wiseer/src/data/api/my_artists.csv",
-            mode="a",
-            header=False,
-        )
-        return None
 
     def update_spotify_features(self) -> None:
         """Request Spotify API to return dfs for my playlists."""
@@ -150,43 +101,48 @@ class SpotifyPlaylistData:
 
         log.info(f"Loading Spotify playlists")
         for playlist_id, playlist_name in playlists.items():
-            # return my playlists' track features
             tracks = spApi.request_track_features(headers, playlist_id)
-            my_tracks = self.return_my_tracks(tracks, playlist_id, playlist_name)
+            self.return_my_tracks(tracks, playlist_id, playlist_name)
 
-            # update audio features
-            filtered_track_ids = self.filter_new_audio_features(my_tracks)
-            if len(filtered_track_ids) > 0:
-                log.info(f"Updating audio features for {playlist_name}")
-                new_audio_features = spApi.request_audio_features(
-                    headers, filtered_track_ids
-                )
-                _ = self.append_new_audio_features(new_audio_features)
+        #        # update audio features
+        #        filtered_ids = self.filter_new_audio_features()
+        #        if len(filtered_ids) > 0:
+        #            log.info(f"Updating audio features")
+        #            new_audio_features = spApi.request_audio_features(headers, filtered_ids)
+        #            new_audio_features = new_audio_features.iloc[
+        #                :, audio_features_list
+        #            ].reset_index(drop=True)
+        #            new_audio_features.to_csv(
+        #                f"/Users/wiseer/Documents/github/listen-wiseer/src/data/api/audio_features.csv",
+        #                mode="a",
+        #                header=False,
+        #            )
+        #            # TODO: assert that len(audio_features) = len(my_tracks)
 
-            # update artists features
-            filtered_artist_ids = self.filter_new_artist_features(my_tracks)
-            if len(filtered_track_ids) > 0:
-                log.info(f"Updating artists features for {playlist_name}")
-                new_artists = spApi.request_artist_features(
-                    headers, filtered_artist_ids
-                )
-                _ = self.append_new_artist_features(new_artists)
+        # update artists features
+        filtered_artist_ids = self.filter_new_artist_features()
+        if len(filtered_artist_ids) > 0:
+            log.info(f"Updating artists features")
+            print(filtered_artist_ids)
+            new_artists = spApi.request_artist_features(headers, filtered_artist_ids)
+            new_artists.columns = ["artist_id", "popularity", "genre"]
+            new_artists = new_artists.reset_index(drop=True)
+            new_artists.to_csv(
+                f"/Users/wiseer/Documents/github/listen-wiseer/src/data/api/artists.csv",
+                mode="a",
+                header=False,
+            )
+        return None
 
-        return my_tracks
-
-    def merge_audio_features(self, my_tracks: pd.DataFrame) -> pd.DataFrame:
-        audio_features = pd.read_csv(
-            "/Users/wiseer/Documents/github/listen-wiseer/src/data/api/audio_features.csv",
-            index_col=0,
-        )
-        df = my_tracks.merge(audio_features, on="id", how="left")
+    def merge_audio_features(
+        self, playlist_df: pd.DataFrame, audio_features_df: pd.DataFrame
+    ) -> pd.DataFrame:
+        df = playlist_df.merge(audio_features_df, on="id", how="left")
         return df
 
-    def merge_artist_features(headers, df: pd.DataFrame) -> pd.DataFrame:
-        my_artists = pd.read_csv(
-            "/Users/wiseer/Documents/github/listen-wiseer/src/data/api/my_artists.csv",
-            index_col=0,
-        )
+    def merge_artist_features(
+        headers, df: pd.DataFrame, my_artists: pd.DataFrame
+    ) -> pd.DataFrame:
         my_artists["genre"].apply(lambda x: x.replace("[]", ""))
 
         # get artist popularity
@@ -195,22 +151,24 @@ class SpotifyPlaylistData:
         )
         popu_avg = []
         for row in df.artist_ids:
-            popu_avg.append(my_artists[my_artists.id.isin(row)].popularity.mean())
+            popu_avg.append(
+                my_artists[my_artists.artist_id.isin(row)].popularity.mean()
+            )
         df.loc[:, "popularity"] = popu_avg
 
         # get artist genres for this playlist
         genres = []
         for row in df.artist_ids:
-            genre = my_artists[my_artists.id.isin(row)]["genre"].values
+            genre = my_artists[my_artists.artist_id.isin(row)]["genre"].values
             genres.append(genre)
 
         df.loc[:, "genres"] = genres
         df.loc[:, "genres"] = [", ".join(map(str, l)) for l in df["genres"]]
-        # df.loc[:, "first_genre"] = df.genres.str.split(",")[0].replace("[", "").replace("]", "").replace("'", "")
         df["first_genre"] = df["genres"].apply(
             lambda x: x.split(",")[0].replace("[", "").replace("]", "").replace("'", "")
         )
-        df.first_genre = df.first_genre.replace("nan", np.nan)
+        df["first_genre"] = df["first_genre"].replace("nan", np.nan)
+
         # search for my genres as categories
         for genre in my_genres:
             df.loc[df["genres"].str.contains(genre), "genre_cat"] = genre
@@ -248,22 +206,24 @@ class SpotifyPlaylistData:
 
         return df
 
-    def update_playlist_data(self, my_tracks: pd.DataFrame) -> pd.DataFrame:
-        playlist_df = self.merge_audio_features(my_tracks)
-        playlist_df = self.merge_artist_features(playlist_df)
-        playlist_df = self.transform_cat_features(playlist_df)
-        playlist_df.loc[:, "artist_ids"] = [
-            ", ".join(map(str, l)) for l in playlist_df["artist_ids"]
-        ]
-
+    def update_playlist_data(self) -> None:
+        log.info(f"Preparing Spotify playlists")
+        audio_features_df = self.load_artefact("audio_features")
+        my_artists = self.load_artefact("artists")
         # save playlist data
         for _, playlist_name in playlists.items():
-            playlist_df = playlist_df[
-                playlist_df.playlist_name == playlist_name
-            ].drop_duplicates(subset=["id"])
-        playlist_df.to_csv(
-            f"/Users/wiseer/Documents/github/listen-wiseer/src/data/playlists/{playlist_name}.csv"
-        )
+            playlist_df = self.my_tracks[
+                self.my_tracks["playlist_name"] == playlist_name
+            ]
+            playlist_df = self.merge_audio_features(playlist_df, audio_features_df)
+            playlist_df = self.merge_artist_features(playlist_df, my_artists)
+            playlist_df = self.transform_cat_features(playlist_df)
+            playlist_df.loc[:, "artist_ids"] = [
+                ", ".join(map(str, l)) for l in playlist_df["artist_ids"]
+            ]
+            playlist_df.to_csv(
+                f"/Users/wiseer/Documents/github/listen-wiseer/src/data/playlists/{playlist_name}.csv"
+            )
 
         log.info("Playlists updated successfully!")
         # TODO: verify data with schema - should it be final playlists or when requests are made :/
@@ -271,4 +231,4 @@ class SpotifyPlaylistData:
         # TODO: add historical table of playlist tracks with column if track was deleted from the playlist (ie to filter future recommendations)
         # TODO: also tables for liked, recently listened to (API requests)
 
-        return playlist_df
+        return None

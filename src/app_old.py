@@ -54,7 +54,6 @@ def return_playlist_data():
 
     return redirect("/recommend")
 
-
     #        # update track features
     #        tracks = spApi.request_track_features(headers, playlist_id)
     #        my_tracks = spData.return_my_tracks(tracks, playlist_id, playlist_name)
