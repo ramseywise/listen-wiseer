@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 
 # from pydantic import BaseModel
-from modeling.utils.const import *
+from const import *
 from api.spotify_client import *
 
 log = logger.get_logger("app")
@@ -64,12 +64,10 @@ class SpotifyTrackFeatures:
                 "playlist_name": playlist_name,
             }
 
-        # append  new tracks
-        tracks_df = self.load_artefact("tracks")
-        new_tracks = self.my_tracks[~self.my_tracks.id.isin(set(tracks_df["id"]))]
-        new_tracks.to_csv(
+        #tracks_df = self.load_artefact("tracks")
+        # new_tracks = self.my_tracks[~self.my_tracks.id.isin(set(tracks_df["id"]))]
+        self.my_tracks.to_csv(
             f"/Users/wiseer/Documents/github/listen-wiseer/src/data/api/tracks.csv",
-            mode="a",
             header=False,
         )
         return self.my_tracks
@@ -104,20 +102,20 @@ class SpotifyTrackFeatures:
             tracks = spApi.request_track_features(headers, playlist_id)
             self.return_my_tracks(tracks, playlist_id, playlist_name)
 
-        #        # update audio features
-        #        filtered_ids = self.filter_new_audio_features()
-        #        if len(filtered_ids) > 0:
-        #            log.info(f"Updating audio features")
-        #            new_audio_features = spApi.request_audio_features(headers, filtered_ids)
-        #            new_audio_features = new_audio_features.iloc[
-        #                :, audio_features_list
-        #            ].reset_index(drop=True)
-        #            new_audio_features.to_csv(
-        #                f"/Users/wiseer/Documents/github/listen-wiseer/src/data/api/audio_features.csv",
-        #                mode="a",
-        #                header=False,
-        #            )
-        #            # TODO: assert that len(audio_features) = len(my_tracks)
+        # update audio features
+        filtered_ids = self.filter_new_audio_features()
+        if len(filtered_ids) > 0:
+            log.info(f"Updating audio features")
+            new_audio_features = spApi.request_audio_features(headers, filtered_ids)
+            new_audio_features = new_audio_features.loc[
+                :, audio_features_list
+            ].reset_index(drop=True)
+            new_audio_features.to_csv(
+                f"/Users/wiseer/Documents/github/listen-wiseer/src/data/api/audio_features.csv",
+                mode="a",
+                header=False,
+            )
+            # TODO: assert that len(audio_features) = len(my_tracks)
 
         # update artists features
         filtered_artist_ids = self.filter_new_artist_features()

@@ -10,7 +10,7 @@ from sklearn.cluster import KMeans, SpectralClustering
 from sklearn.metrics import silhouette_score, calinski_harabasz_score
 from yellowbrick.cluster import KElbowVisualizer
 from yellowbrick.cluster import SilhouetteVisualizer
-from modeling.utils.const import *
+from const import *
 
 
 def plot_genres_dendrogram(df):

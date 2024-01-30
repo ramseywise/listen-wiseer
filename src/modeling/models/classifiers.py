@@ -18,7 +18,7 @@ from sklearn.metrics import (
     roc_auc_score,
     accuracy_score,
 )
-from modeling.utils.const import *
+from const import *
 import logger
 
 os.chdir("/Users/wiseer/Documents/github/listen-wiseer/src/")

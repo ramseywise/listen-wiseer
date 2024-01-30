@@ -2,7 +2,7 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
-from modeling.utils.const import *
+from const import *
 
 import warnings
 
@@ -32,9 +32,7 @@ def plot_pairplot(df, hue):
 
 
 def boxplot_playlist_by_decade(df):
-    # NOTE: should subplots be done on a loop?
-    # plot scatter sublots
-    fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(14, 8))
+    fig, axes = plt.subplots(nrows=3, ncols=2, figsize=(14, 8))
     axes = axes.flatten()
 
     for i, (k, v) in enumerate(playlist_group_dict.items()):
@@ -53,7 +51,22 @@ def boxplot_playlist_by_decade(df):
 
 
 def plot_playlist_artist_popularity(df):
-    fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(14, 6))
+    # top_10_dict = {}
+    # for i, (k, v) in enumerate(playlist_group_dict.items()):
+    #    data = df[df.playlist_name.isin(v)].explode("artist_names")
+    #    # Group by 'playlist_name' and count the occurrences of each artist
+    #    playlist_artist_counts = (
+    #        data.groupby(["artist_names"]).size().reset_index(name="count")
+    #    )
+    #    sorted_counts = playlist_artist_counts.sort_values(
+    #        by=["count"], ascending=False
+    #    ).head(10)
+    #    top_artists = np.array(
+    #        [s.strip("[]").replace("'", "") for s in sorted_counts.artist_names.values]
+    #    )
+    #
+    #    top_10_dict.update({k: top_artists})
+    fig, axes = plt.subplots(nrows=3, ncols=2, figsize=(14, 10))
     axes = axes.flatten()
 
     for i, (k, v) in enumerate(playlist_group_dict.items()):
@@ -66,15 +79,13 @@ def plot_playlist_artist_popularity(df):
         sns.barplot(
             x="popularity",
             y="artist_names",
-            hue="popularity",
-            legend=False,
-            # TODO: get top 20 artist instead of random and not as pairs
             data=songs.sample(20).sort_values(by="popularity"),
             palette=sns.color_palette("viridis", n_colors=30),
             ax=axes[i],
         )
+        axes[i].legend().set_visible(False)
         axes[i].set_title(f"{k} artists popularity")
-    plt.tight_layout()
+
     # plt.suptitle("Artist Popularity by Playlist Group")
 
 
@@ -108,7 +119,7 @@ def plot_playlist_artist_popularity(df):
 
 
 def plot_my_genre_by_playlist_group(df, playlist_group_dict, order=None):
-    fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(14, 8))
+    fig, axes = plt.subplots(nrows=3, ncols=2, figsize=(14, 8))
     axes = axes.flatten()
 
     df_counts = pd.DataFrame(
@@ -127,6 +138,7 @@ def plot_my_genre_by_playlist_group(df, playlist_group_dict, order=None):
             palette=palette,
             orient="h",
             ax=axes[i],
+            ci=None,
         )
         handles, labels = axes[i].get_legend_handles_labels()
         axes[i].legend(handles[: len(playlists)], labels[: len(playlists)])
@@ -311,62 +323,41 @@ def plot_new_genres(genre_groups, data, new_genres, hue):
     plt.show()
 
 
-# def calculate_tsne(df, playlist):
-#     data = df[df["playlist"] == playlist].copy()
-#     data.dropna(subset=num_features, inplace=True)
-#     tsne = TSNE(n_components=2, random_state=0)
-#     X_tsne = tsne.fit_transform(data[num_features])
-#
-#     # group
-#     data["X_tsne"] = X_tsne[:, 0]
-#     data["y_tsne"] = X_tsne[:, 1]
-#     data.loc[data["X_tsne"] < 0, "tsne"] = 1
-#     data.loc[data["X_tsne"] >= 0, "tsne"] = 2
-#     return data
-#
-#
-# def plot_tsne(data, playlist):
-#     sns.scatterplot(x="X_tsne", y="y_tsne", hue="tsne", data=data, palette="viridis")
-#     plt.title(f"{playlist} t-SNE Plot")
-#     return plt.show()
-#     # plt.savefig(f"analysis/{group}/{playlist}/pairplot_by_genre.png")
-#     # TODO: update these if we want to save it here
-#
-#
-# def plot_tsne_groupy_by_genres(data):
-#     plt.figure(figsize=(10, 8))
-#     df_counts = (
-#         data[data.X_tsne < 0].groupby(["first_genre"]).size().reset_index(name="Count")
-#     )
-#     sns.barplot(x="Count", y="first_genre", data=df_counts, orient="h")
-#     df_counts = (
-#         data[data.X_tsne >= 0].groupby(["first_genre"]).size().reset_index(name="Count")
-#     )
-#     sns.barplot(x="Count", y="first_genre", data=df_counts, orient="h")
-#     return plt.show()
+def plot_outlier_hist_subplots(outliers: pd.DataFrame) -> None:
+    # Create subplots
+    fig, axes = plt.subplots(nrows=5, ncols=4, figsize=(14, 10))
+    axes = axes.flatten()
+
+    # Iterate over playlists and plot histograms
+    for i, playlist in enumerate(playlists.values()):
+        ax = axes[i]
+        playlist_data = outliers[outliers["playlist_name"] == playlist]
+        sns.histplot(playlist_data, x="score", kde=True, ax=ax)
+        ax.set_title(f"Histogram of Scores for {playlist}")
+        ax.set_xlabel("Score")
+        ax.set_ylabel("Frequency")
+
+    plt.tight_layout()
+    plt.show()
 
 
-### plot scatter sublots
-# fig, axes = plt.subplots(nrows=1, ncols=3, figsize=(12, 4))
-# axes = axes.flatten()
-#
-# for i, playlist in enumerate(["zoukini", "kizombamama", "¡zapatos! ¡zapatos!"]):
-#     sns.scatterplot(
-#         x="energy",
-#         y="valence",
-#         hue="mode_labels",
-#         data=df[df["playlist_name"] == playlist],
-#         ax=axes[i],
-#     )
-#     axes[i].set_title(f"{playlist} feature interactions")
-#     plt.tight_layout()
+def plot_outlier_enoa(outliers: pd.DataFrame) -> None:
+    # Create subplots
+    fig, axes = plt.subplots(nrows=5, ncols=4, figsize=(14, 10))
+    axes = axes.flatten()
 
-# tracks = []
-# for i, playlist in enumerate(["zoukini", "kizombamama", "¡zapatos! ¡zapatos!"]):
-#     tracks.append(
-#         df[((df.playlist == playlist) & (df.instrumentalness > 0.01))].track_name.values
-#     )
-# tracks
-
-
-# sns.lmplot(x="Loudness", y="Energy", hue="faves", data=df[features])
+    # Iterate over playlists and plot histograms
+    for i, playlist in enumerate(playlists.values()):
+        ax = axes[i]
+        sns.scatterplot(
+            x="top",
+            y="left",
+            hue="outliers",
+            data=outliers[outliers["playlist_name"] == playlist][
+                ["top", "left", "outliers"]
+            ],
+            ax=ax,
+        ).legend().set_visible(False)
+        axes[i].set_title(f"{playlist} outliers")
+    plt.tight_layout()
+    plt.show()

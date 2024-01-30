@@ -1,4 +1,5 @@
-# TODO: refractor to be pydantic with validation
+# TODO: setup api calls to get new train data for content-based recommendation models - based on genre/artist per playlist
+
 # class SpotifyPlaylistModifier:
 #    """SpotifyAuth returns access token from Spotify API."""
 #    def __init__(self):

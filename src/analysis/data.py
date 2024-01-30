@@ -1,6 +1,8 @@
 import os
+from typing import Tuple
 import pandas as pd
-from modeling.utils.const import *
+from sklearn.ensemble import IsolationForest
+from const import *
 
 
 class LoadPlaylistData:
@@ -50,3 +52,66 @@ class LoadPlaylistData:
             "/Users/wiseer/Documents/github/listen-wiseer/src/data/enoa.csv",
         )
         return enoa_data
+
+    def return_outlier_df(self, df: pd.DataFrame) -> pd.DataFrame:
+        dfs = []
+        model = IsolationForest(
+            n_estimators=150, max_samples="auto", contamination=0.05, max_features=10
+        )
+        playlists = [
+            item for sublist in playlist_group_dict.values() for item in sublist
+        ]
+        for playlist in playlists:
+            df_sub = df[df.playlist_name == playlist][num_features]
+
+            # Fit the model and obtain decision function scores
+            model.fit(df_sub)
+            scores = model.decision_function(df_sub)
+
+            playlist_df = pd.DataFrame(
+                {
+                    "index": df_sub.index,
+                    "score": scores,
+                }
+            )
+            dfs.append(playlist_df)
+
+            # evaluate if we have a feedback loop for labeled data
+            # cm = confusion_matrix(labels, predicted_labels)
+            # fpr, tpr, thresholds = roc_curve(labels, -model.decision_function(df[num_features]))
+            # roc_auc = auc(fpr, tpr)
+
+        # Concatenate DataFrames into a single DataFrame
+        result_df = pd.concat(dfs, ignore_index=True)
+        merged_df = pd.merge(
+            df[
+                [
+                    "id",
+                    "playlist_name",
+                    "track_name",
+                    "release_date",
+                    "artist_names",
+                    "genres",
+                    "first_genre",
+                    "my_genre",
+                    "top",
+                    "left",
+                ]
+            ],
+            result_df,
+            left_index=True,
+            right_on="index",
+            how="left",
+        )
+        merged_df.loc[merged_df.score < 0, "outliers"] = 1
+        merged_df.fillna(0, inplace=True)
+        return merged_df
+
+    def create_subgenre_maps(self) -> Tuple[dict, dict]:
+        gm = self.return_genre_map()
+        df = self.load_playlist_data()
+        playlist_first_genre_map = (
+            df.groupby("playlist_name").first_genre.apply(set).to_dict()
+        )
+        enoa_sub_genre_map = gm.groupby("sub_genre").first_genre.apply(set).to_dict()
+        return playlist_first_genre_map, enoa_sub_genre_map

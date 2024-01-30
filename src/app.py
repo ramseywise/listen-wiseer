@@ -37,8 +37,8 @@ def login():
 def update_spotify_playlists():
     """Request Spotify API to return features for my playlists."""
 
-    # spData.update_spotify_features()
-    # spData.update_playlist_data()
+    spData.update_spotify_features()
+    spData.update_playlist_data()
 
     return redirect("/model")
 
