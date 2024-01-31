@@ -2,7 +2,7 @@ import pandas as pd
 import requests
 from datetime import datetime
 from flask import request, redirect, session
-from config import *
+from utils.config import *
 
 session = requests.Session()
 session.verify = False

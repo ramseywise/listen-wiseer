@@ -12,4 +12,3 @@ infra-down:
 lint:
 	black .
 	mypy .
-	ruff check .

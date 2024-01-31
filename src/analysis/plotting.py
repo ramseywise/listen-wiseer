@@ -2,7 +2,7 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
-from const import *
+from utils.const import *
 
 import warnings
 
@@ -321,7 +321,6 @@ def plot_new_genres(genre_groups, data, new_genres, hue):
             label, (xi, yi), textcoords="offset points", xytext=(0, 5), ha="center"
         )
     plt.legend().set_visible(False)
-    plt.show()
 
 
 def plot_outlier_hist_subplots(outliers: pd.DataFrame) -> None:
@@ -339,7 +338,6 @@ def plot_outlier_hist_subplots(outliers: pd.DataFrame) -> None:
         ax.set_ylabel("Frequency")
 
     plt.tight_layout()
-    plt.show()
 
 
 def plot_outlier_enoa(outliers: pd.DataFrame) -> None:
@@ -361,7 +359,6 @@ def plot_outlier_enoa(outliers: pd.DataFrame) -> None:
         ).legend().set_visible(False)
         axes[i].set_title(f"{playlist} outliers")
     plt.tight_layout()
-    plt.show()
 
 
 def plot_playlist_genres(df: pd.DataFrame, playlist: str) -> None:

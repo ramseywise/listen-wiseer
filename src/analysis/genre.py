@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from const import *
+from utils.const import *
 from scipy.spatial.distance import pdist, squareform
 
 

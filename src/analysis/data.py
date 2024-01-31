@@ -2,7 +2,7 @@ import os
 from typing import Tuple
 import pandas as pd
 from sklearn.ensemble import IsolationForest
-from const import *
+from utils.const import *
 
 
 class LoadPlaylistData:

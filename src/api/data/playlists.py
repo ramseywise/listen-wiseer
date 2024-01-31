@@ -3,7 +3,8 @@ import numpy as np
 import pandas as pd
 
 # from pydantic import BaseModel
-from const import *
+from utils.const import *
+from utils.config import *
 from api.spotify_client import *
 
 log = logger.get_logger("app")
@@ -64,7 +65,7 @@ class SpotifyTrackFeatures:
                 "playlist_name": playlist_name,
             }
 
-        #tracks_df = self.load_artefact("tracks")
+        # tracks_df = self.load_artefact("tracks")
         # new_tracks = self.my_tracks[~self.my_tracks.id.isin(set(tracks_df["id"]))]
         self.my_tracks.to_csv(
             f"/Users/wiseer/Documents/github/listen-wiseer/src/data/api/tracks.csv",
@@ -115,7 +116,6 @@ class SpotifyTrackFeatures:
                 mode="a",
                 header=False,
             )
-            # TODO: assert that len(audio_features) = len(my_tracks)
 
         # update artists features
         filtered_artist_ids = self.filter_new_artist_features()
@@ -144,8 +144,8 @@ class SpotifyTrackFeatures:
         my_artists["genre"].apply(lambda x: x.replace("[]", ""))
 
         # get artist popularity
-        my_artists["popularity"] = pd.to_numeric(
-            my_artists["popularity"], errors="coerce"
+        my_artists["popularity"] = my_artists["popularity"].astype(
+            float, errors="coerce"
         )
         popu_avg = []
         for row in df.artist_ids:
@@ -195,10 +195,10 @@ class SpotifyTrackFeatures:
             10: "Bb",
             11: "B",
         }
-        df["key"] = pd.to_numeric(df["key"], errors="coerce")
+        df["key"] = df["key"].astype(float, errors="coerce")
         df["key_labels"] = df["key"].map(keys)
         modes = {0: "Minor", 1: "Major"}
-        df["mode"] = pd.to_numeric(df["mode"], errors="coerce")
+        df["mode"] = df["mode"].astype(float, errors="coerce")
         df["mode_labels"] = df["mode"].map(modes)
         df["key_mode"] = df["key_labels"] + " " + df["mode_labels"]
 
