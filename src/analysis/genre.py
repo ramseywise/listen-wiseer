@@ -27,7 +27,7 @@ def return_genre_map() -> pd.DataFrame:
         index_col=0,
     )
     gm.sort_values(
-        ["gen_4", "gen_8", "my_genre", "sub_genre", "first_genre"]
+        ["gen_4", "gen_6", "gen_8", "my_genre", "sub_genre", "first_genre"]
     ).reset_index(drop=True).to_csv(
         "/Users/wiseer/Documents/github/listen-wiseer/src/data/genres/genre_map.csv"
     )
@@ -61,6 +61,7 @@ def return_new_genres_df(df: pd.DataFrame) -> pd.DataFrame:
             "playlist_name",
             "artist_names",
             "gen_4",
+            "gen_6",
             "gen_8",
             "my_genre",
             "sub_genre",
@@ -71,7 +72,7 @@ def return_new_genres_df(df: pd.DataFrame) -> pd.DataFrame:
         ]
     ]
     new_genres_df.drop(
-        ["gen_4", "gen_8", "my_genre", "sub_genre"], axis=1, inplace=True
+        ["gen_4", "gen_6", "gen_8", "my_genre", "sub_genre"], axis=1, inplace=True
     )
     return new_genres_df
 

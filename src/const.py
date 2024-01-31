@@ -185,24 +185,24 @@ playlist_group_dict = {
         "champagne problems",
         "acid blues",
     ],
-    "instrumental": [
+    "ambient": [
         "avril 14th",
+    ],
+    "jazz": [
         "bossa nova",
         "bitches brew",
         "searching for the moon",
     ],
-    "blues": [
+    "r&b": [
         "feelin' good",
         "sinnerman",
         "nightbirds",
-        "lebanese blonde",
     ],
-    "rock": [
+    "acoustic": [
         "kozmic blues",
         "pink moon",
         "lady stardust",
-    ],
-    "acoustic": [
+        "lebanese blonde",
         "hollow sound of morning chimes",
         "pajarito del amor",
     ],

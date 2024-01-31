@@ -14,7 +14,7 @@ class LoadPlaylistData:
             index_col=0,
         )
         gm = gm.sort_values(
-            ["gen_4", "gen_8", "my_genre", "sub_genre", "first_genre"]
+            ["gen_4", "gen_6", "gen_8", "my_genre", "sub_genre", "first_genre"]
         ).reset_index(drop=True)
         gm.to_csv(
             "/Users/wiseer/Documents/github/listen-wiseer/src/data/genres/genre_map.csv"

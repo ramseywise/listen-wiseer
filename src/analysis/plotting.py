@@ -6,6 +6,7 @@ from const import *
 
 import warnings
 
+warnings.filterwarnings("ignore", category=UserWarning)
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
 
@@ -361,3 +362,15 @@ def plot_outlier_enoa(outliers: pd.DataFrame) -> None:
         axes[i].set_title(f"{playlist} outliers")
     plt.tight_layout()
     plt.show()
+
+
+def plot_playlist_genres(df: pd.DataFrame, playlist: str) -> None:
+    # plot my genres by playlist name
+    playlist_first_genres = set(df[df.playlist_name == playlist].first_genre)
+    genre_groups = (
+        df[df.playlist_name == playlist]
+        .groupby("sub_genre")[["top", "left"]]
+        .agg({"min", "max"})
+    )
+    genre_groups.columns = genre_groups.columns.map("_".join)
+    plot_new_genres(genre_groups, df, playlist_first_genres, "sub_genre")
