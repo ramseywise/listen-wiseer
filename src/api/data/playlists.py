@@ -1,13 +1,13 @@
-import logger
 import numpy as np
 import pandas as pd
 
 # from pydantic import BaseModel
 from utils.const import *
 from utils.config import *
+from utils.logger import *
 from api.spotify_client import *
 
-log = logger.get_logger("app")
+log = get_logger("app")
 
 spAuth = SpotifyAuth(client_id, client_secret, redirect_uri, token_url)
 spApi = SpotifyPlaylistApi()
@@ -144,8 +144,8 @@ class SpotifyTrackFeatures:
         my_artists["genre"].apply(lambda x: x.replace("[]", ""))
 
         # get artist popularity
-        my_artists["popularity"] = my_artists["popularity"].astype(
-            float, errors="coerce"
+        my_artists["popularity"] = pd.to_numeric(
+            my_artists["popularity"], errors="coerce"
         )
         popu_avg = []
         for row in df.artist_ids:
@@ -178,9 +178,9 @@ class SpotifyTrackFeatures:
         # Prepare other categorical variables
         df["release_date"] = pd.to_datetime(df["release_date"], format="ISO8601")
         df["year"] = df["release_date"].dt.year
+        df["decade"] = df["year"].apply(lambda x: str(x)[:3] + "0s")
 
         # map keys/mode to labels
-        df["decade"] = df["year"].apply(lambda x: str(x)[:3] + "0s")
         keys = {
             0: "C",
             1: "Db",
@@ -195,10 +195,11 @@ class SpotifyTrackFeatures:
             10: "Bb",
             11: "B",
         }
-        df["key"] = df["key"].astype(float, errors="coerce")
+        df["key"] = pd.to_numeric(df["key"], errors="coerce")
         df["key_labels"] = df["key"].map(keys)
+
         modes = {0: "Minor", 1: "Major"}
-        df["mode"] = df["mode"].astype(float, errors="coerce")
+        df["mode"] = pd.to_numeric(df["mode"], errors="coerce")
         df["mode_labels"] = df["mode"].map(modes)
         df["key_mode"] = df["key_labels"] + " " + df["mode_labels"]
 

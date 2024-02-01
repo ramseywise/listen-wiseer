@@ -1,15 +1,15 @@
-import logger
 import requests
 from flask import Flask
+from utils.logger import *
 from api.data.playlists import *
 
-log = logger.get_logger("app")
 
 # config app
 app = Flask(__name__)
 app.secret_key = client_secret
 
 spData = SpotifyTrackFeatures()
+log = get_logger("app")
 
 
 @app.route("/")

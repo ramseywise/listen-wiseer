@@ -207,6 +207,49 @@ playlist_group_dict = {
         "pajarito del amor",
     ],
 }
+
+playlist_group_dict_8 = {
+    "dance": [
+        "kizombamama",
+        "¡zapatos! ¡zapatos!",
+        "zoukini",
+    ],
+    "house": [
+        "cooking with palms trax",
+        # "cocktail d'amore",
+        # "katermukke",
+        # "jonny ciao"
+    ],
+    "chill": [
+        "champagne problems",
+        "acid blues",
+        "avril 14th",
+    ],
+    "classical": [
+        #4 playlists
+    ],
+    "jazz": [
+        "bossa nova",
+        "bitches brew",
+        "searching for the moon",
+        "feelin' good",
+    ],
+    "r&b": [
+        "sinnerman",
+        "nightbirds",
+        # "nice mix needs name",
+    ],
+    "rock": [
+        "kozmic blues",
+        "lady stardust",
+        "lebanese blonde",
+    ],
+    "acoustic": [
+        "pink moon",
+        "hollow sound of morning chimes",
+        "pajarito del amor",
+    ],
+}
 order = [
     "1920s",
     "1930s",
