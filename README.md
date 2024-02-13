@@ -20,8 +20,6 @@ src
    |   |-- clustering.py
    |   |-- cosine.py
    |   |-- euclidean.py
-   |   |-- schema.py
-   |   |-- settings.py
    |-- utils
    |    |-- config.py
    |    |-- const.py

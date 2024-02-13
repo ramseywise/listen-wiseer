@@ -9,7 +9,7 @@ from api.spotify_client import *
 
 log = get_logger("app")
 
-spAuth = SpotifyAuth(client_id, client_secret, redirect_uri, token_url)
+#spAuth = SpotifyAuth(client_id, client_secret, redirect_uri, token_url)
 spApi = SpotifyPlaylistApi()
 
 # TODO: add schema to validate playlist df
@@ -90,13 +90,17 @@ class SpotifyTrackFeatures:
             )
         return filtered_artist_ids
 
-    def update_spotify_features(self) -> None:
+    def update_spotify_features(self, headers: dict) -> dict:
         """Request Spotify API to return dfs for my playlists."""
 
-        # refresh access token to make new api requests is not inheriting session
-        access_token = spAuth.get_access_token()
-        headers = {"Authorization": "Bearer {token}".format(token=access_token[0])}
-        print(headers)
+        ## refresh access token to make new api requests is not inheriting session
+        #session_info = spAuth.get_access_token()
+        #headers = {
+        #    "Authorization": "Bearer {token}".format(
+        #        token=session_info[0]["access_token"]
+        #    )
+        #}
+        #print(headers)
 
         log.info(f"Loading Spotify playlists")
         for playlist_id, playlist_name in playlists.items():
@@ -138,8 +142,7 @@ class SpotifyTrackFeatures:
         df = playlist_df.merge(audio_features_df, on="id", how="left")
         return df
 
-    def merge_artist_features(
-        headers, df: pd.DataFrame, my_artists: pd.DataFrame
+    def merge_artist_features(self, df: pd.DataFrame, my_artists: pd.DataFrame
     ) -> pd.DataFrame:
         my_artists["genre"].apply(lambda x: x.replace("[]", ""))
 

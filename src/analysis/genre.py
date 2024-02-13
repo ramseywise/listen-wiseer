@@ -142,7 +142,8 @@ def append_best_enoa_match(
 
 
 def return_best_genre_matches(
-    df: pd.DataFrame, playlist_first_genre_map: dict, enoa_sub_genre_map: dict) -> None:
+    df: pd.DataFrame, playlist_first_genre_map: dict, enoa_sub_genre_map: dict
+) -> None:
     # Calculate enoa distance
     dm = calculate_first_genre_distances(df, ["top", "left"])
     new_genres_df = return_new_genres_df(df)

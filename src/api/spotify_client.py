@@ -1,5 +1,6 @@
-import pandas as pd
+import json
 import requests
+import pandas as pd
 from datetime import datetime
 from flask import request, redirect, session
 from utils.config import *
@@ -15,17 +16,12 @@ class SpotifyClient:
         super().__init__()
         self.auth = SpotifyAuth(client_id, client_secret, redirect_uri, token_url)
         self.data = SpotifyPlaylistApi()
-        # self.playlist = SpotifyPlaylistModifier()
+        self.mix = CreateNewMixesApi()
         # self.recommendations = SpotifyRecommender()
 
 
 class SpotifyAuth:
     """SpotifyAuth returns access token from Spotify API."""
-
-    client_id: str
-    client_secret: str
-    token_url: str
-    redirect_uri: str
 
     def __init__(
         self,
@@ -64,33 +60,34 @@ class SpotifyAuth:
             response = requests.post(self.token_url, data=params)
 
             # save token info to refresh token
-            session_info = {}
+            session = {}
             token_info = response.json()
-            session_info["access_token"] = token_info["access_token"]
-            session_info["refresh_token"] = token_info["refresh_token"]
-            session_info["expires_at"] = (
+            session["access_token"] = token_info["access_token"]
+            session["refresh_token"] = token_info["refresh_token"]
+            session["expires_at"] = (
                 datetime.now().timestamp() + token_info["expires_in"]
             )
-            return session_info["access_token"], redirect("/data")
+            return session
 
-
-#    def refresh_access_token(self):
-#        refresh_headers = {"Content-Type": "application/x-www-form-urlencoded"}
+#    def refresh_access_token(self, session: dict) -> str:
 #        params = {
 #            "grant_type": "refresh_token",
 #            "refresh_token": session["refresh_token"],
 #            "client_id": self.client_id,
-#            "redirect_uri": self.redirect_uri,
 #        }
-#        response = requests.post(
-#            self.token_url, data=params, headers=refresh_headers
-#        )
+#        headers = {
+#            "Content-Type": "application/json",
+#            "Authorization": "Bearer {token}".format(token=session["access_token"]),
+#        }
+#        response = requests.post(self.token_url, data=params, headers=headers)
+#        print(response)
 #        new_token_info = response.json()
 #        session["access_token"] = new_token_info["access_token"]
+#        session["refresh_token"] = new_token_info["refresh_token"]
 #        session["expires_at"] = (
 #            datetime.datetime.now().timestamp() + new_token_info["expires_in"]
 #        )
-#        return session["access_token"]
+#        return session
 
 
 class SpotifyPlaylistApi:
@@ -138,6 +135,32 @@ class SpotifyPlaylistApi:
         new_artists = pd.DataFrame([popularity, genres]).T.reset_index()
 
         return new_artists
+
+
+class CreateNewMixesApi:
+    """SpotifyPlaylistAPI requests features for a specific playlist."""
+
+    def create_new_playlist(self, name: str, headers: dict):
+        """Return newly playlist."""
+        data = json.dumps({"name": name, "public": False})
+        response = requests.post(
+            f"https://api.spotify.com/v1/users/{user_id}/playlists", data, headers
+        )
+        print(response)
+        response_json = response.json()
+        playlist_id = response_json["id"]
+        return playlist_id
+
+    def update_tracks_to_playlist(self, playlist_id: str, data: dict, headers: dict):
+        response = requests.post(
+            f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks",
+            headers=headers,
+            data=data,
+        )
+        if response.status_code == 201:
+            return {"message": "Track added successfully!"}
+        else:
+            return {"error": print(response.json())}
 
 
 # TODO: add future api calls here as new classes or create different classes for each instead of one client to import?
