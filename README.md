@@ -42,7 +42,7 @@ My first attempt at genre classification began with simple NLP exercise: search 
 
 Limitations to data size also prevented successful attempts to classify the genre categories with quantitative methods. I calculated distanced between genres using various features and implented hierchical, kmeans and spectral clustering and t-sne dimensionality reduction methods to try and account for other mechanisms distinguishing between genre groups. From this point, I sought Every Noise at Once, an awesome genre mapping project that aimed to reduce dimensionality of genre features to a simple x, y axis with a color scheme for the purpose of visualizing these relationships. The advantage of using this methodology is that they are comparing over 6,000 genres to understand the distance or similarity between genre groups and therefore are an excellent means for validating my own genre mapping scheme. For more information, see the output from src/analysis. 
 
-## 4 | Recommendation Models
+## 4 | Recommendation Models (in progress)
 Spotify recommendation models are based on collaborative data from many users. This app aims to personalize models via content-based recommendations. These models aim to address two scenarios:
 
    1. I want to personalize my recommendations and add songs to my current playlists 
@@ -54,5 +54,5 @@ For the first model, I will use LBGM as a multinomial classifer for playlist gro
 For the second model, I will use spectral clustering to create random mixes of my tracks. Can also allow for filtering specific aspects. For example, this model would take zouk playlist and filter for more slow tempo tracks and match that to other tracks in my playlists that share similar features. However, this approach will need mroe validation and used on command as a batch update from the computer. If playback listening capabilities were included with some front-end coding, the setup for this app could then potentially allow to input specific filters and create the playlist to listen to on spot by providing simple inputs.
 
 
-## 5 | DB
+## 5 | DB (in progress)
 The next step before implementing the model pipeline is to build a postgres DB that stores track, artist and audio features from my playlists. By storing and updating the output over time, this information will provide a personalized feedback loop to filter future recommendations.
