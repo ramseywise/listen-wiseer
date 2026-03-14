@@ -1,58 +1,149 @@
-# Listen-Wiseer
+# listen-wiseer
 
-Listen-Wiser is a music analytics Flask application that leverages the Spotify API for generating playlists based on personalized recommendations.
+Intelligent Spotify music recommendation system powered by a LangGraph agent, Anthropic Claude (Haiku), similarity models, and Wikipedia RAG. Talks to Spotify via an MCP server. Chat interface built with Chainlit.
 
-## Contents
+## Architecture
+
 ```
-src
-   |-- app.py
-   |-- analysis
-   |   |-- data.py
-   |   |-- eda.ipynb
-   |   |-- genre.py
-   |   |-- output/*
-   |   |-- plotting.py
-   |-- api
-   |   |-- playlists.py
-   |   |-- spotify_client.py
-   |-- models
-   |   |-- classifiers.py
-   |   |-- clustering.py
-   |   |-- cosine.py
-   |   |-- euclidean.py
-   |-- utils
-   |    |-- config.py
-   |    |-- const.py
-   |    |-- logger.py
+┌─────────────────────────────────────┐
+│         Chainlit Chat UI            │
+└─────────────────────────────────────┘
+                   ↓
+┌─────────────────────────────────────┐
+│       LangGraph Agent               │
+│  intent → analysis → action         │
+└─────────────────────────────────────┘
+          ↓                  ↓
+┌──────────────────┐  ┌──────────────────┐
+│  Analysis Core   │  │  Spotify Actions  │
+│  (Polars)        │  │  (spotipy write)  │
+│  • similarity    │  │  • create playlist│
+│  • clustering    │  │  • add tracks     │
+│  • genre         │  └──────────────────┘
+└──────────────────┘
+          ↓
+┌─────────────────────────────────────┐
+│  Data Layer (Polars + Pydantic)     │
+│  listening history · track features │
+│  genre metadata · vectorstore       │
+└─────────────────────────────────────┘
+          ↓                  ↓
+┌──────────────────┐  ┌──────────────────┐
+│   Spotify API    │  │  Wikipedia RAG   │
+│   MCP Server     │  │  (Chroma +       │
+│   (read ops)     │  │  sentence-       │
+│                  │  │  transformers)   │
+└──────────────────┘  └──────────────────┘
 ```
 
-### 1 | Run app
-The main script for this application takes us through the authorization process, which requires authentication (whereby the user has to first log in to grant scope of permissions). Once the user is authenticated, they are then given a response code that is traded in for an access token. The access token is necessary for accessing Spotify API. Main functionality of this script is to get access, make API requests to get data and returns recommendations for playlists. Next, it implements content-based modeling to make recommendations and stores information to an internal DB to provide a personalized feedback loop for the recommendation model.
+## Stack
 
-### 2 | Request Spotify API
-The first component of this application was setting up a spotify developer's account and accessing api with Spotify client id and client secret. Next, I added a data pipeline to request track features for my playlists and transform these features into a dataframe ready for modeling. Note that the Spotify API has numerous helpful resources for content-based recommendations using genre or retreiving similar artists and new releases from my artists. Other potential avenues that will be included in later versions include user-listening history.
+| Layer | Tech |
+|---|---|
+| LLM | Anthropic Claude Haiku (`claude-haiku-4-5-20251001`) |
+| Agent orchestration | LangGraph |
+| Chat UI | Chainlit |
+| MCP server | FastMCP |
+| Data processing | Polars |
+| Embeddings | sentence-transformers (local, no API key) |
+| Vector store | ChromaDB |
+| Spotify client | spotipy (OAuth with token caching) |
+| Config | pydantic-settings |
+| Observability | structlog + OpenTelemetry (Jaeger via OTLP, optional) |
 
-### 3 | Analysis 
-Analysis not only compared feature distributions provided by the Spotify API, but also including an outlier anlaysis of tracks for each playlist in order to remove any tracks that did not fit the playlist. I implented statistical methods for identifying outliers before switching to Isolation Forest, which does fairly well with identifying anomalies within small data sets and had comparable output to the statistical outliers. Furthermore, if allows to automate this process in the future, where decisions to keep or drop tracks from a playlist will continue to improve the algorithm.
+## Project Structure
 
-#### Genre Classification
-Another component of this application was creating a genre map in order to utilize the genre feature provided by Spotify API in model recommendations. My playlist contained over 2k unique genres that I was able to map to my top 16 genres, which were then further reduced to 4 genres (electronic, acoustic, instrumental and dance). For example, acoustic is my largest genre group and composed of subgenres such as rock, indie, soul, blues. These are then further refined to more specific genres, such as "classic rock", "krautrock" or "art rock".
+```
+listen-wiseer/
+├── src/
+│   ├── app/
+│   │   └── main.py              # Chainlit entry point
+│   ├── agent/
+│   │   ├── graph.py             # LangGraph workflow
+│   │   ├── nodes.py             # Agent nodes
+│   │   └── state.py             # State schema
+│   ├── mcp_server/
+│   │   ├── server.py            # FastMCP server
+│   │   └── tools.py             # Tool definitions
+│   ├── data/
+│   │   ├── loader.py            # Polars data loading
+│   │   └── schemas.py           # Pydantic schemas
+│   ├── analysis/
+│   │   ├── core.py              # Pure analysis functions
+│   │   ├── similarity.py        # Cosine / euclidean / hybrid
+│   │   └── clustering.py        # Spectral clustering
+│   ├── actions/
+│   │   └── spotify_actions.py   # Spotify write operations
+│   ├── rag/
+│   │   ├── wiki_rag.py          # Wikipedia RAG
+│   │   └── embeddings.py        # Embedding wrapper
+│   ├── observability/
+│   │   ├── logging.py           # structlog setup
+│   │   └── tracing.py           # OpenTelemetry (optional)
+│   └── utils/
+│       └── const.py             # Audio feature constants, playlist IDs
+├── data/
+│   ├── listening_history/       # Spotify history JSON exports
+│   ├── cache/                   # Parquet feature cache
+│   └── vectorstore/             # ChromaDB
+├── docker-compose.yml
+├── Dockerfile
+├── pyproject.toml
+├── setup.sh
+└── Makefile
+```
 
-My first attempt at genre classification began with simple NLP exercise: search and classify genres based on their text. For example, the similarity calculation I used to classify the examples above would result positively in finding "rock" being the underscoring genre of these. However, validating this approach quickly proved difficult. How do you classify "soul jazz"? Is it soul? Is it jazz? At least this example is somewhat clearly a hybrid of of somewhat similar genres. But what happens when you have "ambient" genre, which is drastically different with "ambient folk" or "ambient idm". For modeling purposes, this approach was not the way to go for content-based recommendations.
+## Quickstart
 
-Limitations to data size also prevented successful attempts to classify the genre categories with quantitative methods. I calculated distanced between genres using various features and implented hierchical, kmeans and spectral clustering and t-sne dimensionality reduction methods to try and account for other mechanisms distinguishing between genre groups. From this point, I sought Every Noise at Once, an awesome genre mapping project that aimed to reduce dimensionality of genre features to a simple x, y axis with a color scheme for the purpose of visualizing these relationships. The advantage of using this methodology is that they are comparing over 6,000 genres to understand the distance or similarity between genre groups and therefore are an excellent means for validating my own genre mapping scheme. For more information, see the output from src/analysis. 
+```bash
+# 1. Run setup (installs uv, creates .env, installs deps, creates data dirs)
+./setup.sh
 
-## 4 | Recommendation Models (in progress)
-Spotify recommendation models are based on collaborative data from many users. This app aims to personalize models via content-based recommendations. These models aim to address two scenarios:
+# 2. Fill in credentials in .env
+#    SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET — developer.spotify.com/dashboard
+#    SPOTIFY_USER_ID   — your Spotify username
+#    ANTHROPIC_API_KEY — console.anthropic.com
 
-   1. I want to personalize my recommendations and add songs to my current playlists 
+# 3. Place Spotify listening history exports in data/listening_history/
 
-   2. I'm sick of my current playlists and want some creative new mixes of the songs I like or filter a subset of tracks from old mixes
+# 4. Run the chat app (opens browser, prompts Spotify OAuth on first run)
+make app
 
-For the first model, I will use LBGM as a multinomial classifer for playlist groups. For example, I have several jazz playlists - some of which are more instrumental and others have more vocals. One is specifically for Bossa Nova, but the artists and genres for these playlists overlap. We would then run this model for each genre group (dance, jazz, r&b, rock, acoustic, ambient, house, electronic), each of which containing a few playlists to match recommendations. The pipeline for this workflow will be implemented into app.py.
+# 5. Or run with Docker
+make infra-up
+```
 
-For the second model, I will use spectral clustering to create random mixes of my tracks. Can also allow for filtering specific aspects. For example, this model would take zouk playlist and filter for more slow tempo tracks and match that to other tracks in my playlists that share similar features. However, this approach will need mroe validation and used on command as a batch update from the computer. If playback listening capabilities were included with some front-end coding, the setup for this app could then potentially allow to input specific filters and create the playlist to listen to on spot by providing simple inputs.
+## Development
 
+```bash
+make app          # Run Chainlit UI
+make mcp-server   # Run MCP server in terminal
+make infra-up     # Start Docker services
+make infra-down   # Stop and remove volumes
+make infra-logs   # Follow container logs
+make lint         # Ruff + black check
+make format       # Ruff + black fix
+make test         # pytest
+```
 
-## 5 | DB (in progress)
-The next step before implementing the model pipeline is to build a postgres DB that stores track, artist and audio features from my playlists. By storing and updating the output over time, this information will provide a personalized feedback loop to filter future recommendations.
+### Optional services (Docker profiles)
+
+```bash
+# Enable Jaeger tracing UI (localhost:16686)
+docker compose --profile observability up -d
+
+# Enable PostgreSQL
+docker compose --profile database up -d
+```
+
+## Spotify Scopes
+
+The app requests the following Spotify permissions on first login:
+
+- `playlist-read-private` / `playlist-read-collaborative`
+- `playlist-modify-private` / `playlist-modify-public`
+- `user-library-read`
+- `user-read-recently-played`
+- `user-top-read`
+
+Token is cached in `.spotify_cache` (gitignored).

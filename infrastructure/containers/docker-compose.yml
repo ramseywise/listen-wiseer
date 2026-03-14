@@ -1,0 +1,136 @@
+networks:
+  listen-wiseer-network:
+    driver: bridge
+
+volumes:
+  chromadb-data:
+  postgres-data:
+
+services:
+
+  # ── ChromaDB vector store ────────────────────────────────────────────────────
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: listen-wiseer-chromadb
+    ports:
+      - "8000:8000"
+    volumes:
+      - chromadb-data:/chroma/chroma
+    networks:
+      - listen-wiseer-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # ── MCP server (Spotify tools for the agent) ─────────────────────────────────
+  mcp:
+    build:
+      context: ../..
+      dockerfile: infrastructure/containers/mcp/Dockerfile
+    container_name: listen-wiseer-mcp
+    ports:
+      - "8765:8765"
+    environment:
+      - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID}
+      - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET}
+      - SPOTIFY_REDIRECT_URI=${SPOTIFY_REDIRECT_URI:-http://localhost:8888/callback}
+      - SPOTIFY_USER_ID=${SPOTIFY_USER_ID}
+      - SPOTIFY_CACHE_PATH=/app/data/.spotify_cache
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - MCP_SERVER_HOST=0.0.0.0
+      - MCP_SERVER_PORT=8765
+      - CHROMA_PERSIST_DIRECTORY=/app/data/vectorstore
+    volumes:
+      - ../../data:/app/data
+      - ../../.spotify_cache:/app/data/.spotify_cache
+    depends_on:
+      chromadb:
+        condition: service_healthy
+    networks:
+      - listen-wiseer-network
+    restart: unless-stopped
+
+  # ── Chainlit app (chat UI + LangGraph agent) ─────────────────────────────────
+  app:
+    build:
+      context: ../..
+      dockerfile: infrastructure/containers/app/Dockerfile
+    container_name: listen-wiseer-app
+    ports:
+      - "8501:8501"
+    environment:
+      - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID}
+      - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET}
+      - SPOTIFY_REDIRECT_URI=${SPOTIFY_REDIRECT_URI:-http://localhost:8888/callback}
+      - SPOTIFY_USER_ID=${SPOTIFY_USER_ID}
+      - SPOTIFY_CACHE_PATH=/app/data/.spotify_cache
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-haiku-4-5-20251001}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-all-MiniLM-L6-v2}
+      - CHROMA_PERSIST_DIRECTORY=/app/data/vectorstore
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - ENABLE_TRACING=${ENABLE_TRACING:-false}
+      - JAEGER_ENDPOINT=${JAEGER_ENDPOINT:-http://jaeger:14268/api/traces}
+      - MCP_SERVER_HOST=mcp
+      - MCP_SERVER_PORT=8765
+      - LISTENING_HISTORY_PATH=/app/data/listening_history
+      - TRACK_FEATURES_CACHE=/app/data/cache/track_features.parquet
+      - GENRE_METADATA_CACHE=/app/data/cache/genre_metadata.parquet
+      - SIMILARITY_METHOD=${SIMILARITY_METHOD:-hybrid}
+      - AUDIO_FEATURE_WEIGHT=${AUDIO_FEATURE_WEIGHT:-0.6}
+      - GENRE_WEIGHT=${GENRE_WEIGHT:-0.4}
+      - ENABLE_RAG=${ENABLE_RAG:-true}
+      - RAG_TOP_K=${RAG_TOP_K:-3}
+      - WIKIPEDIA_LANGUAGE=${WIKIPEDIA_LANGUAGE:-en}
+      - MAX_AGENT_ITERATIONS=${MAX_AGENT_ITERATIONS:-10}
+      - AGENT_TIMEOUT_SECONDS=${AGENT_TIMEOUT_SECONDS:-60}
+    volumes:
+      - ../../data:/app/data
+      - ../../logs:/app/logs
+      - ../../.spotify_cache:/app/data/.spotify_cache
+    depends_on:
+      chromadb:
+        condition: service_healthy
+      mcp:
+        condition: service_started
+    networks:
+      - listen-wiseer-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ── Optional: Jaeger tracing (--profile observability) ───────────────────────
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: listen-wiseer-jaeger
+    ports:
+      - "16686:16686"
+      - "14268:14268"
+    networks:
+      - listen-wiseer-network
+    profiles:
+      - observability
+
+  # ── Optional: Postgres (--profile database) ──────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: listen-wiseer-db
+    environment:
+      - POSTGRES_DB=listen_wiseer
+      - POSTGRES_USER=wiseer
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-changeme}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - listen-wiseer-network
+    profiles:
+      - database

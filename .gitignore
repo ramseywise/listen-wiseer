@@ -1,0 +1,44 @@
+# Environment
+.env
+.spotify_cache
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+.uv/
+
+# Data (personal / large / generated)
+data/
+
+# Notebooks (exploratory only — not committed)
+notebooks/
+
+# Trained model artifacts
+models/
+
+# Claude Code workspace files (.claude/ is project-level only; CLAUDE.md stays tracked)
+.claude/
+CHANGES.md
+PLAN.md
+RESEARCH.md
+EVAL.md
+DOCUMENT.md
+
+# IDE
+.vscode/
+.idea/
+
+# Testing
+.coverage
+coverage.xml
+htmlcov/
+.pytest_cache/
+
+# Logs
+logs/
+*.log
+

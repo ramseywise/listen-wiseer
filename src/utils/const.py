@@ -1,6 +1,5 @@
-# from pydantic import BaseSettings
+"""Read-only constants: audio feature columns, genre lists, playlist ID registry."""
 
-## NOTE: This is getting ridiculously long, also put with model version???
 audio_features = [
     "id",
     "key",
@@ -15,23 +14,6 @@ audio_features = [
     "valence",
     "tempo",
 ]
-audio_features_list = [
-    "id",
-    "danceability",
-    "energy",
-    "loudness",
-    "speechiness",
-    "acousticness",
-    "instrumentalness",
-    "liveness",
-    "valence",
-    "tempo",
-    "duration_ms",
-    "time_signature",
-    "key",
-    "mode",
-]
-
 num_features = [
     "danceability",
     "energy",

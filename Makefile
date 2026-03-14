@@ -1,14 +1,46 @@
-COMPOSE_INFRA=docker-compose -f docker-compose.yml
+COMPOSE = docker compose -f infrastructure/containers/docker-compose.yml
+
+.PHONY: infra-up infra-down infra-logs app mcp-server lint format test test-unit test-data notebook init-db data-sync
 
 infra-up:
-	${COMPOSE_INFRA} up -d
-
-infra-logs:
-	${COMPOSE_INFRA_DEV} logs -f
+	$(COMPOSE) up -d
 
 infra-down:
-	${COMPOSE_INFRA_DEV} down --volumes --remove-orphans
+	$(COMPOSE) down --volumes --remove-orphans
+
+infra-logs:
+	$(COMPOSE) logs -f
+
+app:
+	PYTHONPATH=src uv run chainlit run src/app/main.py
+
+mcp-server:
+	PYTHONPATH=src uv run python src/mcp_server/server.py
 
 lint:
-	black .
-	mypy .
+	uv run ruff check src/
+	uv run ruff format --check src/
+
+format:
+	uv run ruff check --fix src/
+	uv run ruff format src/
+
+test:
+	uv run pytest
+
+test-unit:
+	uv run pytest tests/unit/ -v
+
+test-data:
+	uv run pytest tests/unit/test_data_schemas.py tests/unit/test_data_loader.py -v
+
+notebook:
+	uv run jupyter lab notebooks/
+
+init-db:
+	@echo "Bootstrapping DuckDB from archived CSVs..."
+	PYTHONPATH=src uv run python -m etl.bootstrap
+
+data-sync:
+	@echo "Requires .spotify_cache - run 'make mcp-server' once to authenticate first"
+	PYTHONPATH=src uv run python -m etl.sync
