@@ -11,7 +11,11 @@ from mcp.server.fastmcp import FastMCP
 from recommend.engine import RecommendationEngine
 from recommend.schemas import RecommendRequest
 from spotify.client import SpotifyClient
-from spotify.fetch import fetch_audio_features, fetch_playlist_tracks, fetch_recently_played
+from spotify.fetch import (
+    fetch_audio_features,
+    fetch_playlist_tracks,
+    fetch_recently_played,
+)
 
 mcp = FastMCP("listen-wiseer")
 
@@ -56,6 +60,7 @@ def get_recently_played(limit: int = 20) -> str:
 def search_tracks(query: str, limit: int = 10) -> str:
     """Search Spotify for tracks matching a query."""
     from utils.exceptions import SpotifyClientError
+
     sp = SpotifyClient()
     try:
         results = sp.search(q=query, type="track", limit=limit)
@@ -63,8 +68,7 @@ def search_tracks(query: str, limit: int = 10) -> str:
     except (SpotifyClientError, KeyError) as e:
         return f"Search failed: {e}"
     return "\n".join(
-        f"{t['name']} — {', '.join(a['name'] for a in t['artists'])} [{t['id']}]"
-        for t in items
+        f"{t['name']} — {', '.join(a['name'] for a in t['artists'])} [{t['id']}]" for t in items
     )
 
 
@@ -72,7 +76,7 @@ def _format_result(result) -> str:
     if not result.track_uris:
         return result.explanation
     lines = [result.explanation, ""]
-    for i, (name, uri) in enumerate(zip(result.track_names, result.track_uris), 1):
+    for i, (name, uri) in enumerate(zip(result.track_names, result.track_uris, strict=False), 1):
         lines.append(f"{i}. {name} [{uri}]")
     return "\n".join(lines)
 
