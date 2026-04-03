@@ -49,8 +49,9 @@ ALTER TABLE genre_map ADD COLUMN IF NOT EXISTS top DOUBLE;
 ALTER TABLE genre_map ADD COLUMN IF NOT EXISTS "left" DOUBLE;
 ALTER TABLE genre_map ADD COLUMN IF NOT EXISTS color VARCHAR;
 
--- Migrate existing installs: refresh flag on playlists
+-- Migrate existing installs: refresh flag and sync timestamp on playlists
 ALTER TABLE playlists ADD COLUMN IF NOT EXISTS include_in_refresh BOOLEAN DEFAULT TRUE;
+ALTER TABLE playlists ADD COLUMN IF NOT EXISTS last_synced TIMESTAMP;
 
 -- Tracks dimension
 CREATE TABLE IF NOT EXISTS tracks (

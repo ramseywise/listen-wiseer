@@ -83,9 +83,7 @@ class SpotifyClient:
             lambda: _request("get", url, headers=self._headers(), params=params).json()
         )
 
-    def post(
-        self, endpoint: str, json: dict | None = None, data: dict | None = None
-    ) -> dict:
+    def post(self, endpoint: str, json: dict | None = None, data: dict | None = None) -> dict:
         url = f"{BASE_URL}/{endpoint.lstrip('/')}"
         return self._with_auth_retry(
             lambda: (lambda r: r.json() if r.content else {})(
@@ -97,15 +95,16 @@ class SpotifyClient:
         """Follow Spotify pagination and return all items."""
         results = []
         url = f"{BASE_URL}/{endpoint.lstrip('/')}"
+        current_params: dict | None = params or None
         while url:
             data = self._with_auth_retry(
-                lambda u=url, p=params: _request(
+                lambda u=url, p=current_params: _request(
                     "get", u, headers=self._headers(), params=p
                 ).json()
             )
             results.extend(data.get("items", []))
             url = data.get("next")
-            params = {}  # next URL already has params baked in
+            current_params = None  # next URL already has params baked in; don't pass any
         return results
 
     def search(self, q: str, type: str = "track", limit: int = 10) -> dict:

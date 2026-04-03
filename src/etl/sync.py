@@ -14,6 +14,7 @@ Run:
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 import polars as pl
 
@@ -51,6 +52,9 @@ _MODE_MAP = {0: "Minor", 1: "Major"}
 # ---------------------------------------------------------------------------
 
 
+_SYNC_INTERVAL = timedelta(hours=23)
+
+
 @dataclass
 class PlaylistSyncItem:
     """Per-playlist sync decision based on Spotify vs DB state."""
@@ -61,12 +65,20 @@ class PlaylistSyncItem:
     db_track_count: int
     is_new: bool
     include_in_refresh: bool
+    last_synced: datetime | None = None
 
     @property
     def needs_sync(self) -> bool:
-        return self.include_in_refresh and (
-            self.is_new or self.spotify_track_count != self.db_track_count
-        )
+        if not self.include_in_refresh:
+            return False
+        if self.is_new or self.spotify_track_count != self.db_track_count:
+            # Still rate-limit: skip if synced recently regardless of count change
+            if self.last_synced is not None:
+                age = datetime.now(UTC) - self.last_synced.replace(tzinfo=UTC)
+                if age < _SYNC_INTERVAL:
+                    return False
+            return True
+        return False
 
     @property
     def status(self) -> str:
@@ -91,12 +103,13 @@ def plan_sync(conn, raw_playlists: list[dict]) -> list[PlaylistSyncItem]:
     """
     rows = conn.execute(
         """
-        SELECT playlist_id, COALESCE(include_in_refresh, TRUE)
+        SELECT playlist_id, COALESCE(include_in_refresh, TRUE), last_synced
         FROM playlists
     """
     ).fetchall()
     db_ids = {row[0] for row in rows}
     excluded_ids = {row[0] for row in rows if not row[1]}
+    last_synced_map: dict[str, datetime | None] = {row[0]: row[2] for row in rows}
 
     db_track_counts: dict[str, int] = dict(
         conn.execute(
@@ -117,6 +130,7 @@ def plan_sync(conn, raw_playlists: list[dict]) -> list[PlaylistSyncItem]:
                 db_track_count=db_track_counts.get(pid, 0),
                 is_new=pid not in db_ids,
                 include_in_refresh=pid not in excluded_ids,
+                last_synced=last_synced_map.get(pid),
             )
         )
 
@@ -134,15 +148,21 @@ def plan_sync(conn, raw_playlists: list[dict]) -> list[PlaylistSyncItem]:
 
 
 def upsert_playlists(conn, items: list[PlaylistSyncItem]) -> None:
-    """Register all playlists in DB. Upserts name; preserves existing include_in_refresh."""
+    """Register all playlists in DB. Upserts name + last_synced; preserves include_in_refresh."""
+    now = datetime.now(UTC)
     for item in items:
+        synced_at = now if item.needs_sync else None
         conn.execute(
             """
-            INSERT INTO playlists (playlist_id, playlist_name, include_in_refresh)
-            VALUES (?, ?, TRUE)
-            ON CONFLICT (playlist_id) DO UPDATE SET playlist_name = excluded.playlist_name
+            INSERT INTO playlists (playlist_id, playlist_name, include_in_refresh, last_synced)
+            VALUES (?, ?, TRUE, ?)
+            ON CONFLICT (playlist_id) DO UPDATE SET
+                playlist_name = excluded.playlist_name,
+                last_synced = CASE WHEN excluded.last_synced IS NOT NULL
+                                   THEN excluded.last_synced
+                                   ELSE playlists.last_synced END
         """,
-            [item.playlist_id, item.playlist_name],
+            [item.playlist_id, item.playlist_name, synced_at],
         )
     log.info("sync.playlists.upserted", n=len(items))
 
@@ -174,9 +194,7 @@ def sync_tracks(conn, client: SpotifyClient, items: list[PlaylistSyncItem]) -> l
         all_track_features.extend(tracks)
 
         if tracks:
-            pt = pl.DataFrame(
-                [{"playlist_id": item.playlist_id, "track_id": t.id} for t in tracks]
-            )
+            pt = pl.DataFrame([{"playlist_id": item.playlist_id, "track_id": t.id} for t in tracks])  # noqa: F841
             conn.execute("INSERT OR IGNORE INTO playlist_tracks SELECT * FROM pt")
 
         new_here = [t for t in tracks if t.id not in existing_track_ids]
@@ -190,7 +208,7 @@ def sync_tracks(conn, client: SpotifyClient, items: list[PlaylistSyncItem]) -> l
 
     if new_track_ids:
         new_tracks = [t for t in all_track_features if t.id in new_track_ids]
-        track_rows = pl.DataFrame(
+        track_rows = pl.DataFrame(  # noqa: F841
             [
                 {
                     "track_id": t.id,
@@ -209,13 +227,9 @@ def sync_tracks(conn, client: SpotifyClient, items: list[PlaylistSyncItem]) -> l
         ).unique("track_id")
         conn.execute("INSERT OR IGNORE INTO tracks SELECT * FROM track_rows")
 
-        ta_rows = [
-            {"track_id": t.id, "artist_id": aid}
-            for t in new_tracks
-            for aid in t.artist_ids
-        ]
+        ta_rows = [{"track_id": t.id, "artist_id": aid} for t in new_tracks for aid in t.artist_ids]
         if ta_rows:
-            ta = pl.DataFrame(ta_rows).unique(["track_id", "artist_id"])
+            ta = pl.DataFrame(ta_rows).unique(["track_id", "artist_id"])  # noqa: F841
             conn.execute("INSERT OR IGNORE INTO track_artists SELECT * FROM ta")
 
     log.info(
@@ -255,7 +269,7 @@ def sync_audio_features(conn, client: SpotifyClient) -> int:
     if not audio:
         return 0
 
-    af_rows = pl.DataFrame(
+    af_rows = pl.DataFrame(  # noqa: F841
         [
             {
                 "track_id": a.id,
@@ -307,9 +321,7 @@ def sync_artist_features(conn, client: SpotifyClient) -> int:
     total_artist_refs = conn.execute(
         "SELECT COUNT(DISTINCT artist_id) FROM track_artists"
     ).fetchone()[0]
-    log.info(
-        "sync.artists.start", total_artists=total_artist_refs, missing=len(missing)
-    )
+    log.info("sync.artists.start", total_artists=total_artist_refs, missing=len(missing))
 
     if not missing:
         return 0
@@ -318,11 +330,8 @@ def sync_artist_features(conn, client: SpotifyClient) -> int:
     if not artists:
         return 0
 
-    ar_rows = pl.DataFrame(
-        [
-            {"artist_id": a.id, "popularity": a.popularity, "genres": str(a.genres)}
-            for a in artists
-        ]
+    ar_rows = pl.DataFrame(  # noqa: F841
+        [{"artist_id": a.id, "popularity": a.popularity, "genres": str(a.genres)} for a in artists]
     ).unique("artist_id")
     conn.execute("INSERT OR IGNORE INTO artists SELECT * FROM ar_rows")
 

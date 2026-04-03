@@ -19,7 +19,7 @@ from utils.config import settings
 from utils.exceptions import SpotifyAuthError
 
 AUTH_URL = "https://accounts.spotify.com/authorize"
-TOKEN_URL = "https://accounts.spotify.com/api/token"
+TOKEN_URL = "https://accounts.spotify.com/api/token"  # noqa: S105
 SCOPES = [
     "playlist-read-private",
     "playlist-read-collaborative",
@@ -28,15 +28,14 @@ SCOPES = [
     "user-library-read",
     "user-read-recently-played",
     "user-top-read",
+    "user-read-private",
 ]
 # Resolve relative to repo root (src/spotify/auth.py → ../../) so it works
 # regardless of cwd — notebook, terminal, Docker, and UI all hit the same file.
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 _cache_setting = settings.spotify_cache_path
 CACHE_PATH = (
-    Path(_cache_setting)
-    if Path(_cache_setting).is_absolute()
-    else _REPO_ROOT / _cache_setting
+    Path(_cache_setting) if Path(_cache_setting).is_absolute() else _REPO_ROOT / _cache_setting
 )
 
 
@@ -69,8 +68,7 @@ class SpotifyAuth:
                 return self._token_cache["access_token"]
 
         raise SpotifyAuthError(
-            f"No valid token in cache ({CACHE_PATH}). "
-            "Run `make auth` to authenticate."
+            f"No valid token in cache ({CACHE_PATH}). Run `make auth` to authenticate."
         )
 
     def authenticate(self) -> str:
@@ -138,9 +136,7 @@ class SpotifyAuth:
         server.server_close()
 
         if "code" not in code_holder:
-            raise SpotifyAuthError(
-                "No auth code received — did you approve in the browser?"
-            )
+            raise SpotifyAuthError("No auth code received — did you approve in the browser?")
         return code_holder["code"]
 
     def _exchange_code(self, code: str) -> None:
@@ -200,6 +196,4 @@ class SpotifyAuth:
         return time.time() > self._token_cache.get("expires_at", 0) - 60
 
     def _basic_auth(self) -> str:
-        return base64.b64encode(
-            f"{self.client_id}:{self.client_secret}".encode()
-        ).decode()
+        return base64.b64encode(f"{self.client_id}:{self.client_secret}".encode()).decode()

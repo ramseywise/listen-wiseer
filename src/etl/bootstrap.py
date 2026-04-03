@@ -44,7 +44,7 @@ def load_playlists(conn) -> None:
     conn.register("_playlists", df)
     conn.execute(
         """
-        INSERT OR IGNORE INTO playlists
+        INSERT OR IGNORE INTO playlists (playlist_id, playlist_name, gen_4, gen_6, gen_8, top_genres, other_genres)
         SELECT playlist_id, playlist_name, gen_4, gen_6, gen_8, top_genres, other_genres
         FROM _playlists
     """
@@ -74,14 +74,10 @@ def load_artists(conn) -> None:
     if not path.exists():
         log.warning("bootstrap.artists.missing", path=str(path))
         return
-    df = pl.read_csv(
-        path, infer_schema_length=2000, schema_overrides={"popularity": pl.Utf8}
-    )
+    df = pl.read_csv(path, infer_schema_length=2000, schema_overrides={"popularity": pl.Utf8})
     cols = [c for c in df.columns if c not in ("", "0")]
     df = df.select(cols).with_columns(
-        pl.col("popularity")
-        .str.extract(r"(\d+\.?\d*)", 0)
-        .cast(pl.Float64, strict=False)
+        pl.col("popularity").str.extract(r"(\d+\.?\d*)", 0).cast(pl.Float64, strict=False)
     )
     conn.register("_artists", df)
     conn.execute(
@@ -114,9 +110,7 @@ def load_enoa_coordinates(conn) -> None:
         WHERE genre_map.first_genre = e.first_genre
     """
     )
-    updated = conn.execute(
-        "SELECT COUNT(*) FROM genre_map WHERE top IS NOT NULL"
-    ).fetchone()[0]
+    updated = conn.execute("SELECT COUNT(*) FROM genre_map WHERE top IS NOT NULL").fetchone()[0]
     log.info("bootstrap.enoa.done", n_updated=updated)
 
 
@@ -177,9 +171,7 @@ def load_playlist_tracks(conn) -> None:
         .rename({"id": "track_id"})
         .unique("track_id")
         .with_columns(
-            pl.col("popularity")
-            .str.extract(r"(\d+\.?\d*)", 0)
-            .cast(pl.Float64, strict=False),
+            pl.col("popularity").str.extract(r"(\d+\.?\d*)", 0).cast(pl.Float64, strict=False),
             pl.col("year").str.extract(r"(\d{4})", 0).cast(pl.Int32, strict=False),
         )
     )
@@ -231,11 +223,7 @@ def load_playlist_tracks(conn) -> None:
         .rename({"id": "track_id"})
         .unique("track_id")
         .with_columns(
-            [
-                pl.col(c).cast(pl.Float64, strict=False)
-                for c in float_af
-                if c in df.columns
-            ]
+            [pl.col(c).cast(pl.Float64, strict=False) for c in float_af if c in df.columns]
             + [
                 pl.col(c).str.extract(r"(-?\d+)", 0).cast(pl.Int64, strict=False)
                 for c in int_af

@@ -4,6 +4,8 @@ All functions accept a SpotifyClient from spotify.client.
 Returns validated Pydantic models from data.schemas.
 """
 
+import time
+
 from spotify.client import SpotifyClient
 from utils.logging import get_logger
 from utils.schemas import ArtistFeatures, AudioFeatures, TrackFeatures
@@ -18,9 +20,7 @@ def fetch_my_playlists(client: SpotifyClient) -> list[dict]:
     return results
 
 
-def fetch_playlist_tracks(
-    client: SpotifyClient, playlist_id: str
-) -> list[TrackFeatures]:
+def fetch_playlist_tracks(client: SpotifyClient, playlist_id: str) -> list[TrackFeatures]:
     """Fetch all tracks from a playlist, handling pagination."""
     items = client.get_paginated(f"playlists/{playlist_id}/tracks", limit=100)
 
@@ -41,20 +41,17 @@ def fetch_playlist_tracks(
             )
         )
 
-    log.info(
-        "spotify.fetch_playlist_tracks", playlist_id=playlist_id, n_tracks=len(tracks)
-    )
+    log.info("spotify.fetch_playlist_tracks", playlist_id=playlist_id, n_tracks=len(tracks))
     return tracks
 
 
-def fetch_audio_features(
-    client: SpotifyClient, track_ids: list[str]
-) -> list[AudioFeatures]:
+def fetch_audio_features(client: SpotifyClient, track_ids: list[str]) -> list[AudioFeatures]:
     """Fetch audio features in batches of 100 (Spotify API limit)."""
     results = []
     for i in range(0, len(track_ids), 100):
         batch = track_ids[i : i + 100]
         response = client.get("audio-features", ids=",".join(batch))
+        time.sleep(0.1)
         for feat in response.get("audio_features", []):
             if feat is None:
                 continue
@@ -80,15 +77,14 @@ def fetch_audio_features(
     return results
 
 
-def fetch_artist_features(
-    client: SpotifyClient, artist_ids: list[str]
-) -> list[ArtistFeatures]:
+def fetch_artist_features(client: SpotifyClient, artist_ids: list[str]) -> list[ArtistFeatures]:
     """Fetch artist genres and popularity in batches of 50 (Spotify API limit)."""
     results = []
     unique_ids = list(dict.fromkeys(artist_ids))
     for i in range(0, len(unique_ids), 50):
         batch = unique_ids[i : i + 50]
         response = client.get("artists", ids=",".join(batch))
+        time.sleep(0.1)
         for artist in response.get("artists", []):
             if artist is None:
                 continue
@@ -103,9 +99,7 @@ def fetch_artist_features(
     return results
 
 
-def fetch_recently_played(
-    client: SpotifyClient, limit: int = 50
-) -> list[TrackFeatures]:
+def fetch_recently_played(client: SpotifyClient, limit: int = 50) -> list[TrackFeatures]:
     """Fetch the current user's recently played tracks (max 50)."""
     response = client.get("me/player/recently-played", limit=min(limit, 50))
     tracks = []
