@@ -22,8 +22,18 @@ def _request(method: str, url: str, **kwargs) -> httpx.Response:
     for attempt in range(_MAX_RETRIES):
         response = getattr(httpx, method)(url, **kwargs)
         if response.status_code == 429:
-            wait = int(response.headers.get("Retry-After", 2 ** attempt))
-            log.warning("spotify.rate_limit", wait_s=wait, attempt=attempt + 1, max_retries=_MAX_RETRIES)
+            wait = int(response.headers.get("Retry-After", 2**attempt))
+            if wait > 60:
+                raise SpotifyClientError(
+                    f"Spotify rate limit: Retry-After={wait}s (>{60}s). "
+                    "Wait before retrying or check for runaway requests."
+                )
+            log.warning(
+                "spotify.rate_limit",
+                wait_s=wait,
+                attempt=attempt + 1,
+                max_retries=_MAX_RETRIES,
+            )
             time.sleep(wait)
             continue
         try:
@@ -73,12 +83,14 @@ class SpotifyClient:
             lambda: _request("get", url, headers=self._headers(), params=params).json()
         )
 
-    def post(self, endpoint: str, json: dict | None = None, data: dict | None = None) -> dict:
+    def post(
+        self, endpoint: str, json: dict | None = None, data: dict | None = None
+    ) -> dict:
         url = f"{BASE_URL}/{endpoint.lstrip('/')}"
         return self._with_auth_retry(
-            lambda: (
-                lambda r: r.json() if r.content else {}
-            )(_request("post", url, headers=self._headers(), json=json, data=data))
+            lambda: (lambda r: r.json() if r.content else {})(
+                _request("post", url, headers=self._headers(), json=json, data=data)
+            )
         )
 
     def get_paginated(self, endpoint: str, **params) -> list[dict]:
@@ -87,7 +99,9 @@ class SpotifyClient:
         url = f"{BASE_URL}/{endpoint.lstrip('/')}"
         while url:
             data = self._with_auth_retry(
-                lambda u=url, p=params: _request("get", u, headers=self._headers(), params=p).json()
+                lambda u=url, p=params: _request(
+                    "get", u, headers=self._headers(), params=p
+                ).json()
             )
             results.extend(data.get("items", []))
             url = data.get("next")

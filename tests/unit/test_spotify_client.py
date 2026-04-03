@@ -97,7 +97,9 @@ class TestSpotifyClientSearch:
 
 class TestSpotifyClientGetPaginated:
     def test_returns_all_items_across_pages(self, client: SpotifyClient) -> None:
-        page1 = _make_response(200, {"items": [{"id": "1"}], "next": "https://api.spotify.com/v1/page2"})
+        page1 = _make_response(
+            200, {"items": [{"id": "1"}], "next": "https://api.spotify.com/v1/page2"}
+        )
         page2 = _make_response(200, {"items": [{"id": "2"}], "next": None})
         with patch("httpx.get", side_effect=[page1, page2]):
             results = client.get_paginated("playlists/1/tracks")

@@ -18,7 +18,9 @@ def fetch_my_playlists(client: SpotifyClient) -> list[dict]:
     return results
 
 
-def fetch_playlist_tracks(client: SpotifyClient, playlist_id: str) -> list[TrackFeatures]:
+def fetch_playlist_tracks(
+    client: SpotifyClient, playlist_id: str
+) -> list[TrackFeatures]:
     """Fetch all tracks from a playlist, handling pagination."""
     items = client.get_paginated(f"playlists/{playlist_id}/tracks", limit=100)
 
@@ -27,21 +29,27 @@ def fetch_playlist_tracks(client: SpotifyClient, playlist_id: str) -> list[Track
         t = item.get("track")
         if not t or not t.get("id"):
             continue
-        tracks.append(TrackFeatures(
-            id=t["id"],
-            uri=t["uri"],
-            name=t["name"],
-            release_date=t["album"].get("release_date", ""),
-            artist_ids=[a["id"] for a in t["artists"]],
-            artist_names=[a["name"] for a in t["artists"]],
-            playlist_id=playlist_id,
-        ))
+        tracks.append(
+            TrackFeatures(
+                id=t["id"],
+                uri=t["uri"],
+                name=t["name"],
+                release_date=t["album"].get("release_date", ""),
+                artist_ids=[a["id"] for a in t["artists"]],
+                artist_names=[a["name"] for a in t["artists"]],
+                playlist_id=playlist_id,
+            )
+        )
 
-    log.info("spotify.fetch_playlist_tracks", playlist_id=playlist_id, n_tracks=len(tracks))
+    log.info(
+        "spotify.fetch_playlist_tracks", playlist_id=playlist_id, n_tracks=len(tracks)
+    )
     return tracks
 
 
-def fetch_audio_features(client: SpotifyClient, track_ids: list[str]) -> list[AudioFeatures]:
+def fetch_audio_features(
+    client: SpotifyClient, track_ids: list[str]
+) -> list[AudioFeatures]:
     """Fetch audio features in batches of 100 (Spotify API limit)."""
     results = []
     for i in range(0, len(track_ids), 100):
@@ -50,27 +58,31 @@ def fetch_audio_features(client: SpotifyClient, track_ids: list[str]) -> list[Au
         for feat in response.get("audio_features", []):
             if feat is None:
                 continue
-            results.append(AudioFeatures(
-                id=feat["id"],
-                danceability=feat.get("danceability", 0.0),
-                energy=feat.get("energy", 0.0),
-                loudness=feat.get("loudness", 0.0),
-                speechiness=feat.get("speechiness", 0.0),
-                acousticness=feat.get("acousticness", 0.0),
-                instrumentalness=feat.get("instrumentalness", 0.0),
-                liveness=feat.get("liveness", 0.0),
-                valence=feat.get("valence", 0.0),
-                tempo=feat.get("tempo", 0.0),
-                key=feat.get("key", 0),
-                mode=feat.get("mode", 0),
-                duration_ms=feat.get("duration_ms", 0),
-                time_signature=feat.get("time_signature", 4),
-            ))
+            results.append(
+                AudioFeatures(
+                    id=feat["id"],
+                    danceability=feat.get("danceability", 0.0),
+                    energy=feat.get("energy", 0.0),
+                    loudness=feat.get("loudness", 0.0),
+                    speechiness=feat.get("speechiness", 0.0),
+                    acousticness=feat.get("acousticness", 0.0),
+                    instrumentalness=feat.get("instrumentalness", 0.0),
+                    liveness=feat.get("liveness", 0.0),
+                    valence=feat.get("valence", 0.0),
+                    tempo=feat.get("tempo", 0.0),
+                    key=feat.get("key", 0),
+                    mode=feat.get("mode", 0),
+                    duration_ms=feat.get("duration_ms", 0),
+                    time_signature=feat.get("time_signature", 4),
+                )
+            )
     log.info("spotify.fetch_audio_features", n_tracks=len(results))
     return results
 
 
-def fetch_artist_features(client: SpotifyClient, artist_ids: list[str]) -> list[ArtistFeatures]:
+def fetch_artist_features(
+    client: SpotifyClient, artist_ids: list[str]
+) -> list[ArtistFeatures]:
     """Fetch artist genres and popularity in batches of 50 (Spotify API limit)."""
     results = []
     unique_ids = list(dict.fromkeys(artist_ids))
@@ -80,16 +92,20 @@ def fetch_artist_features(client: SpotifyClient, artist_ids: list[str]) -> list[
         for artist in response.get("artists", []):
             if artist is None:
                 continue
-            results.append(ArtistFeatures(
-                id=artist["id"],
-                popularity=artist.get("popularity", 0),
-                genres=artist.get("genres", []),
-            ))
+            results.append(
+                ArtistFeatures(
+                    id=artist["id"],
+                    popularity=artist.get("popularity", 0),
+                    genres=artist.get("genres", []),
+                )
+            )
     log.info("spotify.fetch_artist_features", n_artists=len(results))
     return results
 
 
-def fetch_recently_played(client: SpotifyClient, limit: int = 50) -> list[TrackFeatures]:
+def fetch_recently_played(
+    client: SpotifyClient, limit: int = 50
+) -> list[TrackFeatures]:
     """Fetch the current user's recently played tracks (max 50)."""
     response = client.get("me/player/recently-played", limit=min(limit, 50))
     tracks = []
@@ -97,13 +113,15 @@ def fetch_recently_played(client: SpotifyClient, limit: int = 50) -> list[TrackF
         t = item.get("track")
         if not t or not t.get("id"):
             continue
-        tracks.append(TrackFeatures(
-            id=t["id"],
-            uri=t["uri"],
-            name=t["name"],
-            release_date=t["album"].get("release_date", ""),
-            artist_ids=[a["id"] for a in t["artists"]],
-            artist_names=[a["name"] for a in t["artists"]],
-        ))
+        tracks.append(
+            TrackFeatures(
+                id=t["id"],
+                uri=t["uri"],
+                name=t["name"],
+                release_date=t["album"].get("release_date", ""),
+                artist_ids=[a["id"] for a in t["artists"]],
+                artist_names=[a["name"] for a in t["artists"]],
+            )
+        )
     log.info("spotify.fetch_recently_played", n_tracks=len(tracks))
     return tracks
