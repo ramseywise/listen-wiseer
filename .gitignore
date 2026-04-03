@@ -20,17 +20,23 @@ notebooks/
 # Trained model artifacts
 models/
 
-# Claude Code workspace files (.claude/ is project-level only; CLAUDE.md stays tracked)
+# Claude Code — only CLAUDE.md and SESSION.md at root are tracked
+# Phase artifacts (PLAN, RESEARCH, CHANGELOG, EVAL) live in .claude/docs/
 .claude/
-CHANGES.md
-PLAN.md
-RESEARCH.md
-EVAL.md
-DOCUMENT.md
+
+# Chainlit
+.chainlit/
+chainlit.md
+.files/
 
 # IDE
 .vscode/
 .idea/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
 
 # Testing
 .coverage
@@ -41,4 +47,14 @@ htmlcov/
 # Logs
 logs/
 *.log
+
+# Notebooks (exploratory only)
+notebooks/
+
+# Ruff / mypy caches
+.ruff_cache/
+.mypy_cache/
+
+# Obsidian
+.obsidian/
 

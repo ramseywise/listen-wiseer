@@ -42,11 +42,13 @@ def load_playlists(conn) -> None:
         return
     df = pl.read_csv(path).drop("")
     conn.register("_playlists", df)
-    conn.execute("""
+    conn.execute(
+        """
         INSERT OR IGNORE INTO playlists
         SELECT playlist_id, playlist_name, gen_4, gen_6, gen_8, top_genres, other_genres
         FROM _playlists
-    """)
+    """
+    )
     log.info("bootstrap.playlists.done", n=len(df))
 
 
@@ -57,11 +59,13 @@ def load_genre_map(conn) -> None:
         return
     df = pl.read_csv(path).drop("")
     conn.register("_genre_map", df)
-    conn.execute("""
+    conn.execute(
+        """
         INSERT OR IGNORE INTO genre_map (first_genre, gen_4, gen_6, gen_8, my_genre, sub_genre)
         SELECT first_genre, gen_4, gen_6, gen_8, my_genre, sub_genre
         FROM _genre_map
-    """)
+    """
+    )
     log.info("bootstrap.genre_map.done", n=len(df))
 
 
@@ -70,20 +74,23 @@ def load_artists(conn) -> None:
     if not path.exists():
         log.warning("bootstrap.artists.missing", path=str(path))
         return
-    df = pl.read_csv(path, infer_schema_length=2000, schema_overrides={"popularity": pl.Utf8})
+    df = pl.read_csv(
+        path, infer_schema_length=2000, schema_overrides={"popularity": pl.Utf8}
+    )
     cols = [c for c in df.columns if c not in ("", "0")]
-    df = (
-        df.select(cols)
-        .with_columns(
-            pl.col("popularity").str.extract(r"(\d+\.?\d*)", 0).cast(pl.Float64, strict=False)
-        )
+    df = df.select(cols).with_columns(
+        pl.col("popularity")
+        .str.extract(r"(\d+\.?\d*)", 0)
+        .cast(pl.Float64, strict=False)
     )
     conn.register("_artists", df)
-    conn.execute("""
+    conn.execute(
+        """
         INSERT OR IGNORE INTO artists
         SELECT artist_id, popularity, genre
         FROM _artists
-    """)
+    """
+    )
     log.info("bootstrap.artists.done", n=len(df))
 
 
@@ -97,15 +104,19 @@ def load_enoa_coordinates(conn) -> None:
     if "" in df.columns:
         df = df.drop("")
     conn.register("_enoa", df)
-    conn.execute("""
+    conn.execute(
+        """
         UPDATE genre_map
         SET top   = e.top,
             "left" = e."left",
             color  = e.color
         FROM _enoa e
         WHERE genre_map.first_genre = e.first_genre
-    """)
-    updated = conn.execute("SELECT COUNT(*) FROM genre_map WHERE top IS NOT NULL").fetchone()[0]
+    """
+    )
+    updated = conn.execute(
+        "SELECT COUNT(*) FROM genre_map WHERE top IS NOT NULL"
+    ).fetchone()[0]
     log.info("bootstrap.enoa.done", n_updated=updated)
 
 
@@ -128,8 +139,14 @@ def load_playlist_tracks(conn) -> None:
         log.warning("bootstrap.playlist_tracks.missing", path=str(playlist_dir))
         return
 
-    str_cols = {"popularity": pl.Utf8, "year": pl.Utf8, "key": pl.Utf8, "mode": pl.Utf8,
-                "time_signature": pl.Utf8, "duration_ms": pl.Utf8}
+    str_cols = {
+        "popularity": pl.Utf8,
+        "year": pl.Utf8,
+        "key": pl.Utf8,
+        "mode": pl.Utf8,
+        "time_signature": pl.Utf8,
+        "duration_ms": pl.Utf8,
+    }
     all_dfs = []
     for f in files:
         try:
@@ -145,41 +162,85 @@ def load_playlist_tracks(conn) -> None:
 
     # ── tracks ──────────────────────────────────────────────────────────────
     tracks_df = (
-        df.select(["id", "track_name", "release_date", "popularity",
-                   "first_genre", "genre_cat", "year", "decade"])
+        df.select(
+            [
+                "id",
+                "track_name",
+                "release_date",
+                "popularity",
+                "first_genre",
+                "genre_cat",
+                "year",
+                "decade",
+            ]
+        )
         .rename({"id": "track_id"})
         .unique("track_id")
         .with_columns(
-            pl.col("popularity").str.extract(r"(\d+\.?\d*)", 0).cast(pl.Float64, strict=False),
+            pl.col("popularity")
+            .str.extract(r"(\d+\.?\d*)", 0)
+            .cast(pl.Float64, strict=False),
             pl.col("year").str.extract(r"(\d{4})", 0).cast(pl.Int32, strict=False),
         )
     )
 
     conn.register("_tracks", tracks_df)
-    conn.execute("""
+    conn.execute(
+        """
         INSERT OR IGNORE INTO tracks (track_id, track_name, release_date, year, decade, popularity, first_genre, genre_cat)
         SELECT track_id, track_name, release_date, year, decade, popularity, first_genre, genre_cat
         FROM _tracks
-    """)
+    """
+    )
     log.info("bootstrap.tracks.done", n=len(tracks_df))
 
     # ── audio_features ───────────────────────────────────────────────────────
     af_cols = [
-        "id", "danceability", "energy", "loudness", "speechiness",
-        "acousticness", "instrumentalness", "liveness", "valence", "tempo",
-        "duration_ms", "time_signature", "key", "mode",
-        "key_labels", "mode_labels", "key_mode",
+        "id",
+        "danceability",
+        "energy",
+        "loudness",
+        "speechiness",
+        "acousticness",
+        "instrumentalness",
+        "liveness",
+        "valence",
+        "tempo",
+        "duration_ms",
+        "time_signature",
+        "key",
+        "mode",
+        "key_labels",
+        "mode_labels",
+        "key_mode",
     ]
-    float_af = ["danceability","energy","loudness","speechiness","acousticness",
-                "instrumentalness","liveness","valence","tempo"]
-    int_af = ["duration_ms","time_signature","key","mode"]
+    float_af = [
+        "danceability",
+        "energy",
+        "loudness",
+        "speechiness",
+        "acousticness",
+        "instrumentalness",
+        "liveness",
+        "valence",
+        "tempo",
+    ]
+    int_af = ["duration_ms", "time_signature", "key", "mode"]
     af_df = (
         df.select([c for c in af_cols if c in df.columns])
         .rename({"id": "track_id"})
         .unique("track_id")
         .with_columns(
-            [pl.col(c).cast(pl.Float64, strict=False) for c in float_af if c in df.columns] +
-            [pl.col(c).str.extract(r"(-?\d+)", 0).cast(pl.Int64, strict=False) for c in int_af if c in df.columns]
+            [
+                pl.col(c).cast(pl.Float64, strict=False)
+                for c in float_af
+                if c in df.columns
+            ]
+            + [
+                pl.col(c).str.extract(r"(-?\d+)", 0).cast(pl.Int64, strict=False)
+                for c in int_af
+                if c in df.columns
+            ]
         )
     )
     conn.register("_af", af_df)
@@ -225,7 +286,9 @@ def main() -> None:
     n_tracks = conn.execute("SELECT COUNT(*) FROM tracks").fetchone()[0]
     n_genres = conn.execute("SELECT COUNT(*) FROM genre_map").fetchone()[0]
     n_profile = conn.execute("SELECT COUNT(*) FROM track_profile").fetchone()[0]
-    print(f"\nDB ready: {n_tracks} tracks, {n_genres} genre mappings, {n_profile} enriched profiles")
+    print(
+        f"\nDB ready: {n_tracks} tracks, {n_genres} genre mappings, {n_profile} enriched profiles"
+    )
     print("Location: data/listen_wiseer.db")
     conn.close()
 

@@ -29,14 +29,27 @@ from utils.logging import configure_logging, get_logger
 
 log = get_logger(__name__)
 
-_KEY_MAP = {0: "C", 1: "Db", 2: "D", 3: "Eb", 4: "E", 5: "F",
-            6: "F#", 7: "G", 8: "Ab", 9: "A", 10: "Bb", 11: "B"}
+_KEY_MAP = {
+    0: "C",
+    1: "Db",
+    2: "D",
+    3: "Eb",
+    4: "E",
+    5: "F",
+    6: "F#",
+    7: "G",
+    8: "Ab",
+    9: "A",
+    10: "Bb",
+    11: "B",
+}
 _MODE_MAP = {0: "Minor", 1: "Major"}
 
 
 # ---------------------------------------------------------------------------
 # Sync plan
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class PlaylistSyncItem:
@@ -76,28 +89,36 @@ def plan_sync(conn, raw_playlists: list[dict]) -> list[PlaylistSyncItem]:
     Returns:
         One PlaylistSyncItem per playlist, sorted by status then name.
     """
-    rows = conn.execute("""
+    rows = conn.execute(
+        """
         SELECT playlist_id, COALESCE(include_in_refresh, TRUE)
         FROM playlists
-    """).fetchall()
+    """
+    ).fetchall()
     db_ids = {row[0] for row in rows}
     excluded_ids = {row[0] for row in rows if not row[1]}
 
-    db_track_counts: dict[str, int] = dict(conn.execute("""
+    db_track_counts: dict[str, int] = dict(
+        conn.execute(
+            """
         SELECT playlist_id, COUNT(*) FROM playlist_tracks GROUP BY playlist_id
-    """).fetchall())
+    """
+        ).fetchall()
+    )
 
     items = []
     for p in raw_playlists:
         pid = p["id"]
-        items.append(PlaylistSyncItem(
-            playlist_id=pid,
-            playlist_name=p["name"],
-            spotify_track_count=p.get("tracks", {}).get("total", 0),
-            db_track_count=db_track_counts.get(pid, 0),
-            is_new=pid not in db_ids,
-            include_in_refresh=pid not in excluded_ids,
-        ))
+        items.append(
+            PlaylistSyncItem(
+                playlist_id=pid,
+                playlist_name=p["name"],
+                spotify_track_count=p.get("tracks", {}).get("total", 0),
+                db_track_count=db_track_counts.get(pid, 0),
+                is_new=pid not in db_ids,
+                include_in_refresh=pid not in excluded_ids,
+            )
+        )
 
     by_status = {"new": 0, "stale": 0, "current": 0, "excluded": 0}
     for item in items:
@@ -111,14 +132,18 @@ def plan_sync(conn, raw_playlists: list[dict]) -> list[PlaylistSyncItem]:
 # Sync steps — each independently callable
 # ---------------------------------------------------------------------------
 
+
 def upsert_playlists(conn, items: list[PlaylistSyncItem]) -> None:
     """Register all playlists in DB. Upserts name; preserves existing include_in_refresh."""
     for item in items:
-        conn.execute("""
+        conn.execute(
+            """
             INSERT INTO playlists (playlist_id, playlist_name, include_in_refresh)
             VALUES (?, ?, TRUE)
             ON CONFLICT (playlist_id) DO UPDATE SET playlist_name = excluded.playlist_name
-        """, [item.playlist_id, item.playlist_name])
+        """,
+            [item.playlist_id, item.playlist_name],
+        )
     log.info("sync.playlists.upserted", n=len(items))
 
 
@@ -149,29 +174,39 @@ def sync_tracks(conn, client: SpotifyClient, items: list[PlaylistSyncItem]) -> l
         all_track_features.extend(tracks)
 
         if tracks:
-            pt = pl.DataFrame([{"playlist_id": item.playlist_id, "track_id": t.id} for t in tracks])
+            pt = pl.DataFrame(
+                [{"playlist_id": item.playlist_id, "track_id": t.id} for t in tracks]
+            )
             conn.execute("INSERT OR IGNORE INTO playlist_tracks SELECT * FROM pt")
 
         new_here = [t for t in tracks if t.id not in existing_track_ids]
         new_track_ids.update(t.id for t in new_here)
-        log.debug("sync.tracks.playlist",
-                  playlist=item.playlist_name, total=len(tracks), new=len(new_here))
+        log.debug(
+            "sync.tracks.playlist",
+            playlist=item.playlist_name,
+            total=len(tracks),
+            new=len(new_here),
+        )
 
     if new_track_ids:
         new_tracks = [t for t in all_track_features if t.id in new_track_ids]
-        track_rows = pl.DataFrame([
-            {
-                "track_id": t.id,
-                "track_name": t.name,
-                "release_date": t.release_date,
-                "year": int(t.release_date[:4]) if t.release_date and len(t.release_date) >= 4 else None,
-                "decade": None,
-                "popularity": None,
-                "first_genre": None,
-                "genre_cat": None,
-            }
-            for t in new_tracks
-        ]).unique("track_id")
+        track_rows = pl.DataFrame(
+            [
+                {
+                    "track_id": t.id,
+                    "track_name": t.name,
+                    "release_date": t.release_date,
+                    "year": int(t.release_date[:4])
+                    if t.release_date and len(t.release_date) >= 4
+                    else None,
+                    "decade": None,
+                    "popularity": None,
+                    "first_genre": None,
+                    "genre_cat": None,
+                }
+                for t in new_tracks
+            ]
+        ).unique("track_id")
         conn.execute("INSERT OR IGNORE INTO tracks SELECT * FROM track_rows")
 
         ta_rows = [
@@ -183,7 +218,11 @@ def sync_tracks(conn, client: SpotifyClient, items: list[PlaylistSyncItem]) -> l
             ta = pl.DataFrame(ta_rows).unique(["track_id", "artist_id"])
             conn.execute("INSERT OR IGNORE INTO track_artists SELECT * FROM ta")
 
-    log.info("sync.tracks.done", fetched=len(all_track_features), new_tracks=len(new_track_ids))
+    log.info(
+        "sync.tracks.done",
+        fetched=len(all_track_features),
+        new_tracks=len(new_track_ids),
+    )
     return all_track_features
 
 
@@ -196,11 +235,14 @@ def sync_audio_features(conn, client: SpotifyClient) -> int:
         Number of new audio feature rows inserted.
     """
     missing: list[str] = [
-        row[0] for row in conn.execute("""
+        row[0]
+        for row in conn.execute(
+            """
             SELECT t.track_id FROM tracks t
             LEFT JOIN audio_features af USING (track_id)
             WHERE af.track_id IS NULL
-        """).fetchall()
+        """
+        ).fetchall()
     ]
 
     total_tracks = conn.execute("SELECT COUNT(*) FROM tracks").fetchone()[0]
@@ -213,28 +255,30 @@ def sync_audio_features(conn, client: SpotifyClient) -> int:
     if not audio:
         return 0
 
-    af_rows = pl.DataFrame([
-        {
-            "track_id": a.id,
-            "danceability": a.danceability,
-            "energy": a.energy,
-            "loudness": a.loudness,
-            "speechiness": a.speechiness,
-            "acousticness": a.acousticness,
-            "instrumentalness": a.instrumentalness,
-            "liveness": a.liveness,
-            "valence": a.valence,
-            "tempo": a.tempo,
-            "duration_ms": a.duration_ms,
-            "time_signature": a.time_signature,
-            "key": a.key,
-            "mode": a.mode,
-            "key_labels": _KEY_MAP.get(a.key, ""),
-            "mode_labels": _MODE_MAP.get(a.mode, ""),
-            "key_mode": f"{_KEY_MAP.get(a.key, '')} {_MODE_MAP.get(a.mode, '')}",
-        }
-        for a in audio
-    ]).unique("track_id")
+    af_rows = pl.DataFrame(
+        [
+            {
+                "track_id": a.id,
+                "danceability": a.danceability,
+                "energy": a.energy,
+                "loudness": a.loudness,
+                "speechiness": a.speechiness,
+                "acousticness": a.acousticness,
+                "instrumentalness": a.instrumentalness,
+                "liveness": a.liveness,
+                "valence": a.valence,
+                "tempo": a.tempo,
+                "duration_ms": a.duration_ms,
+                "time_signature": a.time_signature,
+                "key": a.key,
+                "mode": a.mode,
+                "key_labels": _KEY_MAP.get(a.key, ""),
+                "mode_labels": _MODE_MAP.get(a.mode, ""),
+                "key_mode": f"{_KEY_MAP.get(a.key, '')} {_MODE_MAP.get(a.mode, '')}",
+            }
+            for a in audio
+        ]
+    ).unique("track_id")
     conn.execute("INSERT OR IGNORE INTO audio_features SELECT * FROM af_rows")
 
     log.info("sync.audio.done", inserted=len(af_rows))
@@ -250,15 +294,22 @@ def sync_artist_features(conn, client: SpotifyClient) -> int:
         Number of new artist rows inserted.
     """
     missing: list[str] = [
-        row[0] for row in conn.execute("""
+        row[0]
+        for row in conn.execute(
+            """
             SELECT ta.artist_id FROM track_artists ta
             LEFT JOIN artists a USING (artist_id)
             WHERE a.artist_id IS NULL
-        """).fetchall()
+        """
+        ).fetchall()
     ]
 
-    total_artist_refs = conn.execute("SELECT COUNT(DISTINCT artist_id) FROM track_artists").fetchone()[0]
-    log.info("sync.artists.start", total_artists=total_artist_refs, missing=len(missing))
+    total_artist_refs = conn.execute(
+        "SELECT COUNT(DISTINCT artist_id) FROM track_artists"
+    ).fetchone()[0]
+    log.info(
+        "sync.artists.start", total_artists=total_artist_refs, missing=len(missing)
+    )
 
     if not missing:
         return 0
@@ -267,10 +318,12 @@ def sync_artist_features(conn, client: SpotifyClient) -> int:
     if not artists:
         return 0
 
-    ar_rows = pl.DataFrame([
-        {"artist_id": a.id, "popularity": a.popularity, "genres": str(a.genres)}
-        for a in artists
-    ]).unique("artist_id")
+    ar_rows = pl.DataFrame(
+        [
+            {"artist_id": a.id, "popularity": a.popularity, "genres": str(a.genres)}
+            for a in artists
+        ]
+    ).unique("artist_id")
     conn.execute("INSERT OR IGNORE INTO artists SELECT * FROM ar_rows")
 
     log.info("sync.artists.done", inserted=len(ar_rows))
@@ -280,6 +333,7 @@ def sync_artist_features(conn, client: SpotifyClient) -> int:
 # ---------------------------------------------------------------------------
 # Orchestration
 # ---------------------------------------------------------------------------
+
 
 def sync(conn, client: SpotifyClient) -> None:
     """Full incremental sync: plan → playlists → tracks → audio → artists."""

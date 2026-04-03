@@ -1,6 +1,6 @@
 COMPOSE = docker compose -f infrastructure/containers/docker-compose.yml
 
-.PHONY: infra-up infra-down infra-logs app mcp-server lint format test test-unit test-data notebook init-db data-sync
+.PHONY: infra-up infra-down infra-logs app mcp-server auth lint format test test-unit test-data notebook init-db data-sync train
 
 infra-up:
 	$(COMPOSE) up -d
@@ -16,6 +16,9 @@ app:
 
 mcp-server:
 	PYTHONPATH=src uv run python src/mcp_server/server.py
+
+auth:
+	PYTHONPATH=src uv run python -c "from spotify.auth import SpotifyAuth; SpotifyAuth().authenticate(); print('Auth complete — .spotify_cache written.')"
 
 lint:
 	uv run ruff check src/
@@ -42,5 +45,8 @@ init-db:
 	PYTHONPATH=src uv run python -m etl.bootstrap
 
 data-sync:
-	@echo "Requires .spotify_cache - run 'make mcp-server' once to authenticate first"
+	@echo "Requires .spotify_cache - run 'make auth' once to authenticate first"
 	PYTHONPATH=src uv run python -m etl.sync
+
+train:
+	PYTHONPATH=src uv run python -m recommend.train

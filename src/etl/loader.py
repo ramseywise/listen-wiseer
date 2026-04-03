@@ -19,8 +19,18 @@ log = get_logger(__name__)
 
 # Key/mode integer → label maps (migrated from api/data/playlists.py)
 _KEY_MAP = {
-    0: "C", 1: "Db", 2: "D", 3: "Eb", 4: "E", 5: "F",
-    6: "F#", 7: "G", 8: "Ab", 9: "A", 10: "Bb", 11: "B",
+    0: "C",
+    1: "Db",
+    2: "D",
+    3: "Eb",
+    4: "E",
+    5: "F",
+    6: "F#",
+    7: "G",
+    8: "Ab",
+    9: "A",
+    10: "Bb",
+    11: "B",
 }
 _MODE_MAP = {0: "Minor", 1: "Major"}
 
@@ -28,6 +38,7 @@ _MODE_MAP = {0: "Minor", 1: "Major"}
 # ---------------------------------------------------------------------------
 # Listening history
 # ---------------------------------------------------------------------------
+
 
 def load_listening_history() -> pl.DataFrame:
     """
@@ -66,6 +77,7 @@ def load_listening_history() -> pl.DataFrame:
 # Track / audio features cache
 # ---------------------------------------------------------------------------
 
+
 def load_track_features(csv_fallback: str | None = None) -> pl.DataFrame:
     """
     Load track audio features from Parquet cache.
@@ -95,6 +107,7 @@ def save_track_features(df: pl.DataFrame) -> None:
 # ---------------------------------------------------------------------------
 # Genre metadata cache
 # ---------------------------------------------------------------------------
+
 
 def load_genre_map(csv_fallback: str | None = None) -> pl.DataFrame:
     """
@@ -127,6 +140,7 @@ def save_genre_map(df: pl.DataFrame) -> None:
 # Playlist CSV data (existing exported CSVs from v1)
 # ---------------------------------------------------------------------------
 
+
 def load_playlist_csvs(folder: str) -> pl.DataFrame:
     """
     Concatenate all playlist CSVs from a folder into one DataFrame.
@@ -148,6 +162,7 @@ def load_playlist_csvs(folder: str) -> pl.DataFrame:
 # Feature engineering (migrated from api/data/playlists.py)
 # ---------------------------------------------------------------------------
 
+
 def enrich_categorical_features(df: pl.DataFrame) -> pl.DataFrame:
     """
     Derive decade, key label, mode label, key_mode from raw audio feature integers.
@@ -155,27 +170,35 @@ def enrich_categorical_features(df: pl.DataFrame) -> pl.DataFrame:
     """
     # Decade from release_date
     df = df.with_columns(
-        pl.col("release_date").str.slice(0, 4).cast(pl.Int32, strict=False).alias("year")
+        pl.col("release_date")
+        .str.slice(0, 4)
+        .cast(pl.Int32, strict=False)
+        .alias("year")
     ).with_columns(
-        (pl.col("year") // 10 * 10).cast(pl.Utf8).str.replace(r"(\d+)", "${1}s").alias("decade")
+        (pl.col("year") // 10 * 10)
+        .cast(pl.Utf8)
+        .str.replace(r"(\d+)", "${1}s")
+        .alias("decade")
     )
 
     # Key label
     key_map_series = pl.Series("key_int", list(_KEY_MAP.keys()))
     key_label_series = pl.Series("key_label", list(_KEY_MAP.values()))
     df = df.with_columns(
-        pl.col("key").cast(pl.Int32, strict=False).replace_strict(
-            key_map_series, key_label_series, return_dtype=pl.Utf8
-        ).alias("key_labels")
+        pl.col("key")
+        .cast(pl.Int32, strict=False)
+        .replace_strict(key_map_series, key_label_series, return_dtype=pl.Utf8)
+        .alias("key_labels")
     )
 
     # Mode label
     mode_map_series = pl.Series("mode_int", list(_MODE_MAP.keys()))
     mode_label_series = pl.Series("mode_label", list(_MODE_MAP.values()))
     df = df.with_columns(
-        pl.col("mode").cast(pl.Int32, strict=False).replace_strict(
-            mode_map_series, mode_label_series, return_dtype=pl.Utf8
-        ).alias("mode_labels")
+        pl.col("mode")
+        .cast(pl.Int32, strict=False)
+        .replace_strict(mode_map_series, mode_label_series, return_dtype=pl.Utf8)
+        .alias("mode_labels")
     )
 
     # Combined key_mode
@@ -193,15 +216,18 @@ def tag_genre_categories(df: pl.DataFrame, genre_col: str = "genres") -> pl.Data
     """
     expr = pl.lit(None, dtype=pl.Utf8)
     for genre in my_genres:
-        expr = pl.when(pl.col(genre_col).str.contains(genre, literal=True)).then(
-            pl.lit(genre)
-        ).otherwise(expr)
+        expr = (
+            pl.when(pl.col(genre_col).str.contains(genre, literal=True))
+            .then(pl.lit(genre))
+            .otherwise(expr)
+        )
     return df.with_columns(expr.alias("genre_cat"))
 
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
 
 def _save_parquet(df: pl.DataFrame, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
