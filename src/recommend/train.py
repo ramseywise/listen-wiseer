@@ -17,7 +17,11 @@ import polars as pl
 from sklearn.metrics import silhouette_score
 
 from recommend.modules.classifiers import save_classifier, train_playlist_classifier
-from recommend.modules.clustering import build_cluster_features, fit_gmm, predict_cluster_probs
+from recommend.modules.clustering import (
+    build_cluster_features,
+    fit_gmm,
+    predict_cluster_probs,
+)
 from utils.logging import configure_logging, get_logger
 
 log = get_logger(__name__)
@@ -70,8 +74,12 @@ def load_data() -> tuple[pl.DataFrame, pl.DataFrame]:
     corpus = pl.read_csv(CORPUS_CSV, null_values=["", "NA", "NaN"])
     enoa = pl.read_csv(ENOA_CSV, null_values=["", "NA", "NaN"])
 
-    log.info("train.data.loaded", corpus_rows=len(corpus), corpus_cols=len(corpus.columns),
-             enoa_rows=len(enoa))
+    log.info(
+        "train.data.loaded",
+        corpus_rows=len(corpus),
+        corpus_cols=len(corpus.columns),
+        enoa_rows=len(enoa),
+    )
 
     return corpus, enoa
 
@@ -96,8 +104,12 @@ def train_gmm(corpus: pl.DataFrame) -> tuple:
     sil = silhouette_score(corpus_features, cluster_ids, random_state=42)
     cluster_counts = np.bincount(cluster_ids, minlength=8)
 
-    log.info("train.gmm.fit", n_components=8, silhouette=round(float(sil), 4),
-             cluster_counts=cluster_counts.tolist())
+    log.info(
+        "train.gmm.fit",
+        n_components=8,
+        silhouette=round(float(sil), 4),
+        cluster_counts=cluster_counts.tolist(),
+    )
 
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
     gmm_path = MODELS_DIR / "gmm_corpus.pkl"
@@ -105,8 +117,11 @@ def train_gmm(corpus: pl.DataFrame) -> tuple:
     joblib.dump(gmm, gmm_path)
     joblib.dump(scaler, scaler_path)
 
-    log.info("train.gmm.saved", gmm=str(gmm_path.relative_to(_REPO_ROOT)),
-             scaler=str(scaler_path.relative_to(_REPO_ROOT)))
+    log.info(
+        "train.gmm.saved",
+        gmm=str(gmm_path.relative_to(_REPO_ROOT)),
+        scaler=str(scaler_path.relative_to(_REPO_ROOT)),
+    )
 
     return gmm, scaler, corpus_features
 
@@ -146,13 +161,22 @@ def train_classifiers(
         n_pos = len(playlist_track_ids)
 
         if n_pos < MIN_POSITIVES:
-            log.info("train.classifier.skip", playlist=playlist_name, n_pos=n_pos,
-                     min_required=MIN_POSITIVES)
+            log.info(
+                "train.classifier.skip",
+                playlist=playlist_name,
+                n_pos=n_pos,
+                min_required=MIN_POSITIVES,
+            )
             n_skipped += 1
             continue
 
         n_neg = len(corpus) - n_pos
-        log.info("train.classifier.training", playlist=playlist_name, n_pos=n_pos, n_neg=n_neg)
+        log.info(
+            "train.classifier.training",
+            playlist=playlist_name,
+            n_pos=n_pos,
+            n_neg=n_neg,
+        )
 
         pipeline, metrics = train_playlist_classifier(
             corpus=corpus,
@@ -160,17 +184,21 @@ def train_classifiers(
             scaler=scaler,
         )
 
-        log.info("train.classifier.done",
-                 playlist=playlist_name,
-                 accuracy=round(metrics["accuracy"], 3),
-                 precision=round(metrics["precision"], 3),
-                 recall=round(metrics["recall"], 3),
-                 f1=round(metrics["f1"], 3),
-                 roc_auc=round(metrics["roc_auc"], 3),
-                 precision_at_10=round(metrics["precision_at_10"], 3))
+        log.info(
+            "train.classifier.done",
+            playlist=playlist_name,
+            accuracy=round(metrics["accuracy"], 3),
+            precision=round(metrics["precision"], 3),
+            recall=round(metrics["recall"], 3),
+            f1=round(metrics["f1"], 3),
+            roc_auc=round(metrics["roc_auc"], 3),
+            precision_at_10=round(metrics["precision_at_10"], 3),
+        )
 
         saved_path = save_classifier(pipeline, slug, MODELS_DIR)
-        log.debug("train.classifier.saved", path=str(saved_path.relative_to(_REPO_ROOT)))
+        log.debug(
+            "train.classifier.saved", path=str(saved_path.relative_to(_REPO_ROOT))
+        )
 
         del pipeline
         gc.collect()
@@ -198,8 +226,13 @@ def main() -> None:
 
     n_trained, n_skipped = train_classifiers(corpus, enoa, scaler)
 
-    log.info("train.done", n_trained=n_trained, n_skipped=n_skipped,
-             min_positives=MIN_POSITIVES, models_dir=str(MODELS_DIR))
+    log.info(
+        "train.done",
+        n_trained=n_trained,
+        n_skipped=n_skipped,
+        min_positives=MIN_POSITIVES,
+        models_dir=str(MODELS_DIR),
+    )
 
 
 if __name__ == "__main__":

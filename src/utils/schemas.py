@@ -42,6 +42,7 @@ class TrackFeatures(BaseModel):
 
 class PlaylistTrack(BaseModel):
     """Fully enriched track — track + audio + artist features merged."""
+
     id: str
     uri: str
     track_name: str
@@ -79,6 +80,7 @@ class PlaylistTrack(BaseModel):
 
 class ListeningHistoryEntry(BaseModel):
     """One entry from a Spotify extended streaming history JSON export."""
+
     ts: str
     ms_played: int = 0
     track_name: str = Field("", alias="master_metadata_track_name")

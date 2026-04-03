@@ -92,7 +92,9 @@ def test_load_data_missing_corpus_raises(tmp_path: Path) -> None:
     missing = tmp_path / "no_corpus.csv"
     enoa = tmp_path / "enoa.csv"
     enoa.write_text("playlist_name,id\ntest,t1\n")
-    with patch("recommend.train.CORPUS_CSV", missing), patch("recommend.train.ENOA_CSV", enoa):
+    with patch("recommend.train.CORPUS_CSV", missing), patch(
+        "recommend.train.ENOA_CSV", enoa
+    ):
         with pytest.raises(FileNotFoundError, match="Corpus CSV not found"):
             load_data()
 
@@ -101,7 +103,9 @@ def test_load_data_missing_enoa_raises(tmp_path: Path) -> None:
     corpus = tmp_path / "corpus.csv"
     corpus.write_text("id,danceability\nt1,0.5\n")
     missing = tmp_path / "no_enoa.csv"
-    with patch("recommend.train.CORPUS_CSV", corpus), patch("recommend.train.ENOA_CSV", missing):
+    with patch("recommend.train.CORPUS_CSV", corpus), patch(
+        "recommend.train.ENOA_CSV", missing
+    ):
         with pytest.raises(FileNotFoundError, match="ENOA CSV not found"):
             load_data()
 
@@ -111,7 +115,9 @@ def test_load_data_success(tmp_path: Path) -> None:
     enoa_path = tmp_path / "enoa.csv"
     corpus_path.write_text("id,danceability\nt1,0.5\nt2,0.7\n")
     enoa_path.write_text("playlist_name,id\ntest,t1\n")
-    with patch("recommend.train.CORPUS_CSV", corpus_path), patch("recommend.train.ENOA_CSV", enoa_path):
+    with patch("recommend.train.CORPUS_CSV", corpus_path), patch(
+        "recommend.train.ENOA_CSV", enoa_path
+    ):
         corpus_df, enoa_df = load_data()
     assert len(corpus_df) == 2
     assert len(enoa_df) == 1
@@ -124,8 +130,9 @@ def test_load_data_success(tmp_path: Path) -> None:
 
 def test_train_gmm_writes_pkls(corpus: pl.DataFrame, tmp_path: Path) -> None:
     models_dir = tmp_path / "models"
-    with patch("recommend.train.MODELS_DIR", models_dir), \
-         patch("recommend.train._REPO_ROOT", tmp_path):
+    with patch("recommend.train.MODELS_DIR", models_dir), patch(
+        "recommend.train._REPO_ROOT", tmp_path
+    ):
         gmm, scaler, features = train_gmm(corpus)
 
     assert (models_dir / "gmm_corpus.pkl").exists()
@@ -138,8 +145,9 @@ def test_train_gmm_returns_fitted_objects(corpus: pl.DataFrame, tmp_path: Path) 
     from sklearn.preprocessing import MinMaxScaler
 
     models_dir = tmp_path / "models"
-    with patch("recommend.train.MODELS_DIR", models_dir), \
-         patch("recommend.train._REPO_ROOT", tmp_path):
+    with patch("recommend.train.MODELS_DIR", models_dir), patch(
+        "recommend.train._REPO_ROOT", tmp_path
+    ):
         gmm, scaler, _ = train_gmm(corpus)
 
     assert isinstance(gmm, GaussianMixture)
@@ -160,8 +168,9 @@ def test_train_classifiers_skips_when_too_few_positives(
 
     scaler = MinMaxScaler()
     models_dir = tmp_path / "models"
-    with patch("recommend.train.MODELS_DIR", models_dir), \
-         patch("recommend.train._REPO_ROOT", tmp_path):
+    with patch("recommend.train.MODELS_DIR", models_dir), patch(
+        "recommend.train._REPO_ROOT", tmp_path
+    ):
         n_trained, n_skipped = train_classifiers(corpus, enoa, scaler)
 
     assert n_trained == 0
@@ -177,8 +186,9 @@ def test_train_classifiers_trains_when_enough_positives(
 
     scaler = MinMaxScaler()
     models_dir = tmp_path / "models"
-    with patch("recommend.train.MODELS_DIR", models_dir), \
-         patch("recommend.train._REPO_ROOT", tmp_path):
+    with patch("recommend.train.MODELS_DIR", models_dir), patch(
+        "recommend.train._REPO_ROOT", tmp_path
+    ):
         n_trained, n_skipped = train_classifiers(corpus, enoa, scaler)
 
     assert n_trained == 1
@@ -197,8 +207,9 @@ def test_train_classifiers_mixed(corpus: pl.DataFrame, tmp_path: Path) -> None:
 
     scaler = MinMaxScaler()
     models_dir = tmp_path / "models"
-    with patch("recommend.train.MODELS_DIR", models_dir), \
-         patch("recommend.train._REPO_ROOT", tmp_path):
+    with patch("recommend.train.MODELS_DIR", models_dir), patch(
+        "recommend.train._REPO_ROOT", tmp_path
+    ):
         n_trained, n_skipped = train_classifiers(corpus, enoa, scaler)
 
     assert n_trained == 1

@@ -78,7 +78,12 @@ class TestClassifierFeaturesConstant:
             assert feat in CLASSIFIER_FEATURES
 
     def test_contains_retrieval_signals(self):
-        for feat in ["similarity_score", "cluster_prob", "camelot_distance", "tempo_deviation"]:
+        for feat in [
+            "similarity_score",
+            "cluster_prob",
+            "camelot_distance",
+            "tempo_deviation",
+        ]:
             assert feat in CLASSIFIER_FEATURES
 
     def test_length(self):

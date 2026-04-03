@@ -175,7 +175,9 @@ class RecommendationEngine:
         try:
             from spotify.fetch import fetch_audio_features, fetch_playlist_tracks
 
-            track_features_list = fetch_playlist_tracks(self._spotify_client, request.seed_id)
+            track_features_list = fetch_playlist_tracks(
+                self._spotify_client, request.seed_id
+            )
             if not track_features_list:
                 return RecommendResult(
                     track_uris=[],
@@ -333,6 +335,4 @@ class RecommendationEngine:
         """
         if "artist_ids" not in self._corpus.columns:
             return self._corpus.clear()
-        return self._corpus.filter(
-            pl.col("artist_ids").str.contains(artist_id)
-        )
+        return self._corpus.filter(pl.col("artist_ids").str.contains(artist_id))

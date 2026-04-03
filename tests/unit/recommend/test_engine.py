@@ -129,48 +129,73 @@ def _make_mock_engine(tmp_path: Path) -> tuple[RecommendationEngine, Path]:
 
     # Minimal corpus CSV
     _KEY_MODES = [
-        "C Minor", "G Minor", "D Minor", "A Minor", "E Minor", "F Minor",
-        "Bb Minor", "Eb Minor", "Ab Minor", "Db Minor", "F# Minor", "B Minor",
-        "C Major", "G Major", "D Major", "A Major", "E Major", "F Major",
-        "Bb Major", "Eb Major", "Ab Major", "Db Major", "F# Major", "B Major",
+        "C Minor",
+        "G Minor",
+        "D Minor",
+        "A Minor",
+        "E Minor",
+        "F Minor",
+        "Bb Minor",
+        "Eb Minor",
+        "Ab Minor",
+        "Db Minor",
+        "F# Minor",
+        "B Minor",
+        "C Major",
+        "G Major",
+        "D Major",
+        "A Major",
+        "E Major",
+        "F Major",
+        "Bb Major",
+        "Eb Major",
+        "Ab Major",
+        "Db Major",
+        "F# Major",
+        "B Major",
     ]
     _DECADES = ["1960s", "1970s", "1980s", "1990s", "2000s", "2010s", "2020s", "1950s"]
 
     rng = np.random.default_rng(42)
     n = 30
-    corpus = pl.DataFrame({
-        "id": [f"track_{i:03d}" for i in range(n)],
-        "track_name": [f"Track {i}" for i in range(n)],
-        "danceability": rng.uniform(0.0, 1.0, n).tolist(),
-        "energy": rng.uniform(0.0, 1.0, n).tolist(),
-        "loudness": rng.uniform(-60.0, 0.0, n).tolist(),
-        "speechiness": rng.uniform(0.0, 1.0, n).tolist(),
-        "acousticness": rng.uniform(0.0, 1.0, n).tolist(),
-        "instrumentalness": rng.uniform(0.0, 1.0, n).tolist(),
-        "liveness": rng.uniform(0.0, 1.0, n).tolist(),
-        "valence": rng.uniform(0.0, 1.0, n).tolist(),
-        "tempo": rng.uniform(60.0, 200.0, n).tolist(),
-        "popularity": rng.integers(0, 100, n).tolist(),
-        "top": rng.uniform(0.0, 5000.0, n).tolist(),
-        "left": rng.uniform(0.0, 5000.0, n).tolist(),
-        "key_mode": [_KEY_MODES[i % len(_KEY_MODES)] for i in range(n)],
-        "decade": [_DECADES[i % len(_DECADES)] for i in range(n)],
-        "artist_ids": [f"artist_{i % 5}" for i in range(n)],
-        "first_genre": ["zouk"] * n,
-    })
+    corpus = pl.DataFrame(
+        {
+            "id": [f"track_{i:03d}" for i in range(n)],
+            "track_name": [f"Track {i}" for i in range(n)],
+            "danceability": rng.uniform(0.0, 1.0, n).tolist(),
+            "energy": rng.uniform(0.0, 1.0, n).tolist(),
+            "loudness": rng.uniform(-60.0, 0.0, n).tolist(),
+            "speechiness": rng.uniform(0.0, 1.0, n).tolist(),
+            "acousticness": rng.uniform(0.0, 1.0, n).tolist(),
+            "instrumentalness": rng.uniform(0.0, 1.0, n).tolist(),
+            "liveness": rng.uniform(0.0, 1.0, n).tolist(),
+            "valence": rng.uniform(0.0, 1.0, n).tolist(),
+            "tempo": rng.uniform(60.0, 200.0, n).tolist(),
+            "popularity": rng.integers(0, 100, n).tolist(),
+            "top": rng.uniform(0.0, 5000.0, n).tolist(),
+            "left": rng.uniform(0.0, 5000.0, n).tolist(),
+            "key_mode": [_KEY_MODES[i % len(_KEY_MODES)] for i in range(n)],
+            "decade": [_DECADES[i % len(_DECADES)] for i in range(n)],
+            "artist_ids": [f"artist_{i % 5}" for i in range(n)],
+            "first_genre": ["zouk"] * n,
+        }
+    )
     corpus.write_csv(data_dir / "archived" / "spotify_train_data.csv")
 
     # Minimal genre_xy CSV
-    genre_df = pl.DataFrame({
-        "first_genre": ["zouk", "bossa nova"],
-        "color": ["#ff0000", "#00ff00"],
-        "top": [1000.0, 2000.0],
-        "left": [1000.0, 2000.0],
-    })
+    genre_df = pl.DataFrame(
+        {
+            "first_genre": ["zouk", "bossa nova"],
+            "color": ["#ff0000", "#00ff00"],
+            "top": [1000.0, 2000.0],
+            "left": [1000.0, 2000.0],
+        }
+    )
     genre_df.write_csv(data_dir / "archived" / "genres" / "genre_xy.csv")
 
     # Fit minimal GMM + scaler and save pkls
     from recommend.modules.clustering import fit_gmm as _fit_gmm
+
     gmm, scaler = _fit_gmm(corpus, n_components=2, random_state=42)
     joblib.dump(gmm, models_dir / "gmm_corpus.pkl")
     joblib.dump(scaler, models_dir / "scaler_corpus.pkl")
@@ -254,7 +279,9 @@ def test_recommend_routes_to_genre_pipeline(tmp_path: Path) -> None:
     assert result.pipeline_used == "genre"
 
 
-def test_recommend_playlist_without_spotify_client_returns_graceful(tmp_path: Path) -> None:
+def test_recommend_playlist_without_spotify_client_returns_graceful(
+    tmp_path: Path,
+) -> None:
     """recommend(request_type='playlist') with no spotify_client returns empty result."""
     engine, _ = _make_mock_engine(tmp_path)
     # Engine was created without spotify_client

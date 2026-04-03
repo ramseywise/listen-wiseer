@@ -79,8 +79,16 @@ def build_rerank_features(
     mean_tempo: float = float(playlist_profile.get("mean_tempo", 0.0))
 
     # Compute per-row derived features
-    key_mode_col = candidates["key_mode"].to_list() if "key_mode" in candidates.columns else [""] * len(candidates)
-    tempo_col = candidates["tempo"].to_numpy() if "tempo" in candidates.columns else np.zeros(len(candidates))
+    key_mode_col = (
+        candidates["key_mode"].to_list()
+        if "key_mode" in candidates.columns
+        else [""] * len(candidates)
+    )
+    tempo_col = (
+        candidates["tempo"].to_numpy()
+        if "tempo" in candidates.columns
+        else np.zeros(len(candidates))
+    )
 
     camelot_dists = np.array(
         [camelot_distance(km, modal_key) for km in key_mode_col],
@@ -93,8 +101,12 @@ def build_rerank_features(
     base_cols = [c for c in SIMILARITY_FEATURES if c in candidates.columns]
     base_arr = candidates.select(base_cols).to_numpy().astype(np.float64)
 
-    similarity_score = candidates["similarity_score"].to_numpy().astype(np.float64).reshape(-1, 1)
-    cluster_prob = candidates["cluster_prob"].to_numpy().astype(np.float64).reshape(-1, 1)
+    similarity_score = (
+        candidates["similarity_score"].to_numpy().astype(np.float64).reshape(-1, 1)
+    )
+    cluster_prob = (
+        candidates["cluster_prob"].to_numpy().astype(np.float64).reshape(-1, 1)
+    )
 
     X = np.concatenate(
         [
@@ -131,8 +143,14 @@ def train_playlist_classifier(
         metrics_dict keys: accuracy, precision, recall, f1, roc_auc, precision_at_10.
     """
     # Derive labels
-    ids = corpus["id"].to_list() if "id" in corpus.columns else [str(i) for i in range(len(corpus))]
-    y_full = np.array([1 if track_id in playlist_track_ids else 0 for track_id in ids], dtype=np.int32)
+    ids = (
+        corpus["id"].to_list()
+        if "id" in corpus.columns
+        else [str(i) for i in range(len(corpus))]
+    )
+    y_full = np.array(
+        [1 if track_id in playlist_track_ids else 0 for track_id in ids], dtype=np.int32
+    )
 
     # Subsample negatives to keep training tractable on large corpora
     pos_idx = np.where(y_full == 1)[0]
@@ -150,7 +168,9 @@ def train_playlist_classifier(
     modal_key = ""
     mean_tempo = 0.0
     if "tempo" in corpus.columns:
-        pos_mask = np.array([1 if tid in playlist_track_ids else 0 for tid in ids], dtype=bool)
+        pos_mask = np.array(
+            [1 if tid in playlist_track_ids else 0 for tid in ids], dtype=bool
+        )
         if pos_mask.any():
             mean_tempo = float(corpus["tempo"].to_numpy()[pos_mask].mean())
         # modal_key: most common key_mode among positives

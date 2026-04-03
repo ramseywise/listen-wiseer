@@ -70,11 +70,15 @@ class TestFilterByEnoaProximity:
         center = (2862.0, 1004.0)
         result = filter_by_enoa_proximity(small_corpus, center, radius=500.0)
         assert len(result) > 0
-        assert all(result["enoa_distance"].to_list()[i] <= 500.0 for i in range(len(result)))
+        assert all(
+            result["enoa_distance"].to_list()[i] <= 500.0 for i in range(len(result))
+        )
         # t5 at (10000, 500) is very far — must not appear
         assert "t5" not in result["id"].to_list()
 
-    def test_adds_enoa_distance_column_sorted_ascending(self, small_corpus: pl.DataFrame):
+    def test_adds_enoa_distance_column_sorted_ascending(
+        self, small_corpus: pl.DataFrame
+    ):
         center = (2862.0, 1004.0)
         result = filter_by_enoa_proximity(small_corpus, center, radius=5000.0)
         assert "enoa_distance" in result.columns

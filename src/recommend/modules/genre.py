@@ -39,9 +39,7 @@ def genre_to_enoa(
     name_lower = genre_name.lower().strip()
 
     # Exact case-insensitive match
-    exact = genre_map.filter(
-        pl.col("first_genre").str.to_lowercase() == name_lower
-    )
+    exact = genre_map.filter(pl.col("first_genre").str.to_lowercase() == name_lower)
     if len(exact) > 0:
         row = exact.row(0, named=True)
         return (float(row["top"]), float(row["left"]))
@@ -79,17 +77,19 @@ def filter_by_enoa_proximity(
         Filtered DataFrame with 'enoa_distance' column, sorted ascending.
     """
     if len(corpus) == 0:
-        return corpus.with_columns(
-            pl.lit(0.0).alias("enoa_distance")
-        ).filter(pl.lit(False))
+        return corpus.with_columns(pl.lit(0.0).alias("enoa_distance")).filter(
+            pl.lit(False)
+        )
 
     center_top, center_left = center
 
     result = (
-        corpus
-        .with_columns(
+        corpus.with_columns(
             (
-                ((pl.col("top") - center_top) ** 2 + (pl.col("left") - center_left) ** 2)
+                (
+                    (pl.col("top") - center_top) ** 2
+                    + (pl.col("left") - center_left) ** 2
+                )
                 ** 0.5
             ).alias("enoa_distance")
         )

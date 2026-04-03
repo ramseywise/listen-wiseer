@@ -20,6 +20,7 @@ from recommend.modules.clustering import (
 # Fixture: 20-row DataFrame with all required columns
 # ---------------------------------------------------------------------------
 
+
 def _make_corpus(n: int = 20, seed: int = 0) -> pl.DataFrame:
     """Build a synthetic corpus DataFrame for clustering tests.
 
@@ -66,7 +67,9 @@ def corpus() -> pl.DataFrame:
 class TestBuildClusterFeatures:
     def test_returns_ndarray(self, corpus):
         scaler = MinMaxScaler()
-        result, returned_scaler = build_cluster_features(corpus, scaler, fit_scaler=True)
+        result, returned_scaler = build_cluster_features(
+            corpus, scaler, fit_scaler=True
+        )
         assert isinstance(result, np.ndarray)
 
     def test_shape_n_rows_matches(self, corpus):
@@ -78,7 +81,9 @@ class TestBuildClusterFeatures:
         """Expected: 11 audio + 24 key_mode + 8 decade = 43 features."""
         scaler = MinMaxScaler()
         result, _ = build_cluster_features(corpus, scaler, fit_scaler=True)
-        expected_n_features = len(CLUSTER_AUDIO_FEATURES) + len(all_key_modes) + len(all_decades)
+        expected_n_features = (
+            len(CLUSTER_AUDIO_FEATURES) + len(all_key_modes) + len(all_decades)
+        )
         assert result.shape[1] == expected_n_features
         assert result.shape[1] == N_CLUSTER_FEATURES
         assert result.shape == (20, 43)
@@ -188,7 +193,9 @@ class TestFilterCorpusByCluster:
         features, _ = build_cluster_features(corpus, scaler, fit_scaler=False)
         query_probs = predict_cluster_probs(features[:1], gmm)[0]
 
-        result = filter_corpus_by_cluster(corpus, query_probs, gmm, scaler, min_prob=0.05)
+        result = filter_corpus_by_cluster(
+            corpus, query_probs, gmm, scaler, min_prob=0.05
+        )
         assert isinstance(result, pl.DataFrame)
 
     def test_result_is_strict_subset_of_corpus(self, corpus):
@@ -216,7 +223,9 @@ class TestFilterCorpusByCluster:
         features, _ = build_cluster_features(corpus, scaler, fit_scaler=False)
         query_probs = predict_cluster_probs(features[:1], gmm)[0]
 
-        result = filter_corpus_by_cluster(corpus, query_probs, gmm, scaler, min_prob=0.05)
+        result = filter_corpus_by_cluster(
+            corpus, query_probs, gmm, scaler, min_prob=0.05
+        )
         assert len(result) <= len(corpus)
 
     def test_adds_cluster_id_column(self, corpus):

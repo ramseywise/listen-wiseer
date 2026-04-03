@@ -100,7 +100,8 @@ def _mmr_select(
 
             best_idx = max(
                 remaining,
-                key=lambda i: lambda_ * rel_scores[i] - (1 - lambda_) * _max_sim_to_selected(i),
+                key=lambda i: lambda_ * rel_scores[i]
+                - (1 - lambda_) * _max_sim_to_selected(i),
             )
 
         selected_indices.append(best_idx)
@@ -206,7 +207,10 @@ def _cluster_filter(
     # Find the corpus row most similar to query (in SIMILARITY_FEATURES space)
     # to use as a proxy for query cluster membership
     try:
-        from recommend.modules.similarity import DEFAULT_WEIGHTS, compute_weighted_cosine
+        from recommend.modules.similarity import (
+            DEFAULT_WEIGHTS,
+            compute_weighted_cosine,
+        )
 
         available = [c for c in SIMILARITY_FEATURES if c in corpus.columns]
         if available and len(query_features) >= len(available):
@@ -234,19 +238,23 @@ def _cluster_filter(
 
     if len(filtered) == 0:
         # Fall back: annotate full corpus
-        filtered = corpus.with_columns([
-            pl.Series("cluster_id", cluster_ids_all),
-            pl.Series("cluster_prob", cluster_probs_all),
-        ])
+        filtered = corpus.with_columns(
+            [
+                pl.Series("cluster_id", cluster_ids_all),
+                pl.Series("cluster_prob", cluster_probs_all),
+            ]
+        )
         return filtered
 
     # Annotate filtered subset
     cluster_ids_filtered = cluster_ids_all[mask]
     cluster_probs_filtered = cluster_probs_all[mask]
-    filtered = filtered.with_columns([
-        pl.Series("cluster_id", cluster_ids_filtered),
-        pl.Series("cluster_prob", cluster_probs_filtered),
-    ])
+    filtered = filtered.with_columns(
+        [
+            pl.Series("cluster_id", cluster_ids_filtered),
+            pl.Series("cluster_prob", cluster_probs_filtered),
+        ]
+    )
     return filtered
 
 
@@ -295,7 +303,9 @@ class TrackPipeline:
         filtered = _cluster_filter(corpus, query_features, gmm, scaler)
 
         # Step 2: cosine similarity -> top-100
-        candidates = find_similar(corpus=filtered, query=query_features, k=100, weights=weights)
+        candidates = find_similar(
+            corpus=filtered, query=query_features, k=100, weights=weights
+        )
 
         # Step 3: optional rerank
         playlist_profile: dict = {}
@@ -371,7 +381,9 @@ class ArtistPipeline:
 
         # Steps 2-4: identical to TrackPipeline (using centroid as query)
         filtered = _cluster_filter(corpus, centroid, gmm, scaler)
-        candidates = find_similar(corpus=filtered, query=centroid, k=100, weights=weights)
+        candidates = find_similar(
+            corpus=filtered, query=centroid, k=100, weights=weights
+        )
 
         if classifier is not None and len(candidates) > 0:
             if "cluster_prob" not in candidates.columns:
@@ -484,7 +496,9 @@ class PlaylistPipeline:
         filtered = _cluster_filter(working_corpus, centroid, gmm, scaler)
 
         # Step 4: cosine similarity -> top-100
-        candidates = find_similar(corpus=filtered, query=centroid, k=100, weights=weights)
+        candidates = find_similar(
+            corpus=filtered, query=centroid, k=100, weights=weights
+        )
 
         # Step 5: optional classifier rerank
         if classifier is not None and len(candidates) > 0:
@@ -556,7 +570,9 @@ class PlaylistPipeline:
             return selected.head(k)
 
         # Fill remaining from top scorers not yet selected
-        selected_ids = set(selected["id"].to_list()) if "id" in selected.columns else set()
+        selected_ids = (
+            set(selected["id"].to_list()) if "id" in selected.columns else set()
+        )
         remaining = candidates
         if selected_ids and "id" in candidates.columns:
             remaining = candidates.filter(~pl.col("id").is_in(list(selected_ids)))
@@ -616,7 +632,9 @@ class GenrePipeline:
         genre_name = request.seed_id
 
         # Step 1: expand genre zone
-        zone_corpus = expand_genre_zone(genre_name, genre_map, corpus, radius=enoa_radius)
+        zone_corpus = expand_genre_zone(
+            genre_name, genre_map, corpus, radius=enoa_radius
+        )
 
         # Step 2: empty zone -> graceful failure
         if len(zone_corpus) == 0:
@@ -639,7 +657,9 @@ class GenrePipeline:
         filtered = _cluster_filter(zone_corpus, zone_centroid, gmm, scaler)
 
         # Step 4: cosine (uniform weights) -> top-100
-        candidates = find_similar(corpus=filtered, query=zone_centroid, k=100, weights=None)
+        candidates = find_similar(
+            corpus=filtered, query=zone_centroid, k=100, weights=None
+        )
 
         # Step 5: optional classifier rerank
         if classifier is not None and len(candidates) > 0:
