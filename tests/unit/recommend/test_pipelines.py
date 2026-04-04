@@ -80,6 +80,13 @@ def _make_corpus(n: int = 50, seed: int = 42) -> pl.DataFrame:
             "key_mode": [_KEY_MODES[i % len(_KEY_MODES)] for i in range(n)],
             "decade": [_DECADES[i % len(_DECADES)] for i in range(n)],
             "artist_ids": [f"artist_{i % 10}" for i in range(n)],
+            # Engineered features (Phase 3a)
+            "fave_score": rng.uniform(0.0, 5.0, n).tolist(),
+            "n_playlists": rng.integers(0, 5, n).astype(float).tolist(),
+            "year_normalized": rng.uniform(0.0, 1.0, n).tolist(),
+            "duration_ms_normalized": rng.uniform(0.0, 1.0, n).tolist(),
+            "playlist_diversity": rng.integers(0, 4, n).astype(float).tolist(),
+            "embedding_similarity": rng.uniform(0.0, 1.0, n).tolist(),
         }
     )
 
@@ -119,13 +126,7 @@ def scaler(gmm_scaler) -> MinMaxScaler:
 @pytest.fixture(scope="module")
 def query_features(corpus) -> np.ndarray:
     """SIMILARITY_FEATURES vector from the first corpus row."""
-    return (
-        corpus.head(1)
-        .select(SIMILARITY_FEATURES)
-        .to_numpy()
-        .flatten()
-        .astype(np.float64)
-    )
+    return corpus.head(1).select(SIMILARITY_FEATURES).to_numpy().flatten().astype(np.float64)
 
 
 @pytest.fixture(scope="module")
@@ -307,9 +308,7 @@ class TestPlaylistPipeline:
         req = RecommendRequest(request_type="playlist", seed_id="playlist_abc", k=10)
         result = pipeline.run(req, playlist_tracks, corpus, gmm, scaler)
         for tid in result.track_ids:
-            assert (
-                tid not in seed_ids
-            ), f"Seed track {tid} should be excluded from results"
+            assert tid not in seed_ids, f"Seed track {tid} should be excluded from results"
 
     def test_empty_playlist_returns_empty(self, corpus, gmm, scaler):
         pipeline = PlaylistPipeline()
@@ -360,19 +359,13 @@ class TestGenrePipeline:
 
     def test_unknown_genre_returns_empty_uris(self, corpus, gmm, scaler, genre_map):
         pipeline = GenrePipeline()
-        req = RecommendRequest(
-            request_type="genre", seed_id="NONEXISTENT_GENRE_XYZ", k=5
-        )
+        req = RecommendRequest(request_type="genre", seed_id="NONEXISTENT_GENRE_XYZ", k=5)
         result = pipeline.run(req, genre_map, corpus, gmm, scaler)
         assert result.track_uris == []
 
-    def test_unknown_genre_has_non_empty_explanation(
-        self, corpus, gmm, scaler, genre_map
-    ):
+    def test_unknown_genre_has_non_empty_explanation(self, corpus, gmm, scaler, genre_map):
         pipeline = GenrePipeline()
-        req = RecommendRequest(
-            request_type="genre", seed_id="NONEXISTENT_GENRE_XYZ", k=5
-        )
+        req = RecommendRequest(request_type="genre", seed_id="NONEXISTENT_GENRE_XYZ", k=5)
         result = pipeline.run(req, genre_map, corpus, gmm, scaler)
         assert len(result.explanation) > 0
         assert (
@@ -380,9 +373,7 @@ class TestGenrePipeline:
             or "not found" in result.explanation.lower()
         )
 
-    def test_explanation_non_empty_for_known_genre(
-        self, corpus, gmm, scaler, genre_map
-    ):
+    def test_explanation_non_empty_for_known_genre(self, corpus, gmm, scaler, genre_map):
         pipeline = GenrePipeline()
         req = RecommendRequest(request_type="genre", seed_id="test_genre", k=5)
         result = pipeline.run(req, genre_map, corpus, gmm, scaler, enoa_radius=10000.0)

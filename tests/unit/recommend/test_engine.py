@@ -10,6 +10,7 @@ import polars as pl
 import pytest
 
 from recommend.engine import RecommendationEngine
+from recommend.modules.similarity import SIMILARITY_FEATURES
 from recommend.schemas import RecommendRequest, RecommendResult
 
 # ---------------------------------------------------------------------------
@@ -178,6 +179,11 @@ def _make_mock_engine(tmp_path: Path) -> tuple[RecommendationEngine, Path]:
             "decade": [_DECADES[i % len(_DECADES)] for i in range(n)],
             "artist_ids": [f"artist_{i % 5}" for i in range(n)],
             "first_genre": ["zouk"] * n,
+            # Engineered features (Phase 3a)
+            "fave_score": rng.uniform(0.0, 5.0, n).tolist(),
+            "n_playlists": rng.integers(0, 5, n).astype(float).tolist(),
+            "year_normalized": rng.uniform(0.0, 1.0, n).tolist(),
+            "duration_ms_normalized": rng.uniform(0.0, 1.0, n).tolist(),
         }
     )
     corpus.write_csv(data_dir / "archived" / "spotify_train_data.csv")
@@ -313,7 +319,7 @@ def test_resolve_track_features_returns_ndarray_for_known_id(tmp_path: Path) -> 
     assert result is not None
     assert isinstance(result, np.ndarray)
     assert result.ndim == 1
-    assert len(result) == 12  # len(SIMILARITY_FEATURES)
+    assert len(result) == len(SIMILARITY_FEATURES)
 
 
 def test_resolve_artist_tracks_returns_empty_for_missing_artist(tmp_path: Path) -> None:

@@ -25,9 +25,14 @@ CLUSTER_AUDIO_FEATURES: list[str] = [
     "tempo",
     "top",
     "left",
+    # Engineered features (Phase 3a)
+    "fave_score",
+    "n_playlists",
+    "year_normalized",
+    "duration_ms_normalized",
 ]
 
-# Total feature count: 11 audio + 24 key_mode one-hot + 8 decade one-hot = 43
+# Total feature count: 15 audio + 24 key_mode one-hot + 8 decade one-hot = 47
 N_CLUSTER_FEATURES = len(CLUSTER_AUDIO_FEATURES) + len(all_key_modes) + len(all_decades)
 
 

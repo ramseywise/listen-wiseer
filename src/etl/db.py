@@ -101,6 +101,13 @@ CREATE TABLE IF NOT EXISTS genre_xy (
     color       VARCHAR
 );
 
+-- Track2Vec embeddings (64d vectors from playlist co-occurrence)
+CREATE TABLE IF NOT EXISTS track_embeddings (
+    track_id       VARCHAR PRIMARY KEY,
+    embedding      DOUBLE[64],
+    model_version  VARCHAR DEFAULT 'track2vec_v1'
+);
+
 -- Track ↔ playlist (many-to-many)
 CREATE TABLE IF NOT EXISTS playlist_tracks (
     playlist_id VARCHAR,
