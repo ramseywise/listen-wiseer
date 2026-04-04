@@ -23,7 +23,7 @@ from utils.logging import get_logger
 
 log = get_logger(__name__)
 
-ARCHIVED = Path("data/archived")
+ARCHIVED = Path(__file__).resolve().parents[2] / "data" / "archived"
 
 
 def _parse_list(val: str) -> list[str]:
@@ -343,7 +343,9 @@ def main() -> None:
     print(
         f"\nDB ready: {n_tracks} tracks, {n_genres} genre mappings, {n_profile} enriched profiles"
     )
-    print("Location: data/listen_wiseer.db")
+    from etl.db import DB_PATH
+
+    print(f"Location: {DB_PATH}")
     conn.close()
 
 

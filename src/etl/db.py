@@ -11,7 +11,7 @@ from utils.logging import get_logger
 
 log = get_logger(__name__)
 
-DB_PATH = Path("data/listen_wiseer.db")
+DB_PATH = Path(__file__).resolve().parents[2] / "infrastructure" / "db" / "listen_wiseer.db"
 
 _DDL = """
 -- Playlists dimension
@@ -128,7 +128,81 @@ CREATE TABLE IF NOT EXISTS faves (
     score    DOUBLE
 );
 
+-- Per-track genre assignment (updatable; source of truth for genre profiles)
+CREATE TABLE IF NOT EXISTS track_genre (
+    track_id     VARCHAR PRIMARY KEY,
+    first_genre  VARCHAR,
+    gen_4        VARCHAR,
+    gen_6        VARCHAR,
+    gen_8        VARCHAR,
+    my_genre     VARCHAR,
+    sub_genre    VARCHAR,
+    top          DOUBLE,
+    "left"       DOUBLE,
+    color        VARCHAR,
+    genre_source VARCHAR  -- 'manual' | 'model' | 'lookup'
+);
+
+-- Per-artist genre profile (derived from track_genre via track_artists)
+CREATE TABLE IF NOT EXISTS artist_genre (
+    artist_id       VARCHAR PRIMARY KEY,
+    gen_4           VARCHAR,
+    gen_6           VARCHAR,
+    gen_8           VARCHAR,
+    my_genre        VARCHAR,
+    top             DOUBLE,
+    "left"          DOUBLE,
+    dominant_genres VARCHAR,  -- JSON array of top first_genres by count
+    track_count     INTEGER
+);
+
+-- Per-playlist genre profile (derived from track_genre via playlist_tracks)
+CREATE TABLE IF NOT EXISTS playlist_genre (
+    playlist_id  VARCHAR PRIMARY KEY,
+    gen_4        VARCHAR,
+    gen_6        VARCHAR,
+    gen_8        VARCHAR,
+    top_genres   VARCHAR,  -- JSON array (top 5 by count)
+    other_genres VARCHAR,  -- JSON array (remaining)
+    top          DOUBLE,
+    "left"       DOUBLE,
+    track_count  INTEGER
+);
+
+-- External training corpus (595k Spotify tracks with y_target label)
+CREATE TABLE IF NOT EXISTS external_tracks (
+    track_id         VARCHAR PRIMARY KEY,
+    track_name       VARCHAR,
+    artist_names     VARCHAR,
+    popularity       DOUBLE,
+    release_date     VARCHAR,
+    year             INTEGER,
+    decade           VARCHAR,
+    first_genre      VARCHAR,
+    danceability     DOUBLE,
+    energy           DOUBLE,
+    loudness         DOUBLE,
+    speechiness      DOUBLE,
+    acousticness     DOUBLE,
+    instrumentalness DOUBLE,
+    liveness         DOUBLE,
+    valence          DOUBLE,
+    tempo            DOUBLE,
+    duration_ms      BIGINT,
+    time_signature   INTEGER,
+    key              INTEGER,
+    mode             INTEGER,
+    key_labels       VARCHAR,
+    mode_labels      VARCHAR,
+    key_mode         VARCHAR,
+    top              DOUBLE,
+    "left"           DOUBLE,
+    color            VARCHAR,
+    y_target         VARCHAR
+);
+
 -- Enriched view used by agent / models
+-- genre columns sourced from track_genre (falls back to genre_map for coverage)
 CREATE OR REPLACE VIEW track_profile AS
 SELECT
     t.track_id,
@@ -139,14 +213,14 @@ SELECT
     t.popularity,
     t.first_genre,
     t.genre_cat,
-    gm.gen_4,
-    gm.gen_6,
-    gm.gen_8,
-    gm.my_genre,
-    gm.sub_genre,
-    gm.top,
-    gm."left",
-    gm.color,
+    COALESCE(tg.gen_4,  gm.gen_4)     AS gen_4,
+    COALESCE(tg.gen_6,  gm.gen_6)     AS gen_6,
+    COALESCE(tg.gen_8,  gm.gen_8)     AS gen_8,
+    COALESCE(tg.my_genre, gm.my_genre) AS my_genre,
+    COALESCE(tg.sub_genre, gm.sub_genre) AS sub_genre,
+    COALESCE(tg.top,   gm.top)        AS top,
+    COALESCE(tg."left", gm."left")    AS "left",
+    COALESCE(tg.color,  gm.color)     AS color,
     af.danceability,
     af.energy,
     af.loudness,
@@ -166,6 +240,7 @@ SELECT
     COALESCE(f.score, 0.0) AS fave_score
 FROM tracks t
 LEFT JOIN audio_features af USING (track_id)
+LEFT JOIN track_genre tg USING (track_id)
 LEFT JOIN genre_map gm ON t.first_genre = gm.first_genre
 LEFT JOIN faves f USING (track_id);
 """

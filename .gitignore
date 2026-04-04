@@ -11,8 +11,11 @@ build/
 .venv/
 .uv/
 
-# Data (personal / large / generated)
+# Data (personal / large / generated — not committed)
 data/
+
+# Infrastructure DB is committed (operational DuckDB, ~7MB, no external training data)
+# infrastructure/db/listen_wiseer.db is tracked
 
 # Notebooks (exploratory only — not committed)
 notebooks/

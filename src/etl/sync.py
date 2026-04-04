@@ -506,6 +506,25 @@ def sync_lastfm_genres(conn, limit: int | None = None) -> int:
 # ---------------------------------------------------------------------------
 
 
+def sync_genre_profiles(conn) -> None:
+    """Refresh track_genre, artist_genre, and playlist_genre from current DB state.
+
+    Runs after lastfm genre sync so newly tagged tracks get genre profiles assigned.
+    Uses genre_map (manual taxonomy) and genre_xy (ENOA coordinates) as lookup sources.
+    Tracks with no match are written with genre_source='unknown' for later model inference.
+    """
+    from etl.genre_tables import (
+        populate_artist_genre,
+        populate_playlist_genre,
+        populate_track_genre,
+    )
+
+    populate_track_genre(conn)
+    populate_artist_genre(conn)
+    populate_playlist_genre(conn)
+    log.info("sync.genre_profiles.done")
+
+
 def sync(
     conn,
     client: SpotifyClient,
@@ -515,7 +534,7 @@ def sync(
     artist_limit: int | None = None,
     lastfm_limit: int | None = None,
 ) -> None:
-    """Full incremental sync: plan → playlists → tracks → audio → artists → lastfm genres.
+    """Full incremental sync: plan → playlists → tracks → audio → artists → lastfm → genre profiles.
 
     Args:
         max_playlists: Cap playlists synced this run.
@@ -532,6 +551,7 @@ def sync(
     sync_audio_features(conn, client, limit=audio_limit)
     sync_artist_features(conn, client, limit=artist_limit)
     sync_lastfm_genres(conn, limit=lastfm_limit)
+    sync_genre_profiles(conn)
 
 
 def main() -> None:
