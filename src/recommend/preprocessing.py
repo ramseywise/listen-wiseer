@@ -415,16 +415,17 @@ def add_collaborative_features(
         GROUP BY pt.track_id
     """).pl()
 
-    # fave_score from faves table
-    faves_df = conn.execute("""
-        SELECT track_id AS id, score AS fave_score
-        FROM faves
-    """).pl()
-
-    # Left join all onto corpus
+    # Left join collaborative features onto corpus
     result = corpus.join(n_playlists_df, on="id", how="left")
     result = result.join(diversity_df, on="id", how="left")
-    result = result.join(faves_df, on="id", how="left")
+
+    # fave_score: skip if already present (e.g. from track_profile view)
+    if "fave_score" not in result.columns:
+        faves_df = conn.execute("""
+            SELECT track_id AS id, score AS fave_score
+            FROM faves
+        """).pl()
+        result = result.join(faves_df, on="id", how="left")
 
     # Fill NULLs with 0
     result = result.with_columns(

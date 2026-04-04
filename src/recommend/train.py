@@ -1,4 +1,4 @@
-"""Training script: reads archived data, trains all models, writes pkls to models/.
+"""Training script: reads DuckDB (or archived CSVs), trains all models, writes pkls to models/.
 
 Run from repo root:
     PYTHONPATH=src uv run python -m recommend.train
@@ -8,20 +8,22 @@ from __future__ import annotations
 
 import gc
 import re
-import sys
-from pathlib import Path
 
+import duckdb
 import joblib
 import numpy as np
 import polars as pl
 from sklearn.metrics import silhouette_score
 
+from etl.db import get_connection, init_schema
+from paths import ARCHIVED_DIR, CACHE_DIR, MODELS_DIR, REPO_ROOT
 from recommend.modules.classifiers import save_classifier, train_playlist_classifier
 from recommend.modules.clustering import (
     build_cluster_features,
     fit_gmm,
     predict_cluster_probs,
 )
+from recommend.preprocessing import build_feature_matrix
 from utils.logging import configure_logging, get_logger
 
 log = get_logger(__name__)
@@ -29,14 +31,9 @@ log = get_logger(__name__)
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
-# Resolve models/ at repo root regardless of cwd at import time.
-# __file__ = src/recommend/train.py  ->  parent.parent.parent = repo root
-_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-MODELS_DIR = _REPO_ROOT / "models"
-DATA_DIR = _REPO_ROOT / "data" / "archived"
 
-CORPUS_CSV = DATA_DIR / "spotify_train_data.csv"
-ENOA_CSV = DATA_DIR / "enoa.csv"
+CORPUS_CSV = ARCHIVED_DIR / "spotify_train_data.csv"
+ENOA_CSV = ARCHIVED_DIR / "enoa.csv"
 
 MIN_POSITIVES = 20
 
@@ -57,22 +54,50 @@ def _playlist_slug(name: str) -> str:
     return slug
 
 
+def _load_corpus() -> pl.DataFrame:
+    """Load corpus: DuckDB first, CSV fallback."""
+    try:
+        conn = get_connection(read_only=True)
+        init_schema(conn)
+        corpus = build_feature_matrix(conn)
+        conn.close()
+        if corpus.is_empty():
+            raise ValueError("DuckDB corpus is empty")
+        log.info("train.corpus.source", source="duckdb", n_rows=len(corpus))
+        return corpus
+    except (duckdb.IOException, FileNotFoundError, ValueError) as exc:
+        log.info("train.corpus.db_fallback", reason=str(exc))
+
+    if not CORPUS_CSV.exists():
+        raise FileNotFoundError(
+            f"No data source available. DuckDB not usable and CSV not found at {CORPUS_CSV}"
+        )
+    corpus = pl.read_csv(CORPUS_CSV, null_values=["", "NA", "NaN"])
+    log.info("train.corpus.source", source="csv", n_rows=len(corpus))
+    return corpus
+
+
+def _load_enoa() -> pl.DataFrame:
+    """Load ENOA playlist membership from CSV."""
+    if not ENOA_CSV.exists():
+        raise FileNotFoundError(f"ENOA CSV not found: {ENOA_CSV}")
+    return pl.read_csv(ENOA_CSV, null_values=["", "NA", "NaN"])
+
+
 def load_data() -> tuple[pl.DataFrame, pl.DataFrame]:
-    """Load corpus and enoa DataFrames from archived CSVs.
+    """Load corpus and enoa DataFrames.
+
+    Tries DuckDB first (build_feature_matrix), falls back to archived CSVs.
+    ENOA always loaded from CSV (no DB table yet).
 
     Returns:
         Tuple of (corpus, enoa) as Polars DataFrames.
 
     Raises:
-        FileNotFoundError: If either CSV is missing.
+        FileNotFoundError: If neither DB nor CSV sources are available.
     """
-    if not CORPUS_CSV.exists():
-        raise FileNotFoundError(f"Corpus CSV not found: {CORPUS_CSV}")
-    if not ENOA_CSV.exists():
-        raise FileNotFoundError(f"ENOA CSV not found: {ENOA_CSV}")
-
-    corpus = pl.read_csv(CORPUS_CSV, null_values=["", "NA", "NaN"])
-    enoa = pl.read_csv(ENOA_CSV, null_values=["", "NA", "NaN"])
+    corpus = _load_corpus()
+    enoa = _load_enoa()
 
     log.info(
         "train.data.loaded",
@@ -80,7 +105,6 @@ def load_data() -> tuple[pl.DataFrame, pl.DataFrame]:
         corpus_cols=len(corpus.columns),
         enoa_rows=len(enoa),
     )
-
     return corpus, enoa
 
 
@@ -119,8 +143,8 @@ def train_gmm(corpus: pl.DataFrame) -> tuple:
 
     log.info(
         "train.gmm.saved",
-        gmm=str(gmm_path.relative_to(_REPO_ROOT)),
-        scaler=str(scaler_path.relative_to(_REPO_ROOT)),
+        gmm=str(gmm_path.relative_to(REPO_ROOT)),
+        scaler=str(scaler_path.relative_to(REPO_ROOT)),
     )
 
     return gmm, scaler, corpus_features
@@ -153,9 +177,7 @@ def train_classifiers(
         slug = _playlist_slug(playlist_name)
 
         raw_ids = (
-            enoa.filter(pl.col("playlist_name") == playlist_name)["id"]
-            .cast(pl.Utf8)
-            .to_list()
+            enoa.filter(pl.col("playlist_name") == playlist_name)["id"].cast(pl.Utf8).to_list()
         )
         playlist_track_ids: set[str] = {tid for tid in raw_ids if tid in corpus_ids}
         n_pos = len(playlist_track_ids)
@@ -196,9 +218,7 @@ def train_classifiers(
         )
 
         saved_path = save_classifier(pipeline, slug, MODELS_DIR)
-        log.debug(
-            "train.classifier.saved", path=str(saved_path.relative_to(_REPO_ROOT))
-        )
+        log.debug("train.classifier.saved", path=str(saved_path.relative_to(REPO_ROOT)))
 
         del pipeline
         gc.collect()
@@ -215,6 +235,12 @@ def main() -> None:
     log.info("train.start")
 
     corpus, enoa = load_data()
+
+    # Cache preprocessed corpus for engine.py
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    corpus_cache_path = CACHE_DIR / "corpus_features.parquet"
+    corpus.write_parquet(corpus_cache_path)
+    log.info("train.corpus.cached", path=str(corpus_cache_path.relative_to(REPO_ROOT)))
 
     gmm, scaler, _corpus_features = train_gmm(corpus)
 

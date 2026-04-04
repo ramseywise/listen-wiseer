@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import duckdb
 import joblib
 import numpy as np
 import polars as pl
@@ -17,7 +18,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import MinMaxScaler
 
 from recommend.modules.classifiers import load_classifier
-from recommend.modules.genre import load_genre_map
+from recommend.modules.genre import load_genre_map_from_db
 from recommend.modules.similarity import SIMILARITY_FEATURES
 from recommend.pipelines import (
     ArtistPipeline,
@@ -26,6 +27,9 @@ from recommend.pipelines import (
     TrackPipeline,
 )
 from recommend.schemas import RecommendRequest, RecommendResult
+from utils.logging import get_logger
+
+log = get_logger(__name__)
 
 
 class RecommendationEngine:
@@ -39,8 +43,8 @@ class RecommendationEngine:
         models_dir: Directory containing gmm_corpus.pkl, scaler_corpus.pkl,
             and per-playlist classifier_{slug}.pkl files.
         data_dir: Root data directory. Corpus loaded from
-            data_dir/archived/spotify_train_data.csv and genre map from
-            data_dir/archived/genres/genre_xy.csv.
+            data_dir/cache/corpus_features.parquet (written by train.py).
+            Genre map loaded from DuckDB genre_xy table.
         spotify_client: Optional SpotifyClient used only for playlist pipeline
             (fetching live playlist tracks). Engine is fully testable without it.
     """
@@ -51,20 +55,18 @@ class RecommendationEngine:
         data_dir: Path,
         spotify_client=None,
     ) -> None:
-        # Load corpus
-        corpus_path = data_dir / "archived" / "spotify_train_data.csv"
-        self._corpus: pl.DataFrame = pl.read_csv(corpus_path)
+        # Load corpus from Parquet cache (written by train.py)
+        self._corpus: pl.DataFrame = self._load_corpus(data_dir)
 
-        # Load genre map
-        genre_map_path = data_dir / "archived" / "genres" / "genre_xy.csv"
-        self._genre_map: pl.DataFrame = load_genre_map(genre_map_path)
+        # Load genre map from DuckDB
+        self._genre_map: pl.DataFrame = self._load_genre_map()
 
         # Load GMM
         gmm_path = models_dir / "gmm_corpus.pkl"
         if not gmm_path.exists():
             raise FileNotFoundError(
                 f"GMM model not found: {gmm_path}. "
-                "Run `PYTHONPATH=src uv run python -m recommend.train` to generate it."
+                "Run `uv run python -m recommend.train` to generate it."
             )
         self._gmm: GaussianMixture = joblib.load(gmm_path)
 
@@ -73,13 +75,58 @@ class RecommendationEngine:
         if not scaler_path.exists():
             raise FileNotFoundError(
                 f"Scaler not found: {scaler_path}. "
-                "Run `PYTHONPATH=src uv run python -m recommend.train` to generate it."
+                "Run `uv run python -m recommend.train` to generate it."
             )
         self._scaler: MinMaxScaler = joblib.load(scaler_path)
 
         self._models_dir: Path = models_dir
         self._classifier_cache: dict[str, Pipeline | None] = {}
         self._spotify_client = spotify_client
+
+    @staticmethod
+    def _load_corpus(data_dir: Path) -> pl.DataFrame:
+        """Load corpus from Parquet cache written by train.py.
+
+        Args:
+            data_dir: Root data directory.
+
+        Returns:
+            Corpus DataFrame.
+
+        Raises:
+            FileNotFoundError: If Parquet cache doesn't exist.
+        """
+        parquet_path = data_dir / "cache" / "corpus_features.parquet"
+        if not parquet_path.exists():
+            raise FileNotFoundError(
+                f"Corpus not found at {parquet_path}. "
+                "Run `PYTHONPATH=src uv run python -m recommend.train` first."
+            )
+        corpus = pl.read_parquet(parquet_path)
+        log.info("engine.corpus.loaded", source="parquet", n_rows=len(corpus))
+        return corpus
+
+    @staticmethod
+    def _load_genre_map() -> pl.DataFrame:
+        """Load genre map from the DuckDB genre_xy table.
+
+        Returns:
+            Genre map DataFrame with [first_genre, top, left] columns.
+
+        Raises:
+            FileNotFoundError: If DB is not accessible or genre_xy is empty.
+        """
+        from paths import DB_PATH
+
+        conn = duckdb.connect(str(DB_PATH), read_only=True)
+        genre_df = load_genre_map_from_db(conn)
+        conn.close()
+        if genre_df.is_empty():
+            raise FileNotFoundError(
+                f"genre_xy table is empty in {DB_PATH}. Run bootstrap to populate it."
+            )
+        log.info("engine.genre_map.loaded", source="duckdb", n_rows=len(genre_df))
+        return genre_df
 
     def recommend(self, request: RecommendRequest) -> RecommendResult:
         """Route the request to the correct pipeline and return a RecommendResult.
@@ -175,9 +222,7 @@ class RecommendationEngine:
         try:
             from spotify.fetch import fetch_audio_features, fetch_playlist_tracks
 
-            track_features_list = fetch_playlist_tracks(
-                self._spotify_client, request.seed_id
-            )
+            track_features_list = fetch_playlist_tracks(self._spotify_client, request.seed_id)
             if not track_features_list:
                 return RecommendResult(
                     track_uris=[],
