@@ -11,13 +11,13 @@ import pytest
 
 from recommend.train import (
     MIN_POSITIVES,
+    _load_corpus,
     _playlist_slug,
     load_data,
     train_classifiers,
     train_gmm,
 )
 from utils.const import all_decades, all_key_modes
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -97,8 +97,12 @@ def test_load_data_missing_corpus_raises(tmp_path: Path) -> None:
     missing = tmp_path / "no_corpus.csv"
     enoa = tmp_path / "enoa.csv"
     enoa.write_text("playlist_name,id\ntest,t1\n")
-    with patch("recommend.train.CORPUS_CSV", missing), patch("recommend.train.ENOA_CSV", enoa):
-        with pytest.raises(FileNotFoundError, match="Corpus CSV not found"):
+    with (
+        patch("recommend.train.get_connection", side_effect=FileNotFoundError("no db")),
+        patch("recommend.train.CORPUS_CSV", missing),
+        patch("recommend.train.ENOA_CSV", enoa),
+    ):
+        with pytest.raises(FileNotFoundError, match="No data source available"):
             load_data()
 
 
@@ -106,7 +110,11 @@ def test_load_data_missing_enoa_raises(tmp_path: Path) -> None:
     corpus = tmp_path / "corpus.csv"
     corpus.write_text("id,danceability\nt1,0.5\n")
     missing = tmp_path / "no_enoa.csv"
-    with patch("recommend.train.CORPUS_CSV", corpus), patch("recommend.train.ENOA_CSV", missing):
+    with (
+        patch("recommend.train.get_connection", side_effect=FileNotFoundError("no db")),
+        patch("recommend.train.CORPUS_CSV", corpus),
+        patch("recommend.train.ENOA_CSV", missing),
+    ):
         with pytest.raises(FileNotFoundError, match="ENOA CSV not found"):
             load_data()
 
@@ -117,6 +125,7 @@ def test_load_data_success(tmp_path: Path) -> None:
     corpus_path.write_text("id,danceability\nt1,0.5\nt2,0.7\n")
     enoa_path.write_text("playlist_name,id\ntest,t1\n")
     with (
+        patch("recommend.train.get_connection", side_effect=FileNotFoundError("no db")),
         patch("recommend.train.CORPUS_CSV", corpus_path),
         patch("recommend.train.ENOA_CSV", enoa_path),
     ):
@@ -134,7 +143,7 @@ def test_train_gmm_writes_pkls(corpus: pl.DataFrame, tmp_path: Path) -> None:
     models_dir = tmp_path / "models"
     with (
         patch("recommend.train.MODELS_DIR", models_dir),
-        patch("recommend.train._REPO_ROOT", tmp_path),
+        patch("recommend.train.REPO_ROOT", tmp_path),
     ):
         gmm, scaler, features = train_gmm(corpus)
 
@@ -150,7 +159,7 @@ def test_train_gmm_returns_fitted_objects(corpus: pl.DataFrame, tmp_path: Path) 
     models_dir = tmp_path / "models"
     with (
         patch("recommend.train.MODELS_DIR", models_dir),
-        patch("recommend.train._REPO_ROOT", tmp_path),
+        patch("recommend.train.REPO_ROOT", tmp_path),
     ):
         gmm, scaler, _ = train_gmm(corpus)
 
@@ -174,7 +183,7 @@ def test_train_classifiers_skips_when_too_few_positives(
     models_dir = tmp_path / "models"
     with (
         patch("recommend.train.MODELS_DIR", models_dir),
-        patch("recommend.train._REPO_ROOT", tmp_path),
+        patch("recommend.train.REPO_ROOT", tmp_path),
     ):
         n_trained, n_skipped = train_classifiers(corpus, enoa, scaler)
 
@@ -193,7 +202,7 @@ def test_train_classifiers_trains_when_enough_positives(
     models_dir = tmp_path / "models"
     with (
         patch("recommend.train.MODELS_DIR", models_dir),
-        patch("recommend.train._REPO_ROOT", tmp_path),
+        patch("recommend.train.REPO_ROOT", tmp_path),
     ):
         n_trained, n_skipped = train_classifiers(corpus, enoa, scaler)
 
@@ -215,9 +224,38 @@ def test_train_classifiers_mixed(corpus: pl.DataFrame, tmp_path: Path) -> None:
     models_dir = tmp_path / "models"
     with (
         patch("recommend.train.MODELS_DIR", models_dir),
-        patch("recommend.train._REPO_ROOT", tmp_path),
+        patch("recommend.train.REPO_ROOT", tmp_path),
     ):
         n_trained, n_skipped = train_classifiers(corpus, enoa, scaler)
 
     assert n_trained == 1
     assert n_skipped == 1
+
+
+# ---------------------------------------------------------------------------
+# _load_corpus dual-mode
+# ---------------------------------------------------------------------------
+
+
+def test_load_corpus_falls_back_to_csv(tmp_path: Path) -> None:
+    """_load_corpus falls back to CSV when DB is unavailable."""
+    csv_path = tmp_path / "corpus.csv"
+    csv_path.write_text("id,danceability\nt1,0.5\nt2,0.7\n")
+
+    with (
+        patch("recommend.train.get_connection", side_effect=FileNotFoundError("no db")),
+        patch("recommend.train.CORPUS_CSV", csv_path),
+    ):
+        corpus = _load_corpus()
+    assert len(corpus) == 2
+
+
+def test_load_corpus_raises_when_no_source(tmp_path: Path) -> None:
+    """_load_corpus raises FileNotFoundError when both sources are unavailable."""
+    missing = tmp_path / "missing.csv"
+    with (
+        patch("recommend.train.get_connection", side_effect=FileNotFoundError("no db")),
+        patch("recommend.train.CORPUS_CSV", missing),
+    ):
+        with pytest.raises(FileNotFoundError, match="No data source available"):
+            _load_corpus()

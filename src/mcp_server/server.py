@@ -3,11 +3,9 @@ MCP server exposing Spotify READ operations as tools for LLM agents.
 Run with: uv run python src/mcp_server/server.py
 """
 
-import logging
-from pathlib import Path
-
 from mcp.server.fastmcp import FastMCP
 
+from paths import DATA_DIR, MODELS_DIR
 from recommend.engine import RecommendationEngine
 from recommend.schemas import RecommendRequest
 from spotify.client import SpotifyClient
@@ -16,20 +14,20 @@ from spotify.fetch import (
     fetch_playlist_tracks,
     fetch_recently_played,
 )
+from utils.logging import get_logger
+
+log = get_logger(__name__)
 
 mcp = FastMCP("listen-wiseer")
 
-_MODELS_DIR = Path(__file__).resolve().parent.parent.parent / "models"
-_DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
-
 try:
     _engine: RecommendationEngine | None = RecommendationEngine(
-        models_dir=_MODELS_DIR,
-        data_dir=_DATA_DIR,
+        models_dir=MODELS_DIR,
+        data_dir=DATA_DIR,
     )
-except FileNotFoundError as e:
+except FileNotFoundError as exc:
     _engine = None
-    logging.warning(f"Recommendation engine not available: {e}")
+    log.warning("mcp.engine.unavailable", error=str(exc))
 
 
 @mcp.tool()

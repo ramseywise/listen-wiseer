@@ -1,17 +1,14 @@
 """
 DuckDB connection and schema management.
-DB file lives at data/listen_wiseer.db (gitignored).
+DB file lives at infrastructure/db/listen_wiseer.db (tracked via Git LFS).
 """
-
-from pathlib import Path
 
 import duckdb
 
+from paths import DB_PATH
 from utils.logging import get_logger
 
 log = get_logger(__name__)
-
-DB_PATH = Path(__file__).resolve().parents[2] / "infrastructure" / "db" / "listen_wiseer.db"
 
 _DDL = """
 -- Playlists dimension
@@ -237,6 +234,7 @@ SELECT
     af.key_labels,
     af.mode_labels,
     af.key_mode,
+    af.features_source,
     COALESCE(f.score, 0.0) AS fave_score
 FROM tracks t
 LEFT JOIN audio_features af USING (track_id)

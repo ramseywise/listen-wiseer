@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import numpy as np
 import polars as pl
@@ -14,7 +14,7 @@ from recommend.modules.similarity import SIMILARITY_FEATURES
 from recommend.schemas import RecommendRequest, RecommendResult
 
 # ---------------------------------------------------------------------------
-# Helpers: check whether real models exist
+# Helpers: check whether real models + data exist for integration-style tests
 # ---------------------------------------------------------------------------
 
 _REPO_ROOT = Path(__file__).parents[4]  # listen-wiseer/
@@ -24,8 +24,7 @@ _DATA_DIR = _REPO_ROOT / "data"
 _MODELS_AVAILABLE = (
     (_MODELS_DIR / "gmm_corpus.pkl").exists()
     and (_MODELS_DIR / "scaler_corpus.pkl").exists()
-    and (_DATA_DIR / "archived" / "spotify_train_data.csv").exists()
-    and (_DATA_DIR / "archived" / "genres" / "genre_xy.csv").exists()
+    and (_DATA_DIR / "cache" / "corpus_features.parquet").exists()
 )
 
 
@@ -35,35 +34,28 @@ _MODELS_AVAILABLE = (
 
 
 def test_init_missing_gmm_raises_file_not_found(tmp_path: Path) -> None:
-    """Engine init should raise FileNotFoundError when gmm_corpus.pkl is missing.
+    """Engine init should raise FileNotFoundError when gmm_corpus.pkl is missing."""
+    if not (_DATA_DIR / "cache" / "corpus_features.parquet").exists():
+        pytest.skip("Corpus parquet not available — skip pkl-missing test")
 
-    The error message must include the expected pkl path so the user knows
-    exactly which file is missing.
-    """
-    # Provide real data files if available so we only trigger the pkl check,
-    # otherwise we need at least a valid CSV. We use tmp_path for models_dir
-    # which has no pkl files at all.
-    if not (_DATA_DIR / "archived" / "spotify_train_data.csv").exists():
-        pytest.skip("Training data not available — skip pkl-missing test")
-
-    with pytest.raises(FileNotFoundError) as exc_info:
+    genre_df = pl.DataFrame({"first_genre": ["zouk"], "top": [1000.0], "left": [1000.0]})
+    with (
+        pytest.raises(FileNotFoundError) as exc_info,
+        patch.object(RecommendationEngine, "_load_genre_map", return_value=genre_df),
+    ):
         RecommendationEngine(
             models_dir=tmp_path,  # tmp_path has no pkl files
             data_dir=_DATA_DIR,
         )
 
     error_message = str(exc_info.value)
-    # Path should appear in the message
     assert "gmm_corpus.pkl" in error_message
 
 
 def test_init_missing_scaler_raises_file_not_found(tmp_path: Path) -> None:
-    """Engine init should raise FileNotFoundError when scaler_corpus.pkl is missing.
-
-    Creates a dummy gmm_corpus.pkl so the GMM check passes but scaler check fails.
-    """
-    if not (_DATA_DIR / "archived" / "spotify_train_data.csv").exists():
-        pytest.skip("Training data not available — skip pkl-missing test")
+    """Engine init should raise FileNotFoundError when scaler_corpus.pkl is missing."""
+    if not (_DATA_DIR / "cache" / "corpus_features.parquet").exists():
+        pytest.skip("Corpus parquet not available — skip pkl-missing test")
 
     import joblib
     from sklearn.mixture import GaussianMixture
@@ -71,9 +63,12 @@ def test_init_missing_scaler_raises_file_not_found(tmp_path: Path) -> None:
     # Place a dummy gmm pkl so only the scaler check fires
     dummy_gmm = GaussianMixture(n_components=2, random_state=42)
     joblib.dump(dummy_gmm, tmp_path / "gmm_corpus.pkl")
-    # scaler_corpus.pkl intentionally absent
 
-    with pytest.raises(FileNotFoundError) as exc_info:
+    genre_df = pl.DataFrame({"first_genre": ["zouk"], "top": [1000.0], "left": [1000.0]})
+    with (
+        pytest.raises(FileNotFoundError) as exc_info,
+        patch.object(RecommendationEngine, "_load_genre_map", return_value=genre_df),
+    ):
         RecommendationEngine(
             models_dir=tmp_path,
             data_dir=_DATA_DIR,
@@ -120,15 +115,12 @@ def _make_mock_engine(tmp_path: Path) -> tuple[RecommendationEngine, Path]:
     Returns the engine and the models_dir used.
     """
     import joblib
-    from sklearn.mixture import GaussianMixture
-    from sklearn.preprocessing import MinMaxScaler
 
     models_dir = tmp_path / "models"
     models_dir.mkdir()
     data_dir = tmp_path / "data"
-    (data_dir / "archived" / "genres").mkdir(parents=True)
 
-    # Minimal corpus CSV
+    # Synthetic corpus Parquet (only source engine uses)
     _KEY_MODES = [
         "C Minor",
         "G Minor",
@@ -179,25 +171,23 @@ def _make_mock_engine(tmp_path: Path) -> tuple[RecommendationEngine, Path]:
             "decade": [_DECADES[i % len(_DECADES)] for i in range(n)],
             "artist_ids": [f"artist_{i % 5}" for i in range(n)],
             "first_genre": ["zouk"] * n,
-            # Engineered features (Phase 3a)
             "fave_score": rng.uniform(0.0, 5.0, n).tolist(),
             "n_playlists": rng.integers(0, 5, n).astype(float).tolist(),
             "year_normalized": rng.uniform(0.0, 1.0, n).tolist(),
             "duration_ms_normalized": rng.uniform(0.0, 1.0, n).tolist(),
         }
     )
-    corpus.write_csv(data_dir / "archived" / "spotify_train_data.csv")
+    (data_dir / "cache").mkdir(parents=True, exist_ok=True)
+    corpus.write_parquet(data_dir / "cache" / "corpus_features.parquet")
 
-    # Minimal genre_xy CSV
+    # Synthetic genre map (mock _load_genre_map to avoid needing DuckDB)
     genre_df = pl.DataFrame(
         {
             "first_genre": ["zouk", "bossa nova"],
-            "color": ["#ff0000", "#00ff00"],
             "top": [1000.0, 2000.0],
             "left": [1000.0, 2000.0],
         }
     )
-    genre_df.write_csv(data_dir / "archived" / "genres" / "genre_xy.csv")
 
     # Fit minimal GMM + scaler and save pkls
     from recommend.modules.clustering import fit_gmm as _fit_gmm
@@ -206,10 +196,12 @@ def _make_mock_engine(tmp_path: Path) -> tuple[RecommendationEngine, Path]:
     joblib.dump(gmm, models_dir / "gmm_corpus.pkl")
     joblib.dump(scaler, models_dir / "scaler_corpus.pkl")
 
-    engine = RecommendationEngine(
-        models_dir=models_dir,
-        data_dir=data_dir,
-    )
+    # Patch _load_genre_map to return our synthetic genre_df (avoids DuckDB)
+    with patch.object(RecommendationEngine, "_load_genre_map", return_value=genre_df):
+        engine = RecommendationEngine(
+            models_dir=models_dir,
+            data_dir=data_dir,
+        )
     return engine, models_dir
 
 
