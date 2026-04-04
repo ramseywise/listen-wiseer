@@ -20,19 +20,7 @@ notebooks/
 # Trained model artifacts
 models/
 
-# Claude Code — ignore personal/local state, commit shared config
-.claude/
-# Un-ignore the .claude dir itself so negations below can work
-!.claude/
-# Shared config — committed
-!.claude/settings.json
-!.claude/commands/
-!.claude/commands/**
-!.claude/skills/
-!.claude/skills/**
-# Local-only state — keep ignored
-.claude/docs/
-.claude/memory/
+# Claude Code — all config committed; only ephemeral local state excluded
 .claude/todo-log.jsonl
 
 # Chainlit
