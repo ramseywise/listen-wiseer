@@ -1,0 +1,104 @@
+# Playlist sync status configuration
+#
+# status values:
+#   active   — synced at 2am, tracks included in corpus + classifier training
+#   archived — not synced; tracks preserved in DB and corpus but no classifier trained
+#   excluded — never synced (default for playlists discovered via Spotify API)
+#
+# Playlists not listed here default to 'excluded'.
+# Names must match Spotify playlist names exactly (case-sensitive).
+
+# ── Acoustic ──────────────────────────────────────────────────────────────────
+[playlists."lebanese blonde :: misterio sterio"]
+status = "active"
+
+[playlists."hollow sound of the morning chimes"]
+status = "active"
+
+[playlists."parajito del amor :: canto de imanja"]
+status = "active"
+
+# ── R&B ───────────────────────────────────────────────────────────────────────
+[playlists."sinnerman :: young, gifted and black"]
+status = "active"
+
+[playlists."nightbirds :: love hangover"]
+status = "active"
+
+[playlists."Mumbo Sugar :: Discotheque 76"]
+status = "active"
+
+# ── Rock ──────────────────────────────────────────────────────────────────────
+[playlists."lady stardust :: this must be the place"]
+status = "active"
+
+[playlists."pink moon :: our endless numbered days"]
+status = "active"
+
+[playlists."kozmic blues :: ege bamyasi"]
+status = "active"
+
+# ── Jazz ──────────────────────────────────────────────────────────────────────
+[playlists."bossa nova :: tropicalía esotérico"]
+status = "active"
+
+[playlists."bitches brew :: blue maqams"]
+status = "active"
+
+[playlists."feelin' good :: sunday kind of <3"]
+status = "active"
+
+[playlists."searching for the moon :: la nuit"]
+status = "active"
+
+# ── Classical ─────────────────────────────────────────────────────────────────
+[playlists."Bernstein Philharmonie: Modern"]
+status = "archived"
+
+[playlists."Bernstein Philharmonie: Romantics"]
+status = "archived"
+
+[playlists."Pianissimo"]
+status = "archived"
+
+[playlists."Verismo bel Canto"]
+status = "archived"
+
+# ── Lofi / Chill ──────────────────────────────────────────────────────────────
+[playlists."acid blues :: abusey junction"]
+status = "active"
+
+[playlists."champagne problems :: cumbia del olvido"]
+status = "active"
+
+[playlists."avril 14th :: island songs"]
+status = "active"
+
+# ── House / Disco ─────────────────────────────────────────────────────────────────────
+[playlists."cooking with palms trax + peggy gou"]
+status = "active"
+
+[playlists."<3 that D jonny ciao ✨"]
+status = "archived"
+
+[playlists."CockTail D'Amore | Berlin"]
+status = "archived"
+
+[playlists."katermukke :: kreuzberg'den kadıköy'e"]
+status = "archived"
+
+# ── Dance ─────────────────────────────────────────────────────────────────────
+[playlists."Forrómantico"]
+status = "archived"
+
+[playlists."¡zapatos! ¡zapatos!"]
+status = "archived"
+
+[playlists."dança da zoukini"]
+status = "archived"
+
+[playlists."pies en fuego"]
+status = "archived"
+
+[playlists."kizombamama"]
+status = "archived"

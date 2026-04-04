@@ -14,16 +14,30 @@ Run:
 """
 
 import ast
+import tomllib
 from pathlib import Path
 
 import polars as pl
 
 from etl.db import get_connection, init_schema
+from paths import PLAYLIST_CONFIG_PATH
 from utils.logging import get_logger
 
 log = get_logger(__name__)
 
 ARCHIVED = Path(__file__).resolve().parents[2] / "data" / "archived"
+
+
+def _load_playlist_status_config() -> dict[str, str]:
+    """Return mapping of playlist_name → status from playlist_status.toml."""
+    if not PLAYLIST_CONFIG_PATH.exists():
+        log.warning("bootstrap.playlist_config.missing", path=str(PLAYLIST_CONFIG_PATH))
+        return {}
+    with PLAYLIST_CONFIG_PATH.open("rb") as fh:
+        raw = tomllib.load(fh)
+    return {
+        name: attrs.get("status", "excluded") for name, attrs in raw.get("playlists", {}).items()
+    }
 
 
 def _parse_list(val: str) -> list[str]:
@@ -48,16 +62,26 @@ def load_playlists(conn) -> None:
     if not path.exists():
         log.warning("bootstrap.playlists.missing", path=str(path))
         return
+    name_config = _load_playlist_status_config()
     df = pl.read_csv(path).drop("")
+    df = df.with_columns(
+        pl.col("playlist_name")
+        .map_elements(lambda n: name_config.get(n, "excluded"), return_dtype=pl.Utf8)
+        .alias("status")
+    )
     conn.register("_playlists", df)
     conn.execute(
         """
-        INSERT OR IGNORE INTO playlists (playlist_id, playlist_name, gen_4, gen_6, gen_8, top_genres, other_genres)
-        SELECT playlist_id, playlist_name, gen_4, gen_6, gen_8, top_genres, other_genres
+        INSERT INTO playlists (playlist_id, playlist_name, status, gen_4, gen_6, gen_8, top_genres, other_genres)
+        SELECT playlist_id, playlist_name, status, gen_4, gen_6, gen_8, top_genres, other_genres
         FROM _playlists
+        ON CONFLICT (playlist_id) DO UPDATE SET
+            playlist_name = excluded.playlist_name,
+            status        = excluded.status
     """
     )
-    log.info("bootstrap.playlists.done", n=len(df))
+    by_status = df.group_by("status").len().sort("status")
+    log.info("bootstrap.playlists.done", n=len(df), by_status=by_status.to_dicts())
 
 
 def load_genre_map(conn) -> None:

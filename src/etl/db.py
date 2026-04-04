@@ -52,6 +52,8 @@ ALTER TABLE genre_map ADD COLUMN IF NOT EXISTS color VARCHAR;
 -- Migrate existing installs: refresh flag and sync timestamp on playlists
 ALTER TABLE playlists ADD COLUMN IF NOT EXISTS include_in_refresh BOOLEAN DEFAULT TRUE;
 ALTER TABLE playlists ADD COLUMN IF NOT EXISTS last_synced TIMESTAMP;
+-- Playlist sync status: 'active' | 'archived' | 'excluded'
+ALTER TABLE playlists ADD COLUMN IF NOT EXISTS status VARCHAR DEFAULT 'excluded';
 
 -- Tracks dimension
 CREATE TABLE IF NOT EXISTS tracks (
@@ -106,11 +108,15 @@ CREATE TABLE IF NOT EXISTS track_embeddings (
 );
 
 -- Track ↔ playlist (many-to-many)
+-- removed_at: set when a track is no longer in the Spotify playlist; NULL = currently active member
 CREATE TABLE IF NOT EXISTS playlist_tracks (
     playlist_id VARCHAR,
     track_id    VARCHAR,
+    removed_at  TIMESTAMP,
     PRIMARY KEY (playlist_id, track_id)
 );
+-- Migrate existing installs: add removed_at if missing
+ALTER TABLE playlist_tracks ADD COLUMN IF NOT EXISTS removed_at TIMESTAMP;
 
 -- Track ↔ artist (many-to-many, artist_ids stored as raw string in CSVs)
 CREATE TABLE IF NOT EXISTS track_artists (
