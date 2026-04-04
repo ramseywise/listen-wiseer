@@ -1,8 +1,39 @@
 # Changelog
 
-## [Unreleased] — Phase 3: LangGraph Agent
+## [Unreleased] — Phase 3c: LangGraph Agent + Chainlit UI
 
-_Nothing yet — see `.claude/docs/PLAN.md` Phase 3 steps._
+_Not started — see `.claude/docs/plans/phase3c_agent_chainlit.md`._
+
+---
+
+## [0.5.0] — 2026-04-04 — Phase 3a/3b: Feature engineering + training pipeline
+
+### Added
+- **`src/paths.py`** — `REPO_ROOT`, `MODELS_DIR`, `DATA_DIR`, `DB_PATH`, `CACHE_DIR`, `ARCHIVED_DIR` — single path anchor for all modules
+- **`src/recommend/preprocessing.py`** — full feature engineering pipeline (`build_feature_matrix`):
+  - `load_corpus_from_db` — reads `track_profile` view from DuckDB
+  - `add_collaborative_features` — `n_playlists`, `playlist_diversity`, `fave_score`
+  - `add_temporal_features` — `year_normalized`, `years_since_release`, `duration_ms_normalized`
+  - `compute_artist_enoa_centroid` — ENOA spatial centroid per artist via `track_artists` join
+  - `compute_artist_medians` / `compute_genre_medians` — imputation source tables
+  - `impute_missing_features` — artist → genre → global median cascade for NULL audio features
+  - `propagate_playlist_profiles` — fills genre/cluster columns from playlist membership
+  - `compute_track2vec` / `store_track2vec` / `load_track2vec` — Track2Vec (Word2Vec on playlist co-occurrence, 64d) via gensim; stored in `track_embeddings` DuckDB table
+- **`src/recommend/train.py`** — complete training script: reads DuckDB, calls `build_feature_matrix`, fits GMM + scaler + per-playlist LightGBM classifiers, writes `models/*.pkl` and `data/cache/corpus_features.parquet`
+- **Track2Vec embeddings wired into inference** (`src/recommend/pipelines.py`):
+  - `_add_embedding_similarity` helper — cosine(seed t2v, candidate t2v) using `t2v_0..t2v_63` corpus columns
+  - Called before `rerank_candidates` in `TrackPipeline`, `ArtistPipeline`, `PlaylistPipeline`, `GenrePipeline`
+- **450 new unit tests** (`tests/unit/test_preprocessing.py`, expanded `test_train.py`, `test_pipelines.py`, `test_classifiers.py`, `test_clustering.py`)
+
+### Changed
+- **`src/mcp_server/server.py`** — imports `MODELS_DIR`, `DATA_DIR` from `paths` (removed inline `Path(__file__)` computation)
+- **`src/recommend/engine.py`** — imports paths from `paths`; corpus loaded from parquet cache; genre map loaded from DuckDB at init
+- **`src/recommend/modules/genre.py`** — `load_genre_map_from_db` reads from DuckDB instead of CSV
+- **`src/etl/db.py`** — `track_profile` view now includes `af.features_source`; `track_embeddings` table added to DDL; `audio_features.features_source` migration added
+- **`src/recommend/train.py`** bugfixes:
+  - Removed `read_only=True` on training connection (view refresh requires write access)
+  - `init_schema` called before `build_feature_matrix` to refresh `track_profile` view
+  - ENOA/spatial columns (`top`, `left`, `artist_enoa_top`, `artist_enoa_left`) filled with 0.0 before GMM fit
 
 ---
 

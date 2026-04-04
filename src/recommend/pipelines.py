@@ -24,6 +24,62 @@ from recommend.modules.similarity import (
     playlist_centroid,
 )
 from recommend.schemas import RecommendRequest, RecommendResult
+from utils.logging import get_logger
+
+log = get_logger(__name__)
+
+# ---------------------------------------------------------------------------
+# Embedding similarity helper
+# ---------------------------------------------------------------------------
+
+T2V_PREFIX = "t2v_"
+
+
+def _add_embedding_similarity(
+    candidates: pl.DataFrame,
+    seed_id: str | None,
+    corpus: pl.DataFrame,
+) -> pl.DataFrame:
+    """Add 'embedding_similarity' column to candidates using Track2Vec cosine similarity.
+
+    Looks up the seed track's t2v embedding from the corpus, then computes cosine
+    similarity against each candidate's t2v embedding. Falls back to 0.0 if embeddings
+    are absent or the seed track has no embedding.
+
+    Args:
+        candidates: Candidate DataFrame (subset of corpus rows).
+        seed_id: Track ID of the seed track (may be None for centroid-based queries).
+        corpus: Full corpus with t2v_* columns.
+
+    Returns:
+        candidates with 'embedding_similarity' column added (or replaced).
+    """
+    t2v_cols = [c for c in corpus.columns if c.startswith(T2V_PREFIX)]
+    if not t2v_cols or not seed_id:
+        return candidates.with_columns(pl.lit(0.0).alias("embedding_similarity"))
+
+    # Look up seed embedding
+    seed_rows = corpus.filter(pl.col("id") == seed_id)
+    if seed_rows.is_empty():
+        return candidates.with_columns(pl.lit(0.0).alias("embedding_similarity"))
+
+    seed_vec = seed_rows.select(t2v_cols).to_numpy()[0].astype(np.float64)
+    seed_norm = np.linalg.norm(seed_vec)
+    if seed_norm == 0.0:
+        return candidates.with_columns(pl.lit(0.0).alias("embedding_similarity"))
+
+    # Only compute for candidates that have the t2v columns
+    cand_t2v_cols = [c for c in t2v_cols if c in candidates.columns]
+    if not cand_t2v_cols:
+        return candidates.with_columns(pl.lit(0.0).alias("embedding_similarity"))
+
+    cand_mat = candidates.select(cand_t2v_cols).to_numpy().astype(np.float64)
+    cand_norms = np.linalg.norm(cand_mat, axis=1, keepdims=True)
+    cand_norms = np.where(cand_norms == 0.0, 1.0, cand_norms)
+    sims = (cand_mat / cand_norms) @ (seed_vec / seed_norm)
+
+    return candidates.with_columns(pl.Series("embedding_similarity", sims.tolist()))
+
 
 # ---------------------------------------------------------------------------
 # MMR helper
@@ -95,13 +151,12 @@ def _mmr_select(
             # Compute max sim to already selected set for each remaining candidate
             sel_X = X[selected_indices]
 
-            def _max_sim_to_selected(i: int) -> float:
-                return max(_cosine(X[i], sel_X[j]) for j in range(len(sel_X)))
+            def _max_sim_to_selected(i: int, _sel_X: np.ndarray = sel_X) -> float:
+                return max(_cosine(X[i], _sel_X[j]) for j in range(len(_sel_X)))
 
             best_idx = max(
                 remaining,
-                key=lambda i: lambda_ * rel_scores[i]
-                - (1 - lambda_) * _max_sim_to_selected(i),
+                key=lambda i: lambda_ * rel_scores[i] - (1 - lambda_) * _max_sim_to_selected(i),
             )
 
         selected_indices.append(best_idx)
@@ -231,7 +286,7 @@ def _cluster_filter(
 
     # Determine which clusters are relevant to the query
     min_prob = 0.05
-    relevant_clusters = set(int(c) for c in np.where(query_probs >= min_prob)[0])
+    relevant_clusters = {int(c) for c in np.where(query_probs >= min_prob)[0]}
 
     mask = np.array([int(cid) in relevant_clusters for cid in cluster_ids_all])
     filtered = corpus.filter(pl.Series(mask))
@@ -303,21 +358,20 @@ class TrackPipeline:
         filtered = _cluster_filter(corpus, query_features, gmm, scaler)
 
         # Step 2: cosine similarity -> top-100
-        candidates = find_similar(
-            corpus=filtered, query=query_features, k=100, weights=weights
-        )
+        candidates = find_similar(corpus=filtered, query=query_features, k=100, weights=weights)
 
         # Step 3: optional rerank
         playlist_profile: dict = {}
         if classifier is not None and len(candidates) > 0:
             if "cluster_prob" not in candidates.columns:
                 candidates = candidates.with_columns(pl.lit(0.0).alias("cluster_prob"))
+            candidates = _add_embedding_similarity(candidates, request.seed_id, corpus)
             playlist_profile = {"modal_key": "", "mean_tempo": 0.0}
             try:
                 candidates = rerank_candidates(candidates, classifier, playlist_profile)
                 candidates = candidates.head(k * 2)
-            except Exception:
-                pass
+            except Exception as exc:
+                log.warning("pipeline.rerank.failed", error=str(exc))
 
         # Step 4: MMR
         result_df = _mmr_select(candidates, query_features, k)
@@ -381,19 +435,18 @@ class ArtistPipeline:
 
         # Steps 2-4: identical to TrackPipeline (using centroid as query)
         filtered = _cluster_filter(corpus, centroid, gmm, scaler)
-        candidates = find_similar(
-            corpus=filtered, query=centroid, k=100, weights=weights
-        )
+        candidates = find_similar(corpus=filtered, query=centroid, k=100, weights=weights)
 
         if classifier is not None and len(candidates) > 0:
             if "cluster_prob" not in candidates.columns:
                 candidates = candidates.with_columns(pl.lit(0.0).alias("cluster_prob"))
+            candidates = _add_embedding_similarity(candidates, None, corpus)
             playlist_profile: dict = {"modal_key": "", "mean_tempo": 0.0}
             try:
                 candidates = rerank_candidates(candidates, classifier, playlist_profile)
                 candidates = candidates.head(k * 2)
-            except Exception:
-                pass
+            except Exception as exc:
+                log.warning("pipeline.rerank.failed", error=str(exc))
 
         result_df = _mmr_select(candidates, centroid, k)
         k_found = len(result_df)
@@ -496,19 +549,18 @@ class PlaylistPipeline:
         filtered = _cluster_filter(working_corpus, centroid, gmm, scaler)
 
         # Step 4: cosine similarity -> top-100
-        candidates = find_similar(
-            corpus=filtered, query=centroid, k=100, weights=weights
-        )
+        candidates = find_similar(corpus=filtered, query=centroid, k=100, weights=weights)
 
         # Step 5: optional classifier rerank
         if classifier is not None and len(candidates) > 0:
             if "cluster_prob" not in candidates.columns:
                 candidates = candidates.with_columns(pl.lit(0.0).alias("cluster_prob"))
+            candidates = _add_embedding_similarity(candidates, None, corpus)
             try:
                 candidates = rerank_candidates(candidates, classifier, playlist_profile)
                 candidates = candidates.head(k * 2)
-            except Exception:
-                pass
+            except Exception as exc:
+                log.warning("pipeline.rerank.failed", error=str(exc))
 
         # Step 6: cluster-diverse sampling
         result_df = self._cluster_diverse_sample(candidates, k)
@@ -570,9 +622,7 @@ class PlaylistPipeline:
             return selected.head(k)
 
         # Fill remaining from top scorers not yet selected
-        selected_ids = (
-            set(selected["id"].to_list()) if "id" in selected.columns else set()
-        )
+        selected_ids = set(selected["id"].to_list()) if "id" in selected.columns else set()
         remaining = candidates
         if selected_ids and "id" in candidates.columns:
             remaining = candidates.filter(~pl.col("id").is_in(list(selected_ids)))
@@ -632,9 +682,7 @@ class GenrePipeline:
         genre_name = request.seed_id
 
         # Step 1: expand genre zone
-        zone_corpus = expand_genre_zone(
-            genre_name, genre_map, corpus, radius=enoa_radius
-        )
+        zone_corpus = expand_genre_zone(genre_name, genre_map, corpus, radius=enoa_radius)
 
         # Step 2: empty zone -> graceful failure
         if len(zone_corpus) == 0:
@@ -657,20 +705,19 @@ class GenrePipeline:
         filtered = _cluster_filter(zone_corpus, zone_centroid, gmm, scaler)
 
         # Step 4: cosine (uniform weights) -> top-100
-        candidates = find_similar(
-            corpus=filtered, query=zone_centroid, k=100, weights=None
-        )
+        candidates = find_similar(corpus=filtered, query=zone_centroid, k=100, weights=None)
 
         # Step 5: optional classifier rerank
         if classifier is not None and len(candidates) > 0:
             if "cluster_prob" not in candidates.columns:
                 candidates = candidates.with_columns(pl.lit(0.0).alias("cluster_prob"))
+            candidates = _add_embedding_similarity(candidates, None, corpus)
             playlist_profile: dict = {"modal_key": "", "mean_tempo": 0.0}
             try:
                 candidates = rerank_candidates(candidates, classifier, playlist_profile)
                 candidates = candidates.head(k * 2)
-            except Exception:
-                pass
+            except Exception as exc:
+                log.warning("pipeline.rerank.failed", error=str(exc))
 
         # Step 6: MMR
         result_df = _mmr_select(candidates, zone_centroid, k)

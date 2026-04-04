@@ -217,14 +217,14 @@ def compute_artist_medians(
     if ta_df.is_empty():
         log.warning("preprocessing.artist_medians.no_track_artists")
         return pl.DataFrame(
-            schema={"artist_id": pl.Utf8} | {f: pl.Float64 for f in IMPUTABLE_AUDIO_FEATURES}
+            schema={"artist_id": pl.Utf8} | dict.fromkeys(IMPUTABLE_AUDIO_FEATURES, pl.Float64)
         )
 
     # Filter corpus to Spotify-sourced tracks only
     spotify_corpus = corpus.filter(pl.col("features_source") == "spotify")
     if spotify_corpus.is_empty():
         return pl.DataFrame(
-            schema={"artist_id": pl.Utf8} | {f: pl.Float64 for f in IMPUTABLE_AUDIO_FEATURES}
+            schema={"artist_id": pl.Utf8} | dict.fromkeys(IMPUTABLE_AUDIO_FEATURES, pl.Float64)
         )
 
     # Join tracks to artists, then group by artist and compute medians
@@ -258,7 +258,7 @@ def compute_genre_medians(corpus: pl.DataFrame) -> pl.DataFrame:
     )
     if spotify_corpus.is_empty():
         return pl.DataFrame(
-            schema={"first_genre": pl.Utf8} | {f: pl.Float64 for f in IMPUTABLE_AUDIO_FEATURES}
+            schema={"first_genre": pl.Utf8} | dict.fromkeys(IMPUTABLE_AUDIO_FEATURES, pl.Float64)
         )
 
     medians = spotify_corpus.group_by("first_genre").agg(
@@ -592,9 +592,9 @@ def compute_artist_enoa_centroid(
         lefts: list[float] = []
         for g in genres:
             if g in genre_lookup:
-                t, l = genre_lookup[g]
+                t, left_val = genre_lookup[g]
                 tops.append(t)
-                lefts.append(l)
+                lefts.append(left_val)
 
         if tops:
             result_rows.append(
@@ -759,6 +759,24 @@ def build_feature_matrix(conn: DuckDBPyConnection) -> pl.DataFrame:
     genre_medians = compute_genre_medians(corpus)
     corpus = impute_missing_features(corpus, artist_medians, genre_medians, conn)
 
+    # 5b. Join Track2Vec embeddings as t2v_0..t2v_63 (0.0 for tracks without embeddings)
+    t2v = load_track2vec(conn)
+    if t2v:
+        t2v_dim = len(next(iter(t2v.values())))
+        t2v_cols = [f"t2v_{i}" for i in range(t2v_dim)]
+        ids = corpus["id"].to_list()
+        t2v_data = {col: [] for col in t2v_cols}
+        for tid in ids:
+            emb = t2v.get(tid, np.zeros(t2v_dim, dtype=np.float64))
+            for i, col in enumerate(t2v_cols):
+                t2v_data[col].append(float(emb[i]))
+        corpus = corpus.with_columns(
+            [pl.Series(col, vals, dtype=pl.Float64) for col, vals in t2v_data.items()]
+        )
+        log.info("preprocessing.track2vec.joined", n_tracks=len(t2v), n_dims=t2v_dim)
+    else:
+        log.info("preprocessing.track2vec.skipped", reason="no embeddings in db")
+
     # 6. Propagate playlist profiles
     corpus = propagate_playlist_profiles(corpus, conn)
 
@@ -779,6 +797,11 @@ def build_feature_matrix(conn: DuckDBPyConnection) -> pl.DataFrame:
     for f in IMPUTABLE_AUDIO_FEATURES:
         if f in corpus.columns:
             corpus = corpus.with_columns(pl.col(f).fill_null(0.0))
+
+    # Fill ENOA/spatial columns used by clustering — may be NULL for uncharted genres
+    for col in ("top", "left", "artist_enoa_top", "artist_enoa_left"):
+        if col in corpus.columns:
+            corpus = corpus.with_columns(pl.col(col).fill_null(0.0))
 
     log.info(
         "preprocessing.build.done",

@@ -57,8 +57,8 @@ def _playlist_slug(name: str) -> str:
 def _load_corpus() -> pl.DataFrame:
     """Load corpus: DuckDB first, CSV fallback."""
     try:
-        conn = get_connection(read_only=True)
-        init_schema(conn)
+        conn = get_connection(read_only=False)
+        init_schema(conn)  # refresh track_profile view (idempotent)
         corpus = build_feature_matrix(conn)
         conn.close()
         if corpus.is_empty():
