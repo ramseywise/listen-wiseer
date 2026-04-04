@@ -18,6 +18,10 @@ SIMILARITY_FEATURES: list[str] = [
     "popularity",
     "top",
     "left",
+    # Engineered features (Phase 3a)
+    "fave_score",
+    "n_playlists",
+    "year_normalized",
 ]
 
 DEFAULT_WEIGHTS: dict[str, float] = {f: 1.0 for f in SIMILARITY_FEATURES}
@@ -161,9 +165,7 @@ def find_similar(
         return df.with_columns(pl.lit(0.0).alias("similarity_score"))
 
     X = df.select(SIMILARITY_FEATURES).to_numpy().astype(np.float64)
-    weight_arr = np.array(
-        [weights.get(f, 1.0) for f in SIMILARITY_FEATURES], dtype=np.float64
-    )
+    weight_arr = np.array([weights.get(f, 1.0) for f in SIMILARITY_FEATURES], dtype=np.float64)
 
     scores = compute_weighted_cosine(X, query.astype(np.float64), weight_arr)
 

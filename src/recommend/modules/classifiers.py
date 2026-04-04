@@ -28,6 +28,9 @@ CLASSIFIER_FEATURES: list[str] = SIMILARITY_FEATURES + [
     "cluster_prob",
     "camelot_distance",
     "tempo_deviation",
+    # Engineered features (Phase 3a)
+    "embedding_similarity",
+    "playlist_diversity",
 ]
 
 _REQUIRED_RETRIEVAL_COLS = {"similarity_score", "cluster_prob"}
@@ -71,9 +74,7 @@ def build_rerank_features(
     """
     missing = _REQUIRED_RETRIEVAL_COLS - set(candidates.columns)
     if missing:
-        raise ValueError(
-            f"candidates DataFrame is missing required columns: {sorted(missing)}"
-        )
+        raise ValueError(f"candidates DataFrame is missing required columns: {sorted(missing)}")
 
     modal_key: str = playlist_profile.get("modal_key", "")
     mean_tempo: float = float(playlist_profile.get("mean_tempo", 0.0))
@@ -101,11 +102,19 @@ def build_rerank_features(
     base_cols = [c for c in SIMILARITY_FEATURES if c in candidates.columns]
     base_arr = candidates.select(base_cols).to_numpy().astype(np.float64)
 
-    similarity_score = (
-        candidates["similarity_score"].to_numpy().astype(np.float64).reshape(-1, 1)
+    similarity_score = candidates["similarity_score"].to_numpy().astype(np.float64).reshape(-1, 1)
+    cluster_prob = candidates["cluster_prob"].to_numpy().astype(np.float64).reshape(-1, 1)
+
+    # Engineered features: embedding_similarity and playlist_diversity
+    embedding_sim = (
+        candidates["embedding_similarity"].to_numpy().astype(np.float64).reshape(-1, 1)
+        if "embedding_similarity" in candidates.columns
+        else np.zeros((len(candidates), 1), dtype=np.float64)
     )
-    cluster_prob = (
-        candidates["cluster_prob"].to_numpy().astype(np.float64).reshape(-1, 1)
+    playlist_div = (
+        candidates["playlist_diversity"].to_numpy().astype(np.float64).reshape(-1, 1)
+        if "playlist_diversity" in candidates.columns
+        else np.zeros((len(candidates), 1), dtype=np.float64)
     )
 
     X = np.concatenate(
@@ -115,6 +124,8 @@ def build_rerank_features(
             cluster_prob,
             camelot_dists.reshape(-1, 1),
             tempo_devs.reshape(-1, 1),
+            embedding_sim,
+            playlist_div,
         ],
         axis=1,
     )
@@ -143,11 +154,7 @@ def train_playlist_classifier(
         metrics_dict keys: accuracy, precision, recall, f1, roc_auc, precision_at_10.
     """
     # Derive labels
-    ids = (
-        corpus["id"].to_list()
-        if "id" in corpus.columns
-        else [str(i) for i in range(len(corpus))]
-    )
+    ids = corpus["id"].to_list() if "id" in corpus.columns else [str(i) for i in range(len(corpus))]
     y_full = np.array(
         [1 if track_id in playlist_track_ids else 0 for track_id in ids], dtype=np.int32
     )
@@ -168,9 +175,7 @@ def train_playlist_classifier(
     modal_key = ""
     mean_tempo = 0.0
     if "tempo" in corpus.columns:
-        pos_mask = np.array(
-            [1 if tid in playlist_track_ids else 0 for tid in ids], dtype=bool
-        )
+        pos_mask = np.array([1 if tid in playlist_track_ids else 0 for tid in ids], dtype=bool)
         if pos_mask.any():
             mean_tempo = float(corpus["tempo"].to_numpy()[pos_mask].mean())
         # modal_key: most common key_mode among positives

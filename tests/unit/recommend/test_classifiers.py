@@ -47,6 +47,12 @@ def _make_candidates(n: int = 10, seed: int = 0) -> pl.DataFrame:
             "cluster_prob": rng.uniform(0.0, 1.0, n).tolist(),
             # Categorical — needed for camelot_distance
             "key_mode": ["C Minor"] * n,
+            # Engineered features (Phase 3a)
+            "fave_score": rng.uniform(0.0, 5.0, n).tolist(),
+            "n_playlists": rng.integers(0, 5, n).astype(float).tolist(),
+            "year_normalized": rng.uniform(0.0, 1.0, n).tolist(),
+            "embedding_similarity": rng.uniform(0.0, 1.0, n).tolist(),
+            "playlist_diversity": rng.integers(0, 4, n).astype(float).tolist(),
         }
     )
 
@@ -59,7 +65,7 @@ def candidates() -> pl.DataFrame:
 @pytest.fixture
 def playlist_profile() -> dict:
     return {
-        "centroid": np.zeros(12),
+        "centroid": np.zeros(15),
         "modal_key": "G Minor",
         "mean_tempo": 120.0,
     }
@@ -89,7 +95,7 @@ class TestClassifierFeaturesConstant:
     def test_length(self):
         from recommend.modules.similarity import SIMILARITY_FEATURES
 
-        assert len(CLASSIFIER_FEATURES) == len(SIMILARITY_FEATURES) + 4
+        assert len(CLASSIFIER_FEATURES) == len(SIMILARITY_FEATURES) + 6
 
 
 # ---------------------------------------------------------------------------
@@ -128,8 +134,8 @@ class TestBuildRerankFeatures:
         df = _make_candidates(n=3, seed=0)
         # All tracks have key_mode = "C Minor"; modal_key = "G Minor" -> distance 1
         X = build_rerank_features(df, playlist_profile)
-        # camelot_distance is the second-to-last column (index -2)
-        camelot_col = X[:, -2]
+        # camelot_distance is 4th from last (after tempo_deviation, embedding_similarity, playlist_diversity)
+        camelot_col = X[:, -4]
         assert np.all(camelot_col == 1.0)
 
     def test_tempo_deviation_computed(self, playlist_profile):
@@ -138,7 +144,7 @@ class TestBuildRerankFeatures:
         tempos = df["tempo"].to_numpy()
         X = build_rerank_features(df, playlist_profile)
         expected = np.abs(tempos - playlist_profile["mean_tempo"])
-        np.testing.assert_allclose(X[:, -1], expected, rtol=1e-6)
+        np.testing.assert_allclose(X[:, -3], expected, rtol=1e-6)
 
 
 # ---------------------------------------------------------------------------
@@ -183,14 +189,10 @@ class TestRerankCandidates:
         """rerank_score values must come from predict_proba column 1."""
         fixed_scores = np.array([0.9, 0.1, 0.5, 0.7, 0.3, 0.8, 0.2, 0.6, 0.4, 0.0])
         mock = MagicMock()
-        mock.predict_proba.return_value = np.column_stack(
-            [1.0 - fixed_scores, fixed_scores]
-        )
+        mock.predict_proba.return_value = np.column_stack([1.0 - fixed_scores, fixed_scores])
         result = rerank_candidates(candidates, mock, playlist_profile)
         expected_sorted = np.sort(fixed_scores)[::-1]
-        np.testing.assert_allclose(
-            result["rerank_score"].to_numpy(), expected_sorted, rtol=1e-6
-        )
+        np.testing.assert_allclose(result["rerank_score"].to_numpy(), expected_sorted, rtol=1e-6)
 
 
 # ---------------------------------------------------------------------------
