@@ -2,10 +2,12 @@
 
 Run from repo root:
     PYTHONPATH=src uv run python -m recommend.train
+    PYTHONPATH=src uv run python -m recommend.train --compare   # LightGBM vs CatBoost
 """
 
 from __future__ import annotations
 
+import argparse
 import gc
 import re
 
@@ -14,10 +16,16 @@ import joblib
 import numpy as np
 import polars as pl
 from sklearn.metrics import silhouette_score
+from sklearn.mixture import GaussianMixture
+from sklearn.preprocessing import MinMaxScaler
 
 from etl.db import get_connection, init_schema
 from paths import ARCHIVED_DIR, CACHE_DIR, MODELS_DIR, REPO_ROOT
-from recommend.modules.classifiers import save_classifier, train_playlist_classifier
+from recommend.modules.classifiers import (
+    ModelType,
+    save_classifier,
+    train_playlist_classifier,
+)
 from recommend.modules.clustering import (
     build_cluster_features,
     fit_gmm,
@@ -150,17 +158,44 @@ def train_gmm(corpus: pl.DataFrame) -> tuple:
     return gmm, scaler, corpus_features
 
 
+def _log_classifier_metrics(
+    playlist_name: str,
+    metrics: dict,
+    model_type: ModelType,
+) -> None:
+    """Log classifier training metrics via structlog."""
+    log.info(
+        "train.classifier.done",
+        playlist=playlist_name,
+        model_type=model_type,
+        accuracy=round(metrics["accuracy"], 3),
+        precision=round(metrics["precision"], 3),
+        recall=round(metrics["recall"], 3),
+        f1=round(metrics["f1"], 3),
+        roc_auc=round(metrics["roc_auc"], 3),
+        precision_at_10=round(metrics["precision_at_10"], 3),
+        brier_score=round(metrics["brier_score"], 4),
+        log_loss=round(metrics["log_loss"], 4),
+    )
+
+
 def train_classifiers(
     corpus: pl.DataFrame,
     enoa: pl.DataFrame,
-    scaler,
+    scaler: MinMaxScaler,
+    gmm: GaussianMixture,
+    gmm_scaler: MinMaxScaler,
+    model_type: ModelType = "lightgbm",
 ) -> tuple[int, int]:
-    """Train one LightGBM classifier per playlist in enoa.csv.
+    """Train one classifier per playlist in enoa.csv.
 
     Args:
         corpus: Full training corpus DataFrame.
         enoa: ENOA DataFrame with playlist_name and id columns.
-        scaler: Fitted MinMaxScaler from GMM step.
+        scaler: Fitted MinMaxScaler from GMM step (legacy, passed through).
+        gmm: Fitted GaussianMixture model for computing cluster_prob.
+        gmm_scaler: Fitted MinMaxScaler for the GMM feature space.
+        model_type: Which estimator to train ("lightgbm" or "catboost").
 
     Returns:
         Tuple of (n_trained, n_skipped).
@@ -168,7 +203,7 @@ def train_classifiers(
     corpus_ids: set[str] = set(corpus["id"].cast(pl.Utf8).to_list())
     playlist_names = enoa["playlist_name"].unique().sort().to_list()
 
-    log.info("train.classifiers.start", n_playlists=len(playlist_names))
+    log.info("train.classifiers.start", n_playlists=len(playlist_names), model_type=model_type)
 
     n_trained = 0
     n_skipped = 0
@@ -196,6 +231,7 @@ def train_classifiers(
         log.info(
             "train.classifier.training",
             playlist=playlist_name,
+            model_type=model_type,
             n_pos=n_pos,
             n_neg=n_neg,
         )
@@ -204,18 +240,12 @@ def train_classifiers(
             corpus=corpus,
             playlist_track_ids=playlist_track_ids,
             scaler=scaler,
+            gmm=gmm,
+            gmm_scaler=gmm_scaler,
+            model_type=model_type,
         )
 
-        log.info(
-            "train.classifier.done",
-            playlist=playlist_name,
-            accuracy=round(metrics["accuracy"], 3),
-            precision=round(metrics["precision"], 3),
-            recall=round(metrics["recall"], 3),
-            f1=round(metrics["f1"], 3),
-            roc_auc=round(metrics["roc_auc"], 3),
-            precision_at_10=round(metrics["precision_at_10"], 3),
-        )
+        _log_classifier_metrics(playlist_name, metrics, model_type)
 
         saved_path = save_classifier(pipeline, slug, MODELS_DIR)
         log.debug("train.classifier.saved", path=str(saved_path.relative_to(REPO_ROOT)))
@@ -227,12 +257,136 @@ def train_classifiers(
     return n_trained, n_skipped
 
 
+def compare_models(
+    corpus: pl.DataFrame,
+    enoa: pl.DataFrame,
+    scaler: MinMaxScaler,
+    gmm: GaussianMixture,
+    gmm_scaler: MinMaxScaler,
+) -> None:
+    """Train both LightGBM and CatBoost for each playlist, log side-by-side metrics.
+
+    This is informational only — models are NOT saved. Use for benchmarking.
+
+    Args:
+        corpus: Full training corpus DataFrame.
+        enoa: ENOA DataFrame with playlist_name and id columns.
+        scaler: Fitted MinMaxScaler from GMM step.
+        gmm: Fitted GaussianMixture model.
+        gmm_scaler: Fitted MinMaxScaler for the GMM feature space.
+    """
+    corpus_ids: set[str] = set(corpus["id"].cast(pl.Utf8).to_list())
+    playlist_names = enoa["playlist_name"].unique().sort().to_list()
+
+    log.info("train.compare.start", n_playlists=len(playlist_names))
+
+    all_metrics: dict[str, list[dict]] = {"lightgbm": [], "catboost": []}
+    lgbm_wins = 0
+    cat_wins = 0
+    ties = 0
+
+    for playlist_name in playlist_names:
+        raw_ids = (
+            enoa.filter(pl.col("playlist_name") == playlist_name)["id"].cast(pl.Utf8).to_list()
+        )
+        playlist_track_ids: set[str] = {tid for tid in raw_ids if tid in corpus_ids}
+        n_pos = len(playlist_track_ids)
+
+        if n_pos < MIN_POSITIVES:
+            continue
+
+        log.info("train.compare.playlist", playlist=playlist_name, n_pos=n_pos)
+
+        results: dict[str, dict] = {}
+        for model_type in ("lightgbm", "catboost"):
+            _, metrics = train_playlist_classifier(
+                corpus=corpus,
+                playlist_track_ids=playlist_track_ids,
+                scaler=scaler,
+                gmm=gmm,
+                gmm_scaler=gmm_scaler,
+                model_type=model_type,  # type: ignore[arg-type]
+            )
+            results[model_type] = metrics
+            all_metrics[model_type].append(metrics)
+            _log_classifier_metrics(playlist_name, metrics, model_type)  # type: ignore[arg-type]
+
+        # Compare on brier_score (lower is better)
+        lgbm_brier = results["lightgbm"]["brier_score"]
+        cat_brier = results["catboost"]["brier_score"]
+        lgbm_ll = results["lightgbm"]["log_loss"]
+        cat_ll = results["catboost"]["log_loss"]
+
+        log.info(
+            "train.compare.result",
+            playlist=playlist_name,
+            lgbm_brier=round(lgbm_brier, 4),
+            cat_brier=round(cat_brier, 4),
+            lgbm_logloss=round(lgbm_ll, 4),
+            cat_logloss=round(cat_ll, 4),
+            brier_winner="catboost" if cat_brier < lgbm_brier else "lightgbm",
+            logloss_winner="catboost" if cat_ll < lgbm_ll else "lightgbm",
+        )
+
+        if cat_brier < lgbm_brier:
+            cat_wins += 1
+        elif lgbm_brier < cat_brier:
+            lgbm_wins += 1
+        else:
+            ties += 1
+
+        gc.collect()
+
+    # Aggregate summary
+    n_compared = lgbm_wins + cat_wins + ties
+    if n_compared > 0:
+        mean_lgbm_brier = np.mean([m["brier_score"] for m in all_metrics["lightgbm"]])
+        mean_cat_brier = np.mean([m["brier_score"] for m in all_metrics["catboost"]])
+        mean_lgbm_ll = np.mean([m["log_loss"] for m in all_metrics["lightgbm"]])
+        mean_cat_ll = np.mean([m["log_loss"] for m in all_metrics["catboost"]])
+
+        log.info(
+            "train.compare.summary",
+            n_playlists=n_compared,
+            lgbm_wins_brier=lgbm_wins,
+            catboost_wins_brier=cat_wins,
+            ties_brier=ties,
+            mean_lgbm_brier=round(float(mean_lgbm_brier), 4),
+            mean_catboost_brier=round(float(mean_cat_brier), 4),
+            mean_lgbm_logloss=round(float(mean_lgbm_ll), 4),
+            mean_catboost_logloss=round(float(mean_cat_ll), 4),
+        )
+    else:
+        log.warning("train.compare.no_playlists", msg="No playlists met MIN_POSITIVES threshold")
+
+
+def _parse_args() -> argparse.Namespace:
+    """Parse CLI arguments."""
+    parser = argparse.ArgumentParser(
+        description="Train recommendation models (GMM + per-playlist classifiers).",
+    )
+    parser.add_argument(
+        "--compare",
+        action="store_true",
+        help="Train both LightGBM and CatBoost, log comparison metrics (no models saved).",
+    )
+    parser.add_argument(
+        "--model-type",
+        choices=["lightgbm", "catboost"],
+        default="lightgbm",
+        help="Estimator to use for training (default: lightgbm).",
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
     """Entry point for the training script."""
     configure_logging()
     np.random.seed(42)
 
-    log.info("train.start")
+    args = _parse_args()
+
+    log.info("train.start", compare=args.compare, model_type=args.model_type)
 
     corpus, enoa = load_data()
 
@@ -242,7 +396,7 @@ def main() -> None:
     corpus.write_parquet(corpus_cache_path)
     log.info("train.corpus.cached", path=str(corpus_cache_path.relative_to(REPO_ROOT)))
 
-    gmm, scaler, _corpus_features = train_gmm(corpus)
+    gmm, gmm_scaler, _corpus_features = train_gmm(corpus)
 
     CLASSIFIER_CORPUS_LIMIT = 20_000
     if len(corpus) > CLASSIFIER_CORPUS_LIMIT:
@@ -250,15 +404,26 @@ def main() -> None:
         log.info("train.corpus.subsampled", n=CLASSIFIER_CORPUS_LIMIT)
     gc.collect()
 
-    n_trained, n_skipped = train_classifiers(corpus, enoa, scaler)
+    if args.compare:
+        compare_models(corpus, enoa, gmm_scaler, gmm, gmm_scaler)
+    else:
+        n_trained, n_skipped = train_classifiers(
+            corpus,
+            enoa,
+            gmm_scaler,
+            gmm,
+            gmm_scaler,
+            model_type=args.model_type,
+        )
 
-    log.info(
-        "train.done",
-        n_trained=n_trained,
-        n_skipped=n_skipped,
-        min_positives=MIN_POSITIVES,
-        models_dir=str(MODELS_DIR),
-    )
+        log.info(
+            "train.done",
+            n_trained=n_trained,
+            n_skipped=n_skipped,
+            min_positives=MIN_POSITIVES,
+            models_dir=str(MODELS_DIR),
+            model_type=args.model_type,
+        )
 
 
 if __name__ == "__main__":
