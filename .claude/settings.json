@@ -1,0 +1,111 @@
+{
+  "hooks": {
+
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "path=$(echo \"$CLAUDE_TOOL_INPUT\" | jq -r '.file_path // empty'); [ -z \"$path\" ] && exit 0; echo \"$path\" | grep -qE '\\.py$' || exit 0; python3 -m py_compile \"$path\" 2>&1 && uv run ruff format --quiet \"$path\" 2>/dev/null; uv run ruff check --quiet --fix \"$path\" 2>/dev/null; exit 0",
+            "timeout": 15,
+            "statusMessage": "Checking syntax and formatting..."
+          },
+          {
+            "type": "command",
+            "command": "path=$(echo \"$CLAUDE_TOOL_INPUT\" | jq -r '.file_path // empty'); [ -z \"$path\" ] && exit 0; echo \"$path\" | grep -qE '\\.py$' || exit 0; cfg=$(dirname \"$path\"); while [ \"$cfg\" != \"/\" ]; do [ -f \"$cfg/pyrightconfig.json\" ] && break; cfg=$(dirname \"$cfg\"); done; [ -f \"$cfg/pyrightconfig.json\" ] || exit 0; uv run pyright \"$path\" 2>&1 | tail -5; exit 0",
+            "timeout": 20,
+            "statusMessage": "Type-checking with pyright..."
+          }
+        ]
+      },
+      {
+        "matcher": "TodoWrite",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "mkdir -p .claude && echo \"$CLAUDE_TOOL_RESPONSE\" | jq -c \"{ts: (now | todate), todos: .newTodos}\" >> .claude/todo-log.jsonl 2>/dev/null; exit 0",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "osascript -e 'display notification \"Claude has finished\" with title \"Claude Code\"' 2>/dev/null; exit 0",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "session_file=$(find . -maxdepth 4 -path '*/.claude/docs/SESSION.md' 2>/dev/null | head -1); [ -z \"$session_file\" ] && exit 0; printf '\\n_compact: %s_\\n' \"$(date '+%Y-%m-%d %H:%M')\" >> \"$session_file\"; exit 0",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "printf '{\"type\": \"context\", \"content\": \"Today is %s\"}' \"$(date '+%Y-%m-%d')\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd=$(echo \"$CLAUDE_TOOL_INPUT\" | jq -r '.command'); echo \"$cmd\" | grep -qE 'git commit' || exit 0; uv run pytest tests/unit/ --tb=short -q 2>&1; rc=$?; [ $rc -eq 0 ] && exit 0; echo 'Tests are failing. Fix them before committing.' >&2; exit 2",
+            "timeout": 120,
+            "statusMessage": "Running tests before commit..."
+          },
+          {
+            "type": "command",
+            "command": "cmd=$(echo \"$CLAUDE_TOOL_INPUT\" | jq -r '.command'); echo \"$cmd\" | grep -qE '^pip install|^pip3 install' && { echo 'Use uv, not pip. Run: uv add <package>' >&2; exit 2; } || exit 0",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "cmd=$(echo \"$CLAUDE_TOOL_INPUT\" | jq -r '.command'); echo \"$cmd\" | grep -qE 'rm -rf /|rm -rf ~|DROP TABLE|TRUNCATE TABLE' && { echo 'Blocked: destructive command.' >&2; exit 2; } || exit 0",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  },
+
+  "permissions": {
+    "deny": [
+      "Read(.env)",
+      "Read(.env.*)",
+      "Read(*credentials*)",
+      "Read(*secret*)",
+      "Read(*_key*)",
+      "Write(.env)",
+      "Write(.env.*)",
+      "Write(production.*)"
+    ]
+  },
+
+  "env": {
+    "BASH_DEFAULT_TIMEOUT_MS": "60000"
+  }
+}

@@ -20,9 +20,20 @@ notebooks/
 # Trained model artifacts
 models/
 
-# Claude Code — only CLAUDE.md and SESSION.md at root are tracked
-# Phase artifacts (PLAN, RESEARCH, CHANGELOG, EVAL) live in .claude/docs/
+# Claude Code — ignore personal/local state, commit shared config
 .claude/
+# Un-ignore the .claude dir itself so negations below can work
+!.claude/
+# Shared config — committed
+!.claude/settings.json
+!.claude/commands/
+!.claude/commands/**
+!.claude/skills/
+!.claude/skills/**
+# Local-only state — keep ignored
+.claude/docs/
+.claude/memory/
+.claude/todo-log.jsonl
 
 # Chainlit
 .chainlit/
@@ -57,4 +68,3 @@ notebooks/
 
 # Obsidian
 .obsidian/
-
