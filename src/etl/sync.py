@@ -19,6 +19,7 @@ from datetime import UTC, datetime, timedelta
 import polars as pl
 
 from etl.db import get_connection, init_schema
+from etl.lastfm import fetch_genres_for_tracks
 from spotify.client import SpotifyClient
 from spotify.fetch import (
     fetch_artist_features,
@@ -26,6 +27,7 @@ from spotify.fetch import (
     fetch_my_playlists,
     fetch_playlist_tracks,
 )
+from utils.config import settings
 from utils.logging import configure_logging, get_logger
 
 log = get_logger(__name__)
@@ -148,36 +150,63 @@ def plan_sync(conn, raw_playlists: list[dict]) -> list[PlaylistSyncItem]:
 
 
 def upsert_playlists(conn, items: list[PlaylistSyncItem]) -> None:
-    """Register all playlists in DB. Upserts name + last_synced; preserves include_in_refresh."""
+    """Register all playlists in DB. Upserts name + last_synced; preserves include_in_refresh.
+
+    New playlists fetched from Spotify (not previously bootstrapped) default to
+    include_in_refresh=FALSE so they are not swept up in future syncs automatically.
+    """
     now = datetime.now(UTC)
+    new_count = 0
     for item in items:
         synced_at = now if item.needs_sync else None
+        # New playlists (first seen from Spotify, not bootstrapped) default to FALSE
+        insert_refresh = False if item.is_new else True
         conn.execute(
             """
             INSERT INTO playlists (playlist_id, playlist_name, include_in_refresh, last_synced)
-            VALUES (?, ?, TRUE, ?)
+            VALUES (?, ?, ?, ?)
             ON CONFLICT (playlist_id) DO UPDATE SET
                 playlist_name = excluded.playlist_name,
                 last_synced = CASE WHEN excluded.last_synced IS NOT NULL
                                    THEN excluded.last_synced
                                    ELSE playlists.last_synced END
         """,
-            [item.playlist_id, item.playlist_name, synced_at],
+            [item.playlist_id, item.playlist_name, insert_refresh, synced_at],
         )
-    log.info("sync.playlists.upserted", n=len(items))
+        if item.is_new:
+            new_count += 1
+    log.info("sync.playlists.upserted", n=len(items), new_excluded=new_count)
 
 
-def sync_tracks(conn, client: SpotifyClient, items: list[PlaylistSyncItem]) -> list:
+def sync_tracks(
+    conn,
+    client: SpotifyClient,
+    items: list[PlaylistSyncItem],
+    max_playlists: int | None = None,
+    max_tracks: int | None = None,
+) -> list:
     """Fetch tracks only for playlists where needs_sync=True.
 
     Upserts playlist_tracks, tracks, and track_artists for new track IDs only.
+
+    Args:
+        max_playlists: Cap number of playlists synced this run (None = no limit).
+        max_tracks: Cap total tracks fetched across all playlists (None = no limit).
 
     Returns:
         All TrackFeatures fetched this run (only from synced playlists).
     """
     to_sync = [item for item in items if item.needs_sync]
+    if max_playlists is not None:
+        to_sync = to_sync[:max_playlists]
     skipped = len(items) - len(to_sync)
-    log.info("sync.tracks.start", to_sync=len(to_sync), skipped_unchanged=skipped)
+    log.info(
+        "sync.tracks.start",
+        to_sync=len(to_sync),
+        skipped_unchanged=skipped,
+        max_playlists=max_playlists,
+        max_tracks=max_tracks,
+    )
 
     if not to_sync:
         return []
@@ -190,7 +219,13 @@ def sync_tracks(conn, client: SpotifyClient, items: list[PlaylistSyncItem]) -> l
     new_track_ids: set[str] = set()
 
     for item in to_sync:
+        if max_tracks is not None and len(all_track_features) >= max_tracks:
+            log.info("sync.tracks.limit_reached", max_tracks=max_tracks)
+            break
         tracks = fetch_playlist_tracks(client, item.playlist_id)
+        if max_tracks is not None:
+            remaining = max_tracks - len(all_track_features)
+            tracks = tracks[:remaining]
         all_track_features.extend(tracks)
 
         if tracks:
@@ -232,6 +267,26 @@ def sync_tracks(conn, client: SpotifyClient, items: list[PlaylistSyncItem]) -> l
             ta = pl.DataFrame(ta_rows).unique(["track_id", "artist_id"])  # noqa: F841
             conn.execute("INSERT OR IGNORE INTO track_artists SELECT * FROM ta")
 
+        # Upsert artist names (artist_names aligns positionally with artist_ids)
+        name_rows = [
+            {"artist_id": aid, "artist_name": name}
+            for t in new_tracks
+            for aid, name in zip(t.artist_ids, t.artist_names, strict=False)
+            if name
+        ]
+        if name_rows:
+            an = pl.DataFrame(name_rows).unique("artist_id")  # noqa: F841
+            conn.execute(
+                """
+                INSERT INTO artists (artist_id, artist_name)
+                SELECT artist_id, artist_name FROM an
+                ON CONFLICT (artist_id) DO UPDATE SET
+                    artist_name = CASE WHEN artists.artist_name IS NULL
+                                       THEN excluded.artist_name
+                                       ELSE artists.artist_name END
+                """
+            )
+
     log.info(
         "sync.tracks.done",
         fetched=len(all_track_features),
@@ -240,10 +295,13 @@ def sync_tracks(conn, client: SpotifyClient, items: list[PlaylistSyncItem]) -> l
     return all_track_features
 
 
-def sync_audio_features(conn, client: SpotifyClient) -> int:
+def sync_audio_features(conn, client: SpotifyClient, limit: int | None = None) -> int:
     """Fetch audio features for every track in DB that is missing them.
 
     Heals partial-sync gaps — safe to call at any time.
+
+    Args:
+        limit: Cap number of tracks to fetch audio features for (None = no limit).
 
     Returns:
         Number of new audio feature rows inserted.
@@ -258,9 +316,11 @@ def sync_audio_features(conn, client: SpotifyClient) -> int:
         """
         ).fetchall()
     ]
+    if limit is not None:
+        missing = missing[:limit]
 
     total_tracks = conn.execute("SELECT COUNT(*) FROM tracks").fetchone()[0]
-    log.info("sync.audio.start", total_tracks=total_tracks, missing=len(missing))
+    log.info("sync.audio.start", total_tracks=total_tracks, missing=len(missing), limit=limit)
 
     if not missing:
         return 0
@@ -299,10 +359,13 @@ def sync_audio_features(conn, client: SpotifyClient) -> int:
     return len(af_rows)
 
 
-def sync_artist_features(conn, client: SpotifyClient) -> int:
+def sync_artist_features(conn, client: SpotifyClient, limit: int | None = None) -> int:
     """Fetch artist features for every artist in DB that is missing them.
 
     Heals partial-sync gaps — safe to call at any time.
+
+    Args:
+        limit: Cap number of artists to fetch features for (None = no limit).
 
     Returns:
         Number of new artist rows inserted.
@@ -317,11 +380,15 @@ def sync_artist_features(conn, client: SpotifyClient) -> int:
         """
         ).fetchall()
     ]
+    if limit is not None:
+        missing = missing[:limit]
 
     total_artist_refs = conn.execute(
         "SELECT COUNT(DISTINCT artist_id) FROM track_artists"
     ).fetchone()[0]
-    log.info("sync.artists.start", total_artists=total_artist_refs, missing=len(missing))
+    log.info(
+        "sync.artists.start", total_artists=total_artist_refs, missing=len(missing), limit=limit
+    )
 
     if not missing:
         return 0
@@ -339,28 +406,188 @@ def sync_artist_features(conn, client: SpotifyClient) -> int:
     return len(ar_rows)
 
 
+def sync_lastfm_genres(conn, limit: int | None = None) -> int:
+    """Fetch Last.fm genre tags for tracks missing first_genre.
+
+    Matches returned tags against the genre_xy table (6k+ ENOA genres).
+    Writes first_genre to tracks and inserts a stub audio_features row
+    flagged features_source='lastfm' so feature engineering can derive
+    proxies from ENOA coordinates.
+
+    Args:
+        conn: DuckDB connection (read-write).
+        limit: Cap number of tracks to process this run (None = no limit).
+
+    Returns:
+        Number of tracks where a genre match was found and written.
+    """
+    api_key = settings.last_fm_api_key
+    if not api_key:
+        log.warning("sync.lastfm.skip", reason="LAST_FM_API_KEY not set")
+        return 0
+
+    # Load genre_xy set for tag matching
+    genre_xy_rows = conn.execute("SELECT first_genre FROM genre_xy").fetchall()
+    genre_xy_set: set[str] = {row[0].lower() for row in genre_xy_rows}
+    if not genre_xy_set:
+        log.warning("sync.lastfm.skip", reason="genre_xy table is empty — run bootstrap first")
+        return 0
+
+    track_rows = conn.execute(
+        """
+        SELECT
+            t.track_id,
+            t.track_name,
+            COALESCE(
+                (SELECT a.artist_name
+                 FROM track_artists ta
+                 JOIN artists a USING (artist_id)
+                 WHERE ta.track_id = t.track_id
+                   AND a.artist_name IS NOT NULL
+                 LIMIT 1),
+                ''
+            ) AS primary_artist_name
+        FROM tracks t
+        WHERE t.first_genre IS NULL
+        ORDER BY t.track_id
+        """
+    ).fetchall()
+
+    if limit is not None:
+        track_rows = track_rows[:limit]
+
+    total_missing = conn.execute(
+        "SELECT COUNT(*) FROM tracks WHERE first_genre IS NULL"
+    ).fetchone()[0]
+    log.info(
+        "sync.lastfm.start", total_missing=total_missing, processing=len(track_rows), limit=limit
+    )
+
+    if not track_rows:
+        return 0
+
+    tracks_for_fetch = [
+        {
+            "track_id": row[0],
+            "track_name": row[1],
+            "artist_name": row[2] if row[2] else row[1],
+        }
+        for row in track_rows
+    ]
+
+    genre_map = fetch_genres_for_tracks(tracks_for_fetch, api_key, genre_xy_set)
+
+    matched = 0
+    for track_id, genre in genre_map.items():
+        if genre is None:
+            continue
+        # Write first_genre to tracks
+        conn.execute(
+            "UPDATE tracks SET first_genre = ? WHERE track_id = ?",
+            [genre, track_id],
+        )
+        # Insert stub audio_features row flagged as lastfm so feature engineering
+        # can derive proxies from ENOA coordinates (numeric fields left NULL)
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO audio_features (track_id, features_source)
+            VALUES (?, 'lastfm')
+            """,
+            [track_id],
+        )
+        matched += 1
+
+    log.info("sync.lastfm.done", processed=len(track_rows), matched=matched)
+    return matched
+
+
 # ---------------------------------------------------------------------------
 # Orchestration
 # ---------------------------------------------------------------------------
 
 
-def sync(conn, client: SpotifyClient) -> None:
-    """Full incremental sync: plan → playlists → tracks → audio → artists."""
+def sync(
+    conn,
+    client: SpotifyClient,
+    max_playlists: int | None = None,
+    max_tracks: int | None = None,
+    audio_limit: int | None = None,
+    artist_limit: int | None = None,
+    lastfm_limit: int | None = None,
+) -> None:
+    """Full incremental sync: plan → playlists → tracks → audio → artists → lastfm genres.
+
+    Args:
+        max_playlists: Cap playlists synced this run.
+        max_tracks: Cap total tracks fetched across all playlists.
+        audio_limit: Cap tracks to fetch audio features for.
+        artist_limit: Cap artists to fetch features for.
+        lastfm_limit: Cap tracks to fetch Last.fm genre tags for (None = no limit).
+    """
     raw_playlists = fetch_my_playlists(client)
     items = plan_sync(conn, raw_playlists)
 
     upsert_playlists(conn, items)
-    sync_tracks(conn, client, items)
-    sync_audio_features(conn, client)
-    sync_artist_features(conn, client)
+    sync_tracks(conn, client, items, max_playlists=max_playlists, max_tracks=max_tracks)
+    sync_audio_features(conn, client, limit=audio_limit)
+    sync_artist_features(conn, client, limit=artist_limit)
+    sync_lastfm_genres(conn, limit=lastfm_limit)
 
 
 def main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Incremental Spotify → DuckDB sync")
+    parser.add_argument(
+        "--playlists",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Max playlists to sync tracks for (default: no limit)",
+    )
+    parser.add_argument(
+        "--tracks",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Max total tracks to fetch (default: no limit)",
+    )
+    parser.add_argument(
+        "--audio-limit",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Max tracks to fetch audio features for (default: no limit)",
+    )
+    parser.add_argument(
+        "--artist-limit",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Max artists to fetch features for (default: no limit)",
+    )
+    parser.add_argument(
+        "--lastfm-limit",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Max tracks to fetch Last.fm genre tags for (default: no limit)",
+    )
+    args = parser.parse_args()
+
     configure_logging()
     client = SpotifyClient()
     conn = get_connection()
     init_schema(conn)
-    sync(conn, client)
+    sync(
+        conn,
+        client,
+        max_playlists=args.playlists,
+        max_tracks=args.tracks,
+        audio_limit=args.audio_limit,
+        artist_limit=args.artist_limit,
+        lastfm_limit=args.lastfm_limit,
+    )
 
     n = conn.execute("SELECT COUNT(*) FROM track_profile").fetchone()[0]
     log.info("sync.complete", track_profile_rows=n)

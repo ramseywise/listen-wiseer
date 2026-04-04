@@ -27,12 +27,20 @@ ARCHIVED = Path("data/archived")
 
 
 def _parse_list(val: str) -> list[str]:
-    """Parse a stringified Python list like \"['a', 'b']\" → ['a', 'b']."""
+    """Parse artist_ids — handles Python list syntax or plain comma-separated strings.
+
+    Examples:
+        "['a', 'b']"  → ['a', 'b']
+        "a, b"        → ['a', 'b']
+        "a"           → ['a']
+    """
     try:
         result = ast.literal_eval(val)
-        return result if isinstance(result, list) else [str(result)]
+        return [s.strip() for s in result] if isinstance(result, list) else [str(result).strip()]
     except Exception:
-        return [val] if val else []
+        # Plain comma-separated string (e.g. "id1, id2")
+        parts = [s.strip() for s in val.split(",") if s.strip()]
+        return parts if parts else []
 
 
 def load_playlists(conn) -> None:
@@ -82,7 +90,7 @@ def load_artists(conn) -> None:
     conn.register("_artists", df)
     conn.execute(
         """
-        INSERT OR IGNORE INTO artists
+        INSERT OR IGNORE INTO artists (artist_id, popularity, genres)
         SELECT artist_id, popularity, genre
         FROM _artists
     """
@@ -112,6 +120,31 @@ def load_enoa_coordinates(conn) -> None:
     )
     updated = conn.execute("SELECT COUNT(*) FROM genre_map WHERE top IS NOT NULL").fetchone()[0]
     log.info("bootstrap.enoa.done", n_updated=updated)
+
+
+def load_genre_xy(conn) -> None:
+    """Load full ENOA genre_xy table (6k+ genres → top/left/color).
+
+    Separate from genre_map — covers all known genres for Last.fm tag matching,
+    not just the curated subset in genre_map.csv.
+    """
+    path = ARCHIVED / "genres/genre_xy.csv"
+    if not path.exists():
+        log.warning("bootstrap.genre_xy.missing", path=str(path))
+        return
+    df = pl.read_csv(path)
+    if "" in df.columns:
+        df = df.drop("")
+    df = df.select(["first_genre", "top", "left", "color"]).unique("first_genre")
+    conn.register("_genre_xy", df)
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO genre_xy (first_genre, top, "left", color)
+        SELECT first_genre, top, "left", color FROM _genre_xy
+    """
+    )
+    n = conn.execute("SELECT COUNT(*) FROM genre_xy").fetchone()[0]
+    log.info("bootstrap.genre_xy.done", n=n)
 
 
 def load_faves(conn) -> None:
@@ -232,7 +265,18 @@ def load_playlist_tracks(conn) -> None:
         )
     )
     conn.register("_af", af_df)
-    conn.execute("INSERT OR IGNORE INTO audio_features SELECT * FROM _af")
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO audio_features
+            (track_id, danceability, energy, loudness, speechiness, acousticness,
+             instrumentalness, liveness, valence, tempo, duration_ms, time_signature,
+             key, mode, key_labels, mode_labels, key_mode, features_source)
+        SELECT track_id, danceability, energy, loudness, speechiness, acousticness,
+               instrumentalness, liveness, valence, tempo, duration_ms, time_signature,
+               key, mode, key_labels, mode_labels, key_mode, 'spotify'
+        FROM _af
+        """
+    )
     log.info("bootstrap.audio_features.done", n=len(af_df))
 
     # ── playlist_tracks (junction) ───────────────────────────────────────────
@@ -245,18 +289,39 @@ def load_playlist_tracks(conn) -> None:
     conn.execute("INSERT OR IGNORE INTO playlist_tracks SELECT * FROM _pt")
     log.info("bootstrap.playlist_tracks.done", n=len(pt_df))
 
-    # ── track_artists (expand stringified list) ──────────────────────────────
-    rows = []
-    for row in df.select(["id", "artist_ids"]).unique("id").iter_rows(named=True):
-        for aid in _parse_list(str(row["artist_ids"])):
+    # ── track_artists (expand stringified list) + artist names ──────────────
+    ta_rows: list[dict] = []
+    name_rows: list[dict] = []
+    for row in df.select(["id", "artist_ids", "artist_names"]).unique("id").iter_rows(named=True):
+        ids = _parse_list(str(row["artist_ids"]))
+        names = _parse_list(str(row["artist_names"]))
+        for i, aid in enumerate(ids):
             aid = aid.strip()
-            if aid:
-                rows.append({"track_id": row["id"], "artist_id": aid})
-    if rows:
-        ta = pl.DataFrame(rows).unique(["track_id", "artist_id"])
+            if not aid:
+                continue
+            ta_rows.append({"track_id": row["id"], "artist_id": aid})
+            name = names[i].strip() if i < len(names) else ""
+            if name:
+                name_rows.append({"artist_id": aid, "artist_name": name})
+    if ta_rows:
+        ta = pl.DataFrame(ta_rows).unique(["track_id", "artist_id"])
         conn.register("_ta", ta)
         conn.execute("INSERT OR IGNORE INTO track_artists SELECT * FROM _ta")
         log.info("bootstrap.track_artists.done", n=len(ta))
+    if name_rows:
+        an = pl.DataFrame(name_rows).unique("artist_id")
+        conn.register("_an", an)
+        conn.execute(
+            """
+            INSERT INTO artists (artist_id, artist_name)
+            SELECT artist_id, artist_name FROM _an
+            ON CONFLICT (artist_id) DO UPDATE SET
+                artist_name = CASE WHEN artists.artist_name IS NULL
+                                   THEN excluded.artist_name
+                                   ELSE artists.artist_name END
+            """
+        )
+        log.info("bootstrap.artist_names.done", n=len(an))
 
 
 def main() -> None:
@@ -266,6 +331,7 @@ def main() -> None:
     load_playlists(conn)
     load_genre_map(conn)
     load_enoa_coordinates(conn)
+    load_genre_xy(conn)
     load_artists(conn)
     load_faves(conn)
     load_playlist_tracks(conn)

@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     audio_feature_weight: float = 0.6
     genre_weight: float = 0.4
 
+    # Last.fm
+    last_fm_api_key: str = ""
+    last_fm_id: str = ""
+
     # RAG
     rag_top_k: int = 3
     wikipedia_language: str = "en"

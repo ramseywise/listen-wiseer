@@ -27,10 +27,13 @@ CREATE TABLE IF NOT EXISTS playlists (
 
 -- Artists dimension
 CREATE TABLE IF NOT EXISTS artists (
-    artist_id  VARCHAR PRIMARY KEY,
-    popularity DOUBLE,
-    genres     VARCHAR   -- raw Spotify genres string / list
+    artist_id   VARCHAR PRIMARY KEY,
+    artist_name VARCHAR,
+    popularity  DOUBLE,
+    genres      VARCHAR   -- raw Spotify genres string / list
 );
+-- Migrate existing installs: add artist_name if missing
+ALTER TABLE artists ADD COLUMN IF NOT EXISTS artist_name VARCHAR;
 
 -- Genre taxonomy (your custom mapping) + ENOA map coordinates
 CREATE TABLE IF NOT EXISTS genre_map (
@@ -83,7 +86,19 @@ CREATE TABLE IF NOT EXISTS audio_features (
     mode             INTEGER,
     key_labels       VARCHAR,
     mode_labels      VARCHAR,
-    key_mode         VARCHAR
+    key_mode         VARCHAR,
+    features_source  VARCHAR DEFAULT 'spotify'
+);
+-- Migrate existing installs: add features_source if missing
+ALTER TABLE audio_features ADD COLUMN IF NOT EXISTS features_source VARCHAR DEFAULT 'spotify';
+
+-- ENOA genre map — all 6k+ genres with spatial coordinates (top/left) and color
+-- Populated from data/archived/genres/genre_xy.csv at bootstrap
+CREATE TABLE IF NOT EXISTS genre_xy (
+    first_genre VARCHAR PRIMARY KEY,
+    top         DOUBLE,
+    "left"      DOUBLE,
+    color       VARCHAR
 );
 
 -- Track ↔ playlist (many-to-many)

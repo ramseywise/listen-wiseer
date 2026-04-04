@@ -1,6 +1,22 @@
 COMPOSE = docker compose -f infrastructure/containers/docker-compose.yml
 
-.PHONY: infra-up infra-down infra-logs app mcp-server auth lint format test test-unit test-data notebook init-db data-sync train
+.PHONY: help infra-up infra-down infra-logs app mcp-server auth lint format test test-unit test-data notebook init-db data-sync train
+
+help:
+	@echo "listen-wiseer targets:"
+	@echo "  app          Chainlit UI"
+	@echo "  mcp-server   MCP server (triggers OAuth on first run)"
+	@echo "  auth         Spotify OAuth → .spotify_cache"
+	@echo "  init-db      Bootstrap DuckDB from CSVs"
+	@echo "  data-sync    Live Spotify → DuckDB (requires .spotify_cache)"
+	@echo "  train        Fit GMM + LightGBM → models/*.pkl"
+	@echo "  test         Full test suite"
+	@echo "  test-unit    Fast unit tests (no Spotify)"
+	@echo "  lint         ruff check + format check"
+	@echo "  format       ruff fix + format"
+	@echo "  infra-up     Docker stack"
+	@echo "  infra-down   Docker stack teardown"
+	@echo "  notebook     Jupyter Lab"
 
 infra-up:
 	$(COMPOSE) up -d
