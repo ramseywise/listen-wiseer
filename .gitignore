@@ -20,10 +20,11 @@ data/archived
 # Notebook checkpoints (output cells should be stripped before commit)
 notebooks/.ipynb_checkpoints/
 
-# Trained model artifacts
-models/
+# Serialized model weights (large binaries)
+*.pkl
 
 # CatBoost auto-generated training logs
+models/catboost_info/
 catboost_info/
 
 # Chainlit
@@ -49,8 +50,6 @@ htmlcov/
 # Logs
 logs/
 *.log
-
-# (duplicate removed — notebooks tracked, see line 20)
 
 # Ruff / mypy caches
 .ruff_cache/
