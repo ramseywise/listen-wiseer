@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import argparse
 import gc
+import json
 import re
+from datetime import UTC, datetime
+from pathlib import Path
 
 import duckdb
 import joblib
@@ -44,6 +47,69 @@ CORPUS_CSV = ARCHIVED_DIR / "spotify_train_data.csv"
 ENOA_CSV = ARCHIVED_DIR / "enoa.csv"
 
 MIN_POSITIVES = 20
+
+
+# ---------------------------------------------------------------------------
+# Metrics persistence
+# ---------------------------------------------------------------------------
+
+
+class MetricsWriter:
+    """Collects per-playlist metrics and writes them to a JSONL file.
+
+    Each line is a JSON object with: timestamp, mode, model_type, playlist, metrics.
+    A final summary line is appended on close.
+
+    File naming: ``{mode}_{model_type}_{YYYYMMDD_HHMMSS}.jsonl``
+    """
+
+    def __init__(self, mode: str, model_type: str, metrics_dir: Path) -> None:
+        self._mode = mode
+        self._model_type = model_type
+        self._timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        self._rows: list[dict] = []
+
+        metrics_dir.mkdir(parents=True, exist_ok=True)
+        filename = f"{mode}_{model_type}_{self._timestamp}.jsonl"
+        self._path = metrics_dir / filename
+
+    @property
+    def path(self) -> str:
+        """Return path relative to REPO_ROOT, or absolute if outside the repo."""
+        try:
+            return str(self._path.relative_to(REPO_ROOT))
+        except ValueError:
+            return str(self._path)
+
+    def add(self, playlist: str, model_type: str, metrics: dict) -> None:
+        """Record one playlist's metrics."""
+        row = {
+            "timestamp": self._timestamp,
+            "mode": self._mode,
+            "model_type": model_type,
+            "playlist": playlist,
+            "metrics": {k: round(v, 4) for k, v in metrics.items()},
+        }
+        self._rows.append(row)
+
+    def write(self, summary: dict | None = None) -> None:
+        """Flush all rows + optional summary to disk."""
+        with open(self._path, "w") as fh:
+            for row in self._rows:
+                fh.write(json.dumps(row) + "\n")
+            if summary:
+                fh.write(
+                    json.dumps(
+                        {
+                            "timestamp": self._timestamp,
+                            "mode": self._mode,
+                            "model_type": self._model_type,
+                            "summary": summary,
+                        }
+                    )
+                    + "\n"
+                )
+        log.info("train.metrics.saved", path=self.path, n_rows=len(self._rows))
 
 
 def _playlist_slug(name: str) -> str:
@@ -205,6 +271,7 @@ def train_classifiers(
 
     log.info("train.classifiers.start", n_playlists=len(playlist_names), model_type=model_type)
 
+    writer = MetricsWriter(mode="train", model_type=model_type, metrics_dir=MODELS_DIR / "metrics")
     n_trained = 0
     n_skipped = 0
 
@@ -246,6 +313,7 @@ def train_classifiers(
         )
 
         _log_classifier_metrics(playlist_name, metrics, model_type)
+        writer.add(playlist_name, model_type, metrics)
 
         saved_path = save_classifier(pipeline, slug, MODELS_DIR)
         log.debug("train.classifier.saved", path=str(saved_path.relative_to(REPO_ROOT)))
@@ -254,6 +322,7 @@ def train_classifiers(
         gc.collect()
         n_trained += 1
 
+    writer.write(summary={"n_trained": n_trained, "n_skipped": n_skipped})
     return n_trained, n_skipped
 
 
@@ -280,6 +349,9 @@ def compare_models(
 
     log.info("train.compare.start", n_playlists=len(playlist_names))
 
+    writer = MetricsWriter(
+        mode="compare", model_type="lgbm_vs_catboost", metrics_dir=MODELS_DIR / "metrics"
+    )
     all_metrics: dict[str, list[dict]] = {"lightgbm": [], "catboost": []}
     lgbm_wins = 0
     cat_wins = 0
@@ -310,6 +382,7 @@ def compare_models(
             results[model_type] = metrics
             all_metrics[model_type].append(metrics)
             _log_classifier_metrics(playlist_name, metrics, model_type)  # type: ignore[arg-type]
+            writer.add(playlist_name, model_type, metrics)
 
         # Compare on brier_score (lower is better)
         lgbm_brier = results["lightgbm"]["brier_score"]
@@ -339,25 +412,33 @@ def compare_models(
 
     # Aggregate summary
     n_compared = lgbm_wins + cat_wins + ties
+    summary: dict = {"n_playlists": n_compared}
     if n_compared > 0:
         mean_lgbm_brier = np.mean([m["brier_score"] for m in all_metrics["lightgbm"]])
         mean_cat_brier = np.mean([m["brier_score"] for m in all_metrics["catboost"]])
         mean_lgbm_ll = np.mean([m["log_loss"] for m in all_metrics["lightgbm"]])
         mean_cat_ll = np.mean([m["log_loss"] for m in all_metrics["catboost"]])
 
+        summary.update(
+            {
+                "lgbm_wins_brier": lgbm_wins,
+                "catboost_wins_brier": cat_wins,
+                "ties_brier": ties,
+                "mean_lgbm_brier": round(float(mean_lgbm_brier), 4),
+                "mean_catboost_brier": round(float(mean_cat_brier), 4),
+                "mean_lgbm_logloss": round(float(mean_lgbm_ll), 4),
+                "mean_catboost_logloss": round(float(mean_cat_ll), 4),
+            }
+        )
+
         log.info(
             "train.compare.summary",
-            n_playlists=n_compared,
-            lgbm_wins_brier=lgbm_wins,
-            catboost_wins_brier=cat_wins,
-            ties_brier=ties,
-            mean_lgbm_brier=round(float(mean_lgbm_brier), 4),
-            mean_catboost_brier=round(float(mean_cat_brier), 4),
-            mean_lgbm_logloss=round(float(mean_lgbm_ll), 4),
-            mean_catboost_logloss=round(float(mean_cat_ll), 4),
+            **summary,
         )
     else:
         log.warning("train.compare.no_playlists", msg="No playlists met MIN_POSITIVES threshold")
+
+    writer.write(summary=summary)
 
 
 def _parse_args() -> argparse.Namespace:
