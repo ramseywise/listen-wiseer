@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from langchain_anthropic import ChatAnthropic
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import SystemMessage, trim_messages
 
 from agent.state import AgentState
 from agent.tools import ALL_TOOLS
@@ -57,13 +57,38 @@ If the user gives you an artist/track *name* instead of a Spotify ID, use
 # ---------------------------------------------------------------------------
 
 
-def agent_node(state: AgentState) -> AgentState:
+def trim_history(state: AgentState) -> AgentState:
+    """Trim conversation history to stay within context limits.
+
+    Uses message count (not token count) for simplicity. Keeps the most recent
+    messages and preserves the system message if present.
+    """
+    messages = state["messages"]
+    if len(messages) <= settings.max_history_messages:
+        return {"messages": messages}
+
+    trimmed = trim_messages(
+        messages,
+        max_tokens=settings.max_history_messages,
+        token_counter=len,
+        strategy="last",
+        start_on="human",
+    )
+    log.info(
+        "agent.trim_history",
+        original_count=len(messages),
+        trimmed_count=len(trimmed),
+    )
+    return {"messages": trimmed}
+
+
+async def agent_node(state: AgentState) -> AgentState:
     """Core agent node — call the LLM with tools bound.
 
     The LLM decides whether to call a tool or produce a final answer.
     """
     messages = [SystemMessage(content=SYSTEM_PROMPT)] + state["messages"]
-    response = _llm_with_tools.invoke(messages)
+    response = await _llm_with_tools.ainvoke(messages)
     return {"messages": [response]}
 
 

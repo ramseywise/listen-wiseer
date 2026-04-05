@@ -80,7 +80,7 @@ def _config(thread_id: str) -> dict:
 @patch("agent.nodes._llm_with_tools")
 def test_graph_direct_response(mock_llm: MagicMock) -> None:
     """No tool_calls → straight to END."""
-    mock_llm.invoke.return_value = AIMessage(content="Hello! How can I help?")
+    mock_llm.ainvoke.return_value = AIMessage(content="Hello! How can I help?")
 
     graph = _build_fresh_graph()
     result = graph.invoke(
@@ -89,7 +89,7 @@ def test_graph_direct_response(mock_llm: MagicMock) -> None:
     )
 
     assert result["messages"][-1].content == "Hello! How can I help?"
-    mock_llm.invoke.assert_called_once()
+    mock_llm.ainvoke.assert_called_once()
 
 
 @patch("agent.tools._engine", _make_engine_mock())
@@ -105,7 +105,7 @@ def test_graph_tool_then_response(mock_llm: MagicMock) -> None:
     ai_with_tools = AIMessage(content="", tool_calls=[tool_call])
     ai_final = AIMessage(content="Here are your zouk recommendations.")
 
-    mock_llm.invoke.side_effect = [ai_with_tools, ai_final]
+    mock_llm.ainvoke.side_effect = [ai_with_tools, ai_final]
 
     graph = _build_fresh_graph()
     result = graph.invoke(
@@ -114,7 +114,7 @@ def test_graph_tool_then_response(mock_llm: MagicMock) -> None:
     )
 
     assert result["messages"][-1].content == "Here are your zouk recommendations."
-    assert mock_llm.invoke.call_count == 2
+    assert mock_llm.ainvoke.call_count == 2
 
 
 @patch("agent.tools._get_client")
@@ -161,7 +161,7 @@ def test_graph_multi_tool_chain(
     # Iteration 3: final answer
     ai_final = AIMessage(content="Based on Radiohead's Creep, here are similar tracks.")
 
-    mock_llm.invoke.side_effect = [ai_search, ai_rec, ai_final]
+    mock_llm.ainvoke.side_effect = [ai_search, ai_rec, ai_final]
 
     graph = _build_fresh_graph()
     result = graph.invoke(
@@ -169,7 +169,7 @@ def test_graph_multi_tool_chain(
         config=_config("test-chain"),
     )
 
-    assert mock_llm.invoke.call_count == 3
+    assert mock_llm.ainvoke.call_count == 3
     final_content = result["messages"][-1].content
     assert "Creep" in final_content or "similar" in final_content
 
@@ -178,7 +178,7 @@ def test_graph_multi_tool_chain(
 @patch("agent.nodes._llm_with_tools")
 def test_graph_multiturn_memory(mock_llm: MagicMock) -> None:
     """Two invocations with the same thread_id share message history."""
-    mock_llm.invoke.side_effect = [
+    mock_llm.ainvoke.side_effect = [
         AIMessage(content="I like zouk too!"),
         AIMessage(content="Sure, here are more zouk tracks."),
     ]
@@ -200,7 +200,7 @@ def test_graph_multiturn_memory(mock_llm: MagicMock) -> None:
     )
     assert result2["messages"][-1].content == "Sure, here are more zouk tracks."
     # Second invocation sees full history: system + human1 + ai1 + human2
-    second_call_messages = mock_llm.invoke.call_args_list[1][0][0]
+    second_call_messages = mock_llm.ainvoke.call_args_list[1][0][0]
     assert len(second_call_messages) >= 4
 
 
