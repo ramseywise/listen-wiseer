@@ -126,6 +126,8 @@ def _create_estimator(
     elif model_type == "catboost":
         from catboost import CatBoostClassifier
 
+        from paths import MODELS_DIR
+
         return CatBoostClassifier(
             auto_class_weights="Balanced",
             iterations=200,
@@ -134,6 +136,7 @@ def _create_estimator(
             random_seed=42,
             verbose=0,
             cat_features=cat_feature_indices or [],
+            train_dir=str(MODELS_DIR / "catboost_info"),
         )
     else:
         raise ValueError(f"Unknown model_type: {model_type!r}")

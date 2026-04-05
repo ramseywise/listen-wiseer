@@ -17,11 +17,15 @@ data/archived
 # Infrastructure DB is committed (operational DuckDB, ~7MB, no external training data)
 # infrastructure/db/listen_wiseer.db is tracked
 
-# Notebooks (exploratory only — not committed)
-notebooks/
+# Notebook checkpoints (output cells should be stripped before commit)
+notebooks/.ipynb_checkpoints/
 
-# Trained model artifacts
-models/
+# Serialized model weights (large binaries)
+*.pkl
+
+# CatBoost auto-generated training logs
+models/catboost_info/
+catboost_info/
 
 # Chainlit
 .chainlit/
@@ -46,9 +50,6 @@ htmlcov/
 # Logs
 logs/
 *.log
-
-# Notebooks (exploratory only)
-notebooks/
 
 # Ruff / mypy caches
 .ruff_cache/
