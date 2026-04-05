@@ -8,7 +8,7 @@
 # Playlists not listed here default to 'excluded'.
 # Names must match Spotify playlist names exactly (case-sensitive).
 
-# ── Acoustic ──────────────────────────────────────────────────────────────────
+# ── Acoustic / Indie ──────────────────────────────────────────────────────────────────
 [playlists."lebanese blonde :: misterio sterio"]
 status = "active"
 
@@ -102,3 +102,62 @@ status = "archived"
 
 [playlists."kizombamama"]
 status = "archived"
+
+[playlists."zoukini"]
+status = "archived"
+
+[playlists."¡zapatos! ¡zapatos! mvp"]
+status = "archived"
+
+[playlists."my lovely lady humps"]
+status = "archived"
+
+[playlists."kizombamama mvp"]
+status = "archived"
+
+[playlists."kizombamama 1.0"]
+status = "excluded"
+
+[playlists."kizombamama 2.0"]
+status = "excluded"
+
+[playlists."tarraxhinamama"]
+status = "excluded"
+
+[playlists."lambazouk riddim"]
+status = "excluded"
+
+[playlists."zoukini lento"]
+status = "excluded"
+
+[playlists."¡zapatos! ¡zapatos! 1.0"]
+status = "excluded"
+
+[playlists."¡zapatos! ¡zapatos! 2.0"]
+status = "excluded"
+
+[playlists."¡zapatos! ¡zapatos! 3.0"]
+status = "excluded"
+
+# ── Misc ─────────────────────────────────────────────────────────────────────
+
+[playlists."Catmas Meshup - Aaj Shanibar!"]
+status = "excluded"
+
+[playlists."Last Train at 25 O'clock :: Burning Down the House"]
+status = "excluded"
+
+[playlists."arabicoustic :: habibi funk :: arabesque"]
+status = "excluded"
+
+[playlists."ataşehir de hafta sonu"]
+status = "excluded"
+
+[playlists."back in the day :: can i kick it"]
+status = "excluded"
+
+[playlists."brown sugar :: candy rain"]
+status = "excluded"
+
+[playlists."moanin' at midnight :: blues for mama"]
+status = "excluded"

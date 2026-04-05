@@ -64,5 +64,14 @@ data-sync:
 	@echo "Requires .spotify_cache - run 'make auth' once to authenticate first"
 	PYTHONPATH=src uv run python -m etl.sync
 
+# Default training (LightGBM, same as before but with fixed features)
 train:
 	PYTHONPATH=src uv run python -m recommend.train
+
+# Train with CatBoost instead
+train-cat:
+	PYTHONPATH=src uv run python -m recommend.train
+
+# Head-to-head comparison (informational, no models saved)
+train-compare:
+PYTHONPATH=src uv run python -m recommend.train --compare
