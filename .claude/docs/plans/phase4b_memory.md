@@ -62,7 +62,7 @@ is visible in testing.
 
 ---
 
-## Step 4.2 — Cross-session recall: Redis checkpointer
+## Step 4.2 — Cross-session recall: Redis checkpointer ✓ DONE — 2026-04-05
 
 **Gap**: `MemorySaver` — in-process only, lost on restart.
 
@@ -87,7 +87,7 @@ with both checkpointer paths (mock Redis connection).
 
 ---
 
-## Step 4.3 — Episodic memory: past sessions as few-shots
+## Step 4.3 — Episodic memory: past sessions as few-shots ✓ DONE — 2026-04-05
 
 **What**: Store past recommendation sessions (user request + track list returned) and inject the
 2 most similar past sessions as few-shot examples into the system prompt.
@@ -114,7 +114,7 @@ search with similar query, assert it's retrieved.
 
 ---
 
-## Step 4.4 — Semantic memory: ENOA user taste profile
+## Step 4.4 — Semantic memory: ENOA user taste profile ✓ DONE — 2026-04-05
 
 **What**: Let the agent write and update facts about the user's taste across sessions
 (e.g. "prefers zouk over kizomba", "dislikes electronic BPM > 140").
@@ -141,7 +141,7 @@ search for it, assert retrieval.
 
 ---
 
-## Step 4.5 — Procedural memory: per-user recommendation strategy
+## Step 4.5 — Procedural memory: per-user recommendation strategy ✓ DONE — 2026-04-05
 
 **What**: Store per-user system prompt instructions that evolve over time
 (e.g. "always explain why this track fits the user's ENOA zone").
@@ -158,7 +158,7 @@ returns default prompt; populated store returns stored instructions.
 
 ---
 
-## Step 4.6 — Background prompt optimizer
+## Step 4.6 — Background prompt optimizer ✓ DONE — 2026-04-05
 
 **What**: A separate background agent (not in the hot path) reviews conversation trajectories
 and feedback signals, then updates the procedural memory for each user.
@@ -184,7 +184,7 @@ correct trajectory shape.
 
 ---
 
-## Step 4.7 — Memory statistics in ENOA prompt
+## Step 4.7 — Memory statistics in ENOA prompt ✓ DONE — 2026-04-05
 
 **What**: Tell the agent how much it knows before it responds — "You have 3 past sessions on
 record. 2 taste facts stored." Mirrors MemGPT's memory statistics in context.

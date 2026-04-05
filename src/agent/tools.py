@@ -2,11 +2,17 @@
 
 Wraps the same functions the MCP server uses as LangChain StructuredTool objects.
 No MCP subprocess — direct Python calls. The agent's LLM sees these via bind_tools.
+
+Memory tools (taste profile) use langmem with InjectedStore to access the shared
+InMemoryStore compiled into the graph.
 """
 
 from __future__ import annotations
 
 from langchain_core.tools import StructuredTool
+from langmem import create_manage_memory_tool, create_search_memory_tool
+
+import duckdb
 
 from paths import DATA_DIR, MODELS_DIR
 from recommend.engine import RecommendationEngine
@@ -25,7 +31,7 @@ try:
         models_dir=MODELS_DIR,
         data_dir=DATA_DIR,
     )
-except FileNotFoundError as exc:
+except (FileNotFoundError, duckdb.IOException) as exc:
     _engine = None
     log.warning("agent.tools.engine_unavailable", error=str(exc))
 
@@ -178,6 +184,35 @@ search_tracks_tool = StructuredTool.from_function(
 )
 
 # ---------------------------------------------------------------------------
+# Taste memory tools — backed by langmem + InjectedStore
+#
+# Namespace uses {langgraph_user_id} template — LangGraph resolves it from
+# config["configurable"] at runtime, scoping memories per user.
+# ---------------------------------------------------------------------------
+
+_TASTE_NAMESPACE = ("enoa", "{langgraph_user_id}", "taste")
+
+manage_taste_memory = create_manage_memory_tool(
+    _TASTE_NAMESPACE,
+    name="manage_taste_memory",
+    instructions=(
+        "Proactively call this tool when you identify a user's musical taste preference, "
+        "genre affinity, or explicit request to remember something about their listening habits. "
+        "Examples: 'prefers acoustic over electronic', 'loves zouk', 'dislikes BPM > 140'."
+    ),
+)
+
+search_taste_memory = create_search_memory_tool(
+    _TASTE_NAMESPACE,
+    name="search_taste_memory",
+    instructions=(
+        "Search stored facts about the user's musical taste. "
+        "Use this to recall user preferences before making recommendations."
+    ),
+)
+
+
+# ---------------------------------------------------------------------------
 # Collected tool list — imported by nodes.py and graph.py
 # ---------------------------------------------------------------------------
 
@@ -188,4 +223,6 @@ ALL_TOOLS: list[StructuredTool] = [
     recommend_for_playlist,
     get_recently_played_tool,
     search_tracks_tool,
+    manage_taste_memory,
+    search_taste_memory,
 ]

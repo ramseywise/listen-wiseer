@@ -5,10 +5,6 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
-import duckdb
-import pytest
-
-from etl.db import init_schema
 from etl.sync import (
     PlaylistSyncItem,
     sync_artist_features,
@@ -40,14 +36,6 @@ def _make_item(
         playlist_status=status,
         last_synced=last_synced,
     )
-
-
-@pytest.fixture
-def mem_conn():
-    """In-memory DuckDB with full schema."""
-    conn = duckdb.connect(":memory:")
-    init_schema(conn)
-    return conn
 
 
 # ---------------------------------------------------------------------------

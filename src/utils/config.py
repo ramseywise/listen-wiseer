@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     agent_timeout_seconds: int = 60
     max_history_messages: int = 20
 
+    # Memory / persistence
+    redis_url: str = ""
+    redis_ttl_minutes: int = 1440
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 

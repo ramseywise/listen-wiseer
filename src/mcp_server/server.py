@@ -3,6 +3,7 @@ MCP server exposing Spotify READ operations as tools for LLM agents.
 Run with: uv run python src/mcp_server/server.py
 """
 
+import duckdb
 from mcp.server.fastmcp import FastMCP
 
 from paths import DATA_DIR, MODELS_DIR
@@ -25,7 +26,7 @@ try:
         models_dir=MODELS_DIR,
         data_dir=DATA_DIR,
     )
-except FileNotFoundError as exc:
+except (FileNotFoundError, duckdb.IOException) as exc:
     _engine = None
     log.warning("mcp.engine.unavailable", error=str(exc))
 
