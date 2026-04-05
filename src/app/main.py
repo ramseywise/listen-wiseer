@@ -12,6 +12,7 @@ import chainlit as cl
 from langchain_core.messages import HumanMessage
 
 from agent.graph import RECURSION_LIMIT, graph
+from utils.config import settings
 from utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -37,8 +38,12 @@ async def start() -> None:
 @cl.on_message
 async def on_message(message: cl.Message) -> None:
     thread_id = cl.user_session.get("thread_id")
+    user_id = settings.spotify_user_id or "default"
     config = {
-        "configurable": {"thread_id": thread_id},
+        "configurable": {
+            "thread_id": thread_id,
+            "langgraph_user_id": user_id,
+        },
         "recursion_limit": RECURSION_LIMIT,
     }
     state = {"messages": [HumanMessage(content=message.content)]}

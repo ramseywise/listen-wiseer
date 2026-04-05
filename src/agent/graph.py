@@ -1,11 +1,11 @@
 """LangGraph ReAct agent graph for listen-wiseer.
 
 Graph structure:
-    START → agent (LLM + tools) → [route]
+    START → trim_history → agent (LLM + tools) → [route]
         → has tool_calls → call_tools (ToolNode) → agent  (loop)
         → no tool_calls  → END
 
-The loop is bounded by recursion_limit passed at invocation time.
+The loop is bounded by recursion_limit from config.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode
 
-from agent.nodes import agent_node, route_after_agent
+from agent.nodes import agent_node, route_after_agent, trim_history
 from agent.state import AgentState
 from agent.tools import ALL_TOOLS
 from utils.config import settings
@@ -28,10 +28,12 @@ def build_graph() -> CompiledStateGraph:  # type: ignore[type-arg]
     """Construct and compile the ReAct agent graph."""
     builder = StateGraph(AgentState)
 
+    builder.add_node("trim_history", trim_history)
     builder.add_node("agent", agent_node)
     builder.add_node("call_tools", ToolNode(ALL_TOOLS))
 
-    builder.add_edge(START, "agent")
+    builder.add_edge(START, "trim_history")
+    builder.add_edge("trim_history", "agent")
     builder.add_conditional_edges(
         "agent",
         route_after_agent,
@@ -40,7 +42,7 @@ def build_graph() -> CompiledStateGraph:  # type: ignore[type-arg]
     builder.add_edge("call_tools", "agent")  # loop back
 
     memory = MemorySaver()
-    return builder.compile(checkpointer=memory)
+    return builder.compile(checkpointer=memory, recursion_limit=RECURSION_LIMIT)
 
 
 graph = build_graph()

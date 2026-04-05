@@ -1,8 +1,30 @@
 # Changelog
 
-## [Unreleased] — Phase 3c: LangGraph Agent + Chainlit UI
+## [Unreleased] — Phase 4b: Long-Term Memory for ENOA
 
-_Not started — see `.claude/docs/plans/phase3c_agent_chainlit.md`._
+### P0 — Make agent_node async
+- Modified: `src/agent/nodes.py` — `agent_node` changed to `async def`, uses `await _llm_with_tools.ainvoke()`
+- Modified: `tests/unit/agent/test_graph.py` — all mocks updated from `.invoke` to `.ainvoke`
+- Tests: 280 passed, 32 failed (pre-existing duckdb.IOError), 3 skipped — no regressions
+- Deviations: none
+
+### Step 4.1 — History overflow: trim messages
+- Added: `trim_history` node in `src/agent/nodes.py` — trims to `max_history_messages` (default 20) using `trim_messages(strategy="last", start_on="human")`
+- Modified: `src/agent/graph.py` — graph now `START → trim_history → agent → [route] → ...`
+- Modified: `src/utils/config.py` — added `max_history_messages: int = 20`
+- Added: `tests/unit/agent/test_nodes.py` — 3 tests (under/over/at limit)
+- Tests: 283 passed, 32 failed (pre-existing), 3 skipped
+- Deviations: test file tests trim logic directly (replicates function) to avoid DuckDB import chain; not ideal but matches existing pattern in test_graph.py where all agent tests hit this blocker
+
+### P2 — Add recursion_limit to build_graph
+- Modified: `src/agent/graph.py` — added `recursion_limit=RECURSION_LIMIT` to `builder.compile()`
+- Tests: 280 passed, 32 failed (pre-existing), 3 skipped — no regressions
+- Deviations: none
+
+### P1 — Wire user_id through Chainlit
+- Modified: `src/app/main.py` — added `langgraph_user_id` to config dict, sourced from `settings.spotify_user_id`
+- Tests: 280 passed, 32 failed (pre-existing), 3 skipped — no regressions
+- Deviations: none
 
 ---
 
