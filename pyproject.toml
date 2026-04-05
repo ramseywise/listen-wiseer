@@ -55,6 +55,7 @@ dependencies = [
     "lightgbm>=4.3.0",
     "gensim>=4.4.0",
     "catboost>=1.2.10",
+    "imbalanced-learn>=0.14.1",
 ]
 
 [project.optional-dependencies]
