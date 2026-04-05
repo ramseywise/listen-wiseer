@@ -1,402 +1,656 @@
-# Plan: Phase 4 — RAG (Wikipedia + Tavily + ChromaDB)
-Date: 2026-04-03
-Based on: research/infra_support.md
-
-> Prerequisite: Phase 3 complete. Execute after `/compact` and Phase 3 review.
+# Plan: Phase 5a — RAG Core Adaptation
+Date: 2026-04-05
+Predecessor: Phase 4b (memory) — DONE
+Next: Phase 5b (intent routing + query understanding)
 
 ---
 
-### Step 6: RAG — `src/agent/rag.py` — Wikipedia + Tavily artist context
+## Context & What Exists
 
-**Files**: `src/agent/rag.py` (new), `tests/unit/agent/test_rag.py` (new), `.env.example` (add `TAVILY_API_KEY`), `src/utils/config.py` (add `tavily_api_key`)
+`rag_core/` was built for a **Danish customer support assistant** using OpenSearch.
+Key differences from listen-wiseer:
 
-**Prerequisites**: `uv add tavily-python` (check if already installed first).
+| Aspect | Current (help-assistant) | Target (listen-wiseer) |
+|--------|--------------------------|------------------------|
+| Vector store | OpenSearch (async, knn_vector) | ChromaDB (PersistentClient, local) |
+| Embedder | `multilingual-e5-large` (1024-dim, E5 prefix) | `all-MiniLM-L6-v2` (384-dim, already in settings) |
+| Data source | Scraped HTML docs | Wikipedia + Tavily (on-demand fetch) |
+| Language | Danish prompts + intents | English |
+| Intent enum | HOW_TO / TROUBLESHOOT / REFERENCE / CHIT_CHAT / OUT_OF_SCOPE | ARTIST_INFO / GENRE_INFO / HISTORY / CHIT_CHAT / OUT_OF_SCOPE |
+| Reranker | Stub (NotImplementedError) | Stub OK for now |
 
-**What**: Implement lazy-ingestion ChromaDB RAG. A single `"artist_info"` collection. On cache miss: fetch Wikipedia (primary) or Tavily search (fallback for niche artists), chunk, embed with `all-MiniLM-L6-v2`, upsert. Return top-k passages.
+**Goal**: Adapt `rag_core/` for listen-wiseer — swap retrieval backend to ChromaDB,
+adapt embedder, add music intents, rewrite prompts in English for music context,
+and expose a single `artist_context_tool` to the agent. Keep the Registry pattern
+and modular chunker strategies — these are correct and reusable.
+
+**Production principle**: The agent tool calls a thin orchestrator
+(`src/rag_core/orchestration/music_rag.py`) that wires the modules directly —
+no full LangGraph sub-graph overhead for a single tool call.
+The existing `graph.py` pipeline is useful for notebooks and eval harness, not production.
+
+---
+
+## Out of Scope
+
+- Spotify `/recommendations` API — Phase 6
+- Long-term memory changes — Phase 4b (done)
+- Eval harness — Phase 5c
+- Reranker implementation (Cohere / cross-encoder) — deferred, stub is fine
+
+---
+
+## Steps
+
+### Step 1: Swap retrieval backend — ChromaDB client
+
+**Files**:
+- `src/rag_core/retrieval/chroma_client.py` (new)
+- `src/rag_core/registry.py` (add ChromaDB registration)
+- `src/utils/config.py` (verify `chroma_persist_directory` + `embedding_model` exist)
+- `tests/unit/rag/test_chroma_client.py` (new)
+
+**What**: Implement `ChromaClient` mirroring `OpenSearchClient`'s interface
+(`upsert_chunks`, `search`) so it can drop in via the Registry.
+Uses `all-MiniLM-L6-v2` (384 dims). Anchored via `REPO_ROOT`.
 
 **Snippet**:
 ```python
-# src/agent/rag.py
+# src/rag_core/retrieval/chroma_client.py
 from __future__ import annotations
+
 import chromadb
-from sentence_transformers import SentenceTransformer
+from schemas.chunks import Chunk, ChunkMetadata
+from schemas.retrieval import RetrievalResult
 from paths import REPO_ROOT
 from utils.config import settings
+from utils.logging import get_logger
 
-_CHUNK_SIZE = 400      # tokens ~ chars/4
-_CHUNK_OVERLAP = 50
-_COLLECTION = "artist_info"
+log = get_logger(__name__)
 
-_chroma = chromadb.PersistentClient(
-    path=str(REPO_ROOT / settings.chroma_persist_directory.lstrip("./")),
-)
-_embedder = SentenceTransformer(settings.embedding_model)
-_collection = _chroma.get_or_create_collection(_COLLECTION)
+_DIMS = 384  # all-MiniLM-L6-v2
 
 
-def get_artist_context(artist_name: str, top_k: int = 3) -> str:
-    """Return top_k relevant passages about artist_name from cache or live fetch."""
-    # 1. query ChromaDB
-    # 2. if results below threshold: fetch + ingest
-    # 3. return formatted passages
-    ...
+class ChromaClient:
+    """ChromaDB retrieval backend — drop-in replacement for OpenSearchClient.
 
-def _fetch_wikipedia(artist_name: str) -> str | None:
-    """Return page content or None if not found / too short."""
-    import wikipedia
+    Uses cosine similarity. Collection is created on first use.
+    """
+
+    def __init__(self, collection_name: str = "artist_info") -> None:
+        db_path = str(REPO_ROOT / settings.chroma_persist_directory.lstrip("./"))
+        self._client = chromadb.PersistentClient(path=db_path)
+        self._col = self._client.get_or_create_collection(
+            collection_name,
+            metadata={"hnsw:space": "cosine"},
+        )
+        log.info("chroma.init", collection=collection_name, path=db_path)
+
+    def search(
+        self,
+        query_vector: list[float],
+        k: int = 5,
+        where: dict | None = None,
+    ) -> list[RetrievalResult]:
+        """Query ChromaDB and return ranked RetrievalResults."""
+        kwargs: dict = {"query_embeddings": [query_vector], "n_results=k"}
+        if where:
+            kwargs["where"] = where
+        results = self._col.query(**kwargs)
+        docs = results.get("documents", [[]])[0]
+        ids = results.get("ids", [[]])[0]
+        distances = results.get("distances", [[]])[0]
+        metas = results.get("metadatas", [[]])[0]
+
+        out: list[RetrievalResult] = []
+        for doc, cid, dist, meta in zip(docs, ids, distances, metas):
+            chunk = Chunk(
+                id=cid,
+                text=doc,
+                metadata=ChunkMetadata(
+                    url=meta.get("source", ""),
+                    title=meta.get("artist", ""),
+                    section=meta.get("section", ""),
+                    doc_id=cid,
+                ),
+            )
+            # ChromaDB cosine distance → similarity score (1 - distance)
+            out.append(RetrievalResult(chunk=chunk, score=1.0 - dist, source="vector"))
+        log.info("chroma.search.done", n_results=len(out))
+        return out
+
+    def upsert_chunks(self, chunks: list[Chunk], embeddings: list[list[float]]) -> None:
+        """Bulk upsert chunks with precomputed embeddings."""
+        if not chunks:
+            return
+        self._col.upsert(
+            ids=[c.id for c in chunks],
+            embeddings=embeddings,
+            documents=[c.text for c in chunks],
+            metadatas=[
+                {
+                    "artist": c.metadata.title,
+                    "section": c.metadata.section,
+                    "source": c.metadata.url,
+                }
+                for c in chunks
+            ],
+        )
+        log.info("chroma.upsert.done", n_chunks=len(chunks))
+```
+
+**Registry addition** (`registry.py`):
+```python
+from retrieval.chroma_client import ChromaClient
+Registry.register("client", "chroma")(ChromaClient)
+```
+
+**Config check** — `src/utils/config.py` must have:
+```python
+chroma_persist_directory: str = "./data/vectorstore"
+embedding_model: str = "all-MiniLM-L6-v2"
+```
+Add if missing.
+
+**Tests**:
+```python
+# tests/unit/rag/test_chroma_client.py
+def test_chroma_upsert_and_search(tmp_path, monkeypatch):
+    monkeypatch.setattr("rag_core.retrieval.chroma_client.REPO_ROOT", tmp_path)
+    from rag_core.retrieval.chroma_client import ChromaClient
+    from rag_core.schemas.chunks import Chunk, ChunkMetadata
+    client = ChromaClient(collection_name="test")
+    chunk = Chunk(id="c1", text="Aphex Twin is an electronic music producer.",
+                  metadata=ChunkMetadata(url="", title="Aphex Twin", section="bio", doc_id="c1"))
+    embedding = [0.1] * 384
+    client.upsert_chunks([chunk], [embedding])
+    results = client.search(query_vector=embedding, k=1)
+    assert len(results) == 1
+    assert results[0].chunk.id == "c1"
+```
+
+**Run**: `uv run pytest tests/unit/rag/test_chroma_client.py -v`
+
+**Done when**: upsert + search round-trip passes; `Registry.list_modules()` shows `"chroma"`.
+
+---
+
+### Step 2: Adapt embedder — swap to `all-MiniLM-L6-v2`
+
+**Files**:
+- `src/rag_core/retrieval/embedder.py` (add `MiniLMEmbedder`, keep `MultilingualEmbedder`)
+- `src/rag_core/registry.py` (register `MiniLMEmbedder`)
+- `tests/unit/rag/test_embedder.py` (new)
+
+**What**: Add `MiniLMEmbedder` wrapping `all-MiniLM-L6-v2` (384-dim, no prefix required).
+Keep `MultilingualEmbedder` for backwards compatibility.
+`MiniLMEmbedder` is the default for listen-wiseer.
+
+**Snippet**:
+```python
+# src/rag_core/retrieval/embedder.py — add:
+class MiniLMEmbedder:
+    """Wraps all-MiniLM-L6-v2 (384 dims). No prefix required."""
+
+    def __init__(self, model_name: str = "all-MiniLM-L6-v2") -> None:
+        self.model = SentenceTransformer(model_name)
+
+    def embed_query(self, text: str) -> list[float]:
+        return self.model.encode(text, convert_to_numpy=True).tolist()
+
+    def embed_passages(self, texts: list[str]) -> list[list[float]]:
+        return self.model.encode(texts, convert_to_numpy=True).tolist()
+```
+
+**Registry**:
+```python
+Registry.register("embedder", "minilm")(MiniLMEmbedder)
+Registry.register("embedder", "multilingual")(MultilingualEmbedder)
+```
+
+**Tests**:
+```python
+def test_minilm_embed_query_shape():
+    from rag_core.retrieval.embedder import MiniLMEmbedder
+    embedder = MiniLMEmbedder()
+    vec = embedder.embed_query("Aphex Twin electronic music")
+    assert len(vec) == 384
+    assert all(isinstance(v, float) for v in vec)
+
+def test_minilm_embed_passages_batch():
+    from rag_core.retrieval.embedder import MiniLMEmbedder
+    embedder = MiniLMEmbedder()
+    vecs = embedder.embed_passages(["text one", "text two"])
+    assert len(vecs) == 2
+    assert len(vecs[0]) == 384
+```
+
+**Run**: `uv run pytest tests/unit/rag/test_embedder.py -v`
+
+**Done when**: `MiniLMEmbedder` returns 384-dim vectors; registered in Registry.
+
+---
+
+### Step 3: Adapt schemas — music intents + ChunkMetadata source field
+
+**Files**:
+- `src/rag_core/schemas/retrieval.py` (extend `Intent`, add `source` to `RetrievalResult`)
+- `src/rag_core/schemas/chunks.py` (verify `ChunkMetadata` has `source` or use `url`)
+- `tests/unit/rag/test_schemas.py` (new)
+
+**What**: Replace generic intents with music-specific ones.
+Keep `CHIT_CHAT` and `OUT_OF_SCOPE` — they're universal.
+
+```python
+# src/rag_core/schemas/retrieval.py
+class Intent(StrEnum):
+    ARTIST_INFO = "artist_info"    # "who is Aphex Twin?", "tell me about Radiohead"
+    GENRE_INFO = "genre_info"      # "what is zouk?", "explain bossa nova"
+    HISTORY = "history"            # "what have I been listening to?", "my recent plays"
+    CHIT_CHAT = "chit_chat"        # greetings, small talk
+    OUT_OF_SCOPE = "out_of_scope"  # unrelated to music
+```
+
+**Tests**:
+```python
+def test_intent_values():
+    from rag_core.schemas.retrieval import Intent
+    assert Intent.ARTIST_INFO == "artist_info"
+    assert Intent.GENRE_INFO == "genre_info"
+    assert Intent.HISTORY == "history"
+```
+
+**Run**: `uv run pytest tests/unit/rag/test_schemas.py -v`
+
+**Done when**: `Intent` has music values; existing graph tests updated to use new enum.
+
+---
+
+### Step 4: Data fetchers — Wikipedia + Tavily
+
+**Files**:
+- `src/rag_core/preprocessing/fetchers.py` (new)
+- `tests/unit/rag/test_fetchers.py` (new)
+
+**What**: Implement `fetch_wikipedia` and `fetch_tavily` — on-demand content
+fetchers for the lazy-ingestion pipeline. These are pure functions, not classes.
+
+```python
+# src/rag_core/preprocessing/fetchers.py
+from __future__ import annotations
+
+import wikipedia
+from utils.config import settings
+from utils.logging import get_logger
+
+log = get_logger(__name__)
+
+
+def fetch_wikipedia(subject: str) -> str | None:
+    """Fetch Wikipedia content for subject. Returns None on failure."""
     try:
-        results = wikipedia.search(artist_name, results=3)
+        results = wikipedia.search(subject, results=3)
         if not results:
             return None
         page = wikipedia.page(results[0], auto_suggest=False)
+        log.info("rag.fetch.wikipedia", subject=subject, title=page.title)
         return page.content
-    except Exception:
+    except wikipedia.exceptions.DisambiguationError as exc:
+        if exc.options:
+            try:
+                page = wikipedia.page(exc.options[0], auto_suggest=False)
+                return page.content
+            except Exception:
+                return None
+        return None
+    except Exception as exc:
+        log.warning("rag.fetch.wikipedia.failed", subject=subject, error=str(exc))
         return None
 
-def _fetch_tavily(artist_name: str) -> str | None:
-    """Fallback: Tavily web search for artist bio."""
+
+def fetch_tavily(subject: str, context: str = "musician biography") -> str | None:
+    """Tavily web search fallback. Returns None if no API key or on failure."""
     if not settings.tavily_api_key:
         return None
-    from tavily import TavilyClient
-    client = TavilyClient(api_key=settings.tavily_api_key)
-    resp = client.search(f"{artist_name} musician biography interesting facts", max_results=3)
-    return "\n\n".join(r["content"] for r in resp.get("results", []))
-
-def _chunk_text(text: str) -> list[str]:
-    """Split text into overlapping character-based chunks (~400 tokens)."""
-    size = _CHUNK_SIZE * 4   # chars
-    step = (_CHUNK_SIZE - _CHUNK_OVERLAP) * 4
-    return [text[i : i + size] for i in range(0, len(text), step) if text[i : i + size].strip()]
-
-def _ingest(artist_name: str, text: str) -> None:
-    chunks = _chunk_text(text)
-    if not chunks:
-        return
-    embeddings = _embedder.encode(chunks).tolist()
-    ids = [f"{artist_name}::{i}" for i in range(len(chunks))]
-    _collection.upsert(
-        ids=ids,
-        embeddings=embeddings,
-        documents=chunks,
-        metadatas=[{"artist": artist_name}] * len(chunks),
-    )
+    try:
+        from tavily import TavilyClient
+        client = TavilyClient(api_key=settings.tavily_api_key)
+        resp = client.search(f"{subject} {context}", max_results=3)
+        texts = [r["content"] for r in resp.get("results", []) if r.get("content")]
+        if not texts:
+            return None
+        log.info("rag.fetch.tavily", subject=subject, n_results=len(texts))
+        return "\n\n".join(texts)
+    except Exception as exc:
+        log.warning("rag.fetch.tavily.failed", subject=subject, error=str(exc))
+        return None
 ```
 
-**Config addition** (`src/utils/config.py`):
+**Config**: add to `src/utils/config.py`:
 ```python
-# Add to Settings:
 tavily_api_key: str = ""
 ```
+Add `TAVILY_API_KEY=` to `.env.example`.
 
-**Tests** (mock Wikipedia and Tavily — no network in unit tests):
+**Tests** (mock network — no real calls):
 ```python
-# tests/unit/agent/test_rag.py
-from unittest.mock import patch, MagicMock
+def test_fetch_wikipedia_returns_content(monkeypatch):
+    import wikipedia as wp
+    monkeypatch.setattr(wp, "search", lambda *a, **kw: ["Aphex Twin"])
+    mock_page = MagicMock(); mock_page.content = "Aphex Twin is..."
+    monkeypatch.setattr(wp, "page", lambda *a, **kw: mock_page)
+    from rag_core.preprocessing.fetchers import fetch_wikipedia
+    assert "Aphex Twin" in fetch_wikipedia("Aphex Twin")
 
-def test_get_artist_context_wikipedia_hit(tmp_path, monkeypatch):
-    """Cache miss → Wikipedia fetch → returns passages."""
-    monkeypatch.setenv("CHROMA_PERSIST_DIRECTORY", str(tmp_path / "chroma"))
-    with patch("agent.rag._fetch_wikipedia", return_value="Aphex Twin is ...") as mock_wiki, \
-         patch("agent.rag._collection") as mock_col:
-        mock_col.query.return_value = {"documents": [[]], "distances": [[]]}
-        mock_col.upsert = MagicMock()
-        from agent.rag import get_artist_context
-        result = get_artist_context("Aphex Twin", top_k=2)
-    mock_wiki.assert_called_once_with("Aphex Twin")
-    assert isinstance(result, str)
+def test_fetch_wikipedia_disambiguation(monkeypatch):
+    import wikipedia as wp
+    exc = wp.exceptions.DisambiguationError("Genesis", ["Genesis (band)", "Genesis (book)"])
+    monkeypatch.setattr(wp, "search", lambda *a, **kw: ["Genesis"])
+    monkeypatch.setattr(wp, "page", MagicMock(side_effect=[exc, MagicMock(content="Genesis band...")]))
+    from rag_core.preprocessing.fetchers import fetch_wikipedia
+    result = fetch_wikipedia("Genesis")
+    assert result is not None
 
-def test_chunk_text_creates_overlapping_chunks():
-    from agent.rag import _chunk_text
-    text = "a" * 2000
-    chunks = _chunk_text(text)
-    assert len(chunks) > 1
+def test_fetch_tavily_no_key(monkeypatch):
+    monkeypatch.setattr("rag_core.preprocessing.fetchers.settings", MagicMock(tavily_api_key=""))
+    from rag_core.preprocessing.fetchers import fetch_tavily
+    assert fetch_tavily("Aphex Twin") is None
 ```
 
-**Run**: `uv run pytest tests/unit/agent/test_rag.py -v`
+**Run**: `uv run pytest tests/unit/rag/test_fetchers.py -v`
 
-**Done when**: `get_artist_context("Aphex Twin")` returns non-empty string in a REPL (requires internet); unit tests pass with mocks.
+**Done when**: Both fetchers importable and tested with mocks.
 
 ---
 
-### Step 7: [Phase 4] Wire RAG into agent tools + graph
+### Step 5: Music RAG orchestrator — production script
 
-**Files**: `src/agent/tools.py` (add `get_artist_context_tool`), `src/agent/graph.py` (add tool to `ALL_TOOLS`)
+**Files**:
+- `src/rag_core/orchestration/music_rag.py` (new)
+- `tests/unit/rag/test_music_rag.py` (new)
 
-**What**: Add `get_artist_context` as a `StructuredTool` so the agent can invoke it when intent is `artist_info`. Update `ALL_TOOLS` list and rebuild graph. No node changes needed — `ToolNode` picks up new tools automatically.
+**What**: Thin production orchestrator — no LangGraph overhead.
+Wires: `MiniLMEmbedder` → `ChromaClient` → lazy-fetch → ingest → return passages.
+This is what the agent tool calls.
 
-**Snippet**:
+```python
+# src/rag_core/orchestration/music_rag.py
+from __future__ import annotations
+
+from rag_core.preprocessing.chunker import StructuredChunker, ChunkerConfig
+from rag_core.preprocessing.fetchers import fetch_wikipedia, fetch_tavily
+from rag_core.retrieval.chroma_client import ChromaClient
+from rag_core.retrieval.embedder import MiniLMEmbedder
+from utils.logging import get_logger
+
+log = get_logger(__name__)
+
+_CHUNK_CONFIG = ChunkerConfig(max_tokens=400, overlap_tokens=50, min_tokens=30)
+_CACHE_MISS_THRESHOLD = 0  # re-fetch if 0 chunks found for this artist
+
+
+class MusicRAG:
+    """Production RAG orchestrator for listen-wiseer.
+
+    Lazy ingestion: on first query for an artist, fetches Wikipedia (or Tavily
+    fallback), chunks, embeds, and upserts to ChromaDB. Subsequent queries hit cache.
+
+    Usage:
+        rag = MusicRAG()
+        passages = rag.get_context("Aphex Twin", top_k=3)
+    """
+
+    def __init__(self) -> None:
+        self._embedder = MiniLMEmbedder()
+        self._client = ChromaClient(collection_name="artist_info")
+        self._chunker = StructuredChunker(_CHUNK_CONFIG)
+
+    def get_context(self, subject: str, top_k: int = 3) -> str:
+        """Return top_k relevant passages for subject. Fetches and ingests if not cached."""
+        query_vec = self._embedder.embed_query(subject)
+
+        # 1. Try cache
+        results = self._client.search(
+            query_vector=query_vec,
+            k=top_k,
+            where={"artist": subject},
+        )
+        if len(results) > _CACHE_MISS_THRESHOLD:
+            log.info("rag.cache_hit", subject=subject, n=len(results))
+            return "\n\n".join(r.chunk.text for r in results)
+
+        # 2. Cache miss — fetch
+        text = fetch_wikipedia(subject) or fetch_tavily(subject)
+        if not text:
+            log.warning("rag.no_content", subject=subject)
+            return f"No information found about {subject}."
+
+        # 3. Chunk + embed + ingest
+        doc = {"text": text, "url": f"wikipedia:{subject}", "title": subject, "section": "bio"}
+        chunks = self._chunker.chunk_document(doc)
+        if not chunks:
+            return f"No information found about {subject}."
+
+        # Override metadata so artist filter works
+        for chunk in chunks:
+            chunk.metadata.title = subject
+
+        embeddings = self._embedder.embed_passages([c.text for c in chunks])
+        self._client.upsert_chunks(chunks, embeddings)
+        log.info("rag.ingest", subject=subject, n_chunks=len(chunks))
+
+        # 4. Re-query after ingest
+        results = self._client.search(query_vector=query_vec, k=top_k, where={"artist": subject})
+        if not results:
+            return f"No information found about {subject}."
+        return "\n\n".join(r.chunk.text for r in results)
+```
+
+**Tests**:
+```python
+# tests/unit/rag/test_music_rag.py
+def test_get_context_cache_miss_fetches_wikipedia(tmp_path, monkeypatch):
+    """Cache miss → Wikipedia fetch → ingest → returns passages."""
+    monkeypatch.setattr("rag_core.retrieval.chroma_client.REPO_ROOT", tmp_path)
+    with patch("rag_core.orchestration.music_rag.fetch_wikipedia", return_value="Aphex Twin is...") as mock_wiki, \
+         patch("rag_core.orchestration.music_rag.fetch_tavily", return_value=None):
+        from rag_core.orchestration.music_rag import MusicRAG
+        rag = MusicRAG()
+        result = rag.get_context("Aphex Twin", top_k=2)
+    mock_wiki.assert_called_once_with("Aphex Twin")
+    assert isinstance(result, str)
+    assert len(result) > 0
+
+def test_get_context_no_content_returns_fallback(tmp_path, monkeypatch):
+    monkeypatch.setattr("rag_core.retrieval.chroma_client.REPO_ROOT", tmp_path)
+    with patch("rag_core.orchestration.music_rag.fetch_wikipedia", return_value=None), \
+         patch("rag_core.orchestration.music_rag.fetch_tavily", return_value=None):
+        from rag_core.orchestration.music_rag import MusicRAG
+        rag = MusicRAG()
+        result = rag.get_context("UnknownArtist999")
+    assert "No information found" in result
+```
+
+**Run**: `uv run pytest tests/unit/rag/test_music_rag.py -v`
+
+**Done when**: Both tests pass; `MusicRAG().get_context("Aphex Twin")` returns content in REPL (requires internet).
+
+---
+
+### Step 6: Wire `MusicRAG` into agent as tool
+
+**Files**:
+- `src/agent/tools.py` (add `get_artist_context_tool`, update `ALL_TOOLS`)
+- `src/agent/nodes.py` (update system prompt to mention new tool)
+- `tests/unit/agent/test_tools.py` (extend)
+
+**What**: Expose `MusicRAG.get_context` as a `StructuredTool`. Agent calls it
+for "who is X?" and "tell me about X" queries. `MusicRAG` is instantiated once
+at module load (lazy — no network call at import time).
+
 ```python
 # src/agent/tools.py — add:
-from agent.rag import get_artist_context as _get_artist_context
+from rag_core.orchestration.music_rag import MusicRAG as _MusicRAG
+
+_music_rag: _MusicRAG | None = None
+
+def _get_music_rag() -> _MusicRAG:
+    global _music_rag
+    if _music_rag is None:
+        _music_rag = _MusicRAG()
+    return _music_rag
+
+
+def _get_artist_context(artist_name: str, top_k: int = 3) -> str:
+    """Retrieve artist info from Wikipedia/ChromaDB cache."""
+    return _get_music_rag().get_context(artist_name, top_k=top_k)
+
 
 get_artist_context_tool = StructuredTool.from_function(
     _get_artist_context,
     name="get_artist_context",
     description=(
         "Retrieve biographical info and interesting facts about a musician or band. "
-        "Use when the user asks who an artist is, what they're known for, or wants trivia."
+        "Use when the user asks who an artist is, what they're known for, "
+        "their history, influences, or style."
     ),
 )
 
-ALL_TOOLS = [
-    recommend_similar_tracks,
-    recommend_for_artist,
-    recommend_by_genre,
-    get_recently_played_tool,
-    get_related_artists_tool,
-    get_artist_context_tool,   # ← new
-]
+ALL_TOOLS.append(get_artist_context_tool)  # now 9 tools
 ```
 
-**Test** (extend `test_tools.py`):
+**System prompt line** (`nodes.py`):
+```
+- get_artist_context: use for "who is X?", "tell me about X", artist trivia, history, influences
+```
+
+**Tests**:
 ```python
-def test_get_artist_context_tool_callable():
-    with patch("agent.rag._collection") as mock_col, \
-         patch("agent.rag._fetch_wikipedia", return_value="Facts..."):
-        mock_col.query.return_value = {"documents": [[]], "distances": [[]]}
-        mock_col.upsert = MagicMock()
+def test_get_artist_context_tool_in_all_tools():
+    from agent.tools import ALL_TOOLS
+    assert "get_artist_context" in [t.name for t in ALL_TOOLS]
+
+def test_get_artist_context_tool_callable(monkeypatch):
+    with patch("agent.tools._get_music_rag") as mock_rag:
+        mock_rag.return_value.get_context.return_value = "Aphex Twin is a pioneer..."
         from agent.tools import get_artist_context_tool
-        result = get_artist_context_tool.invoke({"artist_name": "Miles Davis"})
-    assert isinstance(result, str)
+        result = get_artist_context_tool.invoke({"artist_name": "Aphex Twin"})
+    assert "Aphex Twin" in result
 ```
 
 **Run**: `uv run pytest tests/unit/agent/ -v`
 
-**Done when**: `ALL_TOOLS` contains 6 tools; `graph.ainvoke` with "who is Aphex Twin?" routes to `get_artist_context` (visible in message history).
+**Done when**: `ALL_TOOLS` has 9 tools; smoke: "who is Aphex Twin?" routes to `get_artist_context`.
 
 ---
 
-### Step 8: [Phase 4] Related artists tool — new Spotify fetch function
+### Step 7: English prompts + music system prompts
 
-**Files**: `src/spotify/fetch.py` (add `fetch_related_artists`), `src/agent/tools.py` (add `get_related_artists_tool`), `tests/unit/test_spotify_client.py` (extend)
+**Files**:
+- `src/rag_core/generation/generator.py` (replace Danish prompts with English music prompts)
+- `tests/unit/rag/test_generator.py` (update)
 
-**What**: Add `fetch_related_artists(client, artist_id)` to `fetch.py`. Wrap as a tool in `tools.py`. This fills the RESEARCH.md gap for "who sounds like X?" queries.
-
-**Snippet**:
-```python
-# src/spotify/fetch.py — add:
-def fetch_related_artists(client: SpotifyClient, artist_id: str) -> list[dict]:
-    """Fetch up to 20 related artists for a given artist ID."""
-    response = client.get(f"artists/{artist_id}/related-artists")
-    artists = response.get("artists", [])
-    log.info("spotify.fetch_related_artists", artist_id=artist_id, n=len(artists))
-    return [{"id": a["id"], "name": a["name"], "genres": a.get("genres", [])} for a in artists]
-```
+**What**: Replace Danish `SYSTEM_PROMPTS` with English music-context prompts
+keyed to new `Intent` enum. Used by the eval harness notebook (not production graph).
 
 ```python
-# src/agent/tools.py — add:
-from spotify.fetch import fetch_related_artists as _fetch_related_artists
-
-def _get_related_artists(artist_id: str) -> str:
-    """Find artists that sound similar to a given Spotify artist ID."""
-    sp = SpotifyClient()
-    artists = _fetch_related_artists(sp, artist_id)
-    if not artists:
-        return f"No related artists found for {artist_id}"
-    return "\n".join(f"- {a['name']} ({', '.join(a['genres'][:2]) or 'unknown genre'})" for a in artists)
-
-get_related_artists_tool = StructuredTool.from_function(
-    _get_related_artists,
-    name="get_related_artists",
-    description="Find artists that sound similar to a Spotify artist ID. Use for 'who sounds like X?' queries.",
-)
+SYSTEM_PROMPTS: dict[Intent, str] = {
+    Intent.ARTIST_INFO: (
+        "You are a knowledgeable music assistant. "
+        "Answer questions about musicians, bands, and artists using the provided context. "
+        "Be specific, factual, and engaging."
+    ),
+    Intent.GENRE_INFO: (
+        "You are a music genre expert. "
+        "Explain musical genres, their origins, characteristics, and key artists "
+        "using the provided context."
+    ),
+    Intent.HISTORY: (
+        "You are a music history assistant. "
+        "Help the user understand their listening patterns and music history."
+    ),
+    Intent.CHIT_CHAT: "You are a friendly music assistant. Respond briefly and warmly.",
+    Intent.OUT_OF_SCOPE: (
+        "You are a music assistant. Politely explain that the question is outside "
+        "your area of expertise (music and artist information)."
+    ),
+}
 ```
 
-**Test**:
-```python
-# tests/unit/test_spotify_client.py — add:
-def test_fetch_related_artists_empty_response(monkeypatch):
-    from unittest.mock import MagicMock
-    from spotify.fetch import fetch_related_artists
-    mock_client = MagicMock()
-    mock_client.get.return_value = {"artists": []}
-    result = fetch_related_artists(mock_client, "some_artist_id")
-    assert result == []
-```
-
-**Run**: `uv run pytest tests/unit/test_spotify_client.py -v`
-
-**Done when**: `fetch_related_artists` importable and tested; tool in `ALL_TOOLS`.
+**Done when**: No Danish strings in `generator.py`; tests pass.
 
 ---
 
-### Step 9: Connect Chainlit — `src/app/main.py`
+### Step 8: End-to-end smoke + regression
 
-**Files**: `src/app/main.py` (replace stub)
+**Manual smoke** (run `make app`):
+1. `"who is Aphex Twin?"` → `get_artist_context` → Wikipedia passages
+2. `"what is zouk music?"` → `get_artist_context` with "zouk" → genre info
+3. `"recommend zouk tracks"` → `recommend_by_genre` → still works (regression)
 
-**What**: Replace the `[stub]` handler with a real `graph.ainvoke` call. Maintain per-session thread ID using `cl.user_session`. No streaming tokens (deferred to Out of Scope).
-
-**Snippet**:
-```python
-# src/app/main.py
-from __future__ import annotations
-import uuid
-import chainlit as cl
-from langchain_core.messages import HumanMessage
-from agent.graph import graph
-from utils.logging import get_logger
-
-log = get_logger(__name__)
-
-
-@cl.on_chat_start
-async def start():
-    cl.user_session.set("thread_id", str(uuid.uuid4()))
-    await cl.Message(
-        content=(
-            "Welcome to **listen-wiseer**!\n\n"
-            "Ask me about your Spotify listening history, "
-            "get recommendations, or learn about an artist."
-        )
-    ).send()
-
-
-@cl.on_message
-async def on_message(message: cl.Message):
-    thread_id = cl.user_session.get("thread_id")
-    config = {"configurable": {"thread_id": thread_id}}
-    state = {
-        "messages": [HumanMessage(content=message.content)],
-        "intent": "",
-        "rewritten_query": "",
-        "tool_results": [],
-        "context_docs": [],
-    }
-    try:
-        result = await graph.ainvoke(state, config=config)
-        reply = result["messages"][-1].content
-    except Exception as exc:
-        log.error("app.on_message.error", error=str(exc))
-        reply = "Something went wrong — please try again."
-    await cl.Message(content=reply).send()
-```
-
-**Manual test**:
+**Regression**:
 ```bash
-PYTHONPATH=src uv run chainlit run src/app/main.py
-# Open http://localhost:8000
-# Send: "recommend me some zouk tracks"
-# Expected: numbered list of tracks, not "[stub] received: ..."
+uv run pytest tests/unit/ --tb=short -q
 ```
 
-**Done when**: Chainlit UI starts without error; first user message returns a non-stub response from the agent.
+**Done when**: All 3 smoke queries return useful responses; test count ≥ 280 (pre-phase baseline).
 
 ---
 
 ## Test Plan
 
-| Step | Test command | What it verifies |
-|------|-------------|-----------------|
-| 1 | `uv run pytest tests/unit/ --tb=short -q` | Existing 190 tests still pass after paths.py change |
-| 2 | `uv run pytest tests/unit/agent/test_state.py -v` | AgentState constructs correctly |
-| 3 | `uv run pytest tests/unit/agent/test_tools.py -v` | Tool wrappers return strings; handle empty results |
-| 4 | `uv run pytest tests/unit/agent/test_graph.py -v` | Both routing paths (direct + tool) work with mocked LLM |
-| 5 | Manual smoke (see Step 5) | Live LLM call; real engine; end-to-end |
-| 6 | `uv run pytest tests/unit/agent/test_rag.py -v` | Wikipedia fetch + chunking + ChromaDB upsert (mocked) |
-| 7 | `uv run pytest tests/unit/agent/ -v` | All agent tests including RAG tool wiring |
-| 8 | `uv run pytest tests/unit/test_spotify_client.py -v` | `fetch_related_artists` handles empty response |
-| 9 | `PYTHONPATH=src uv run chainlit run src/app/main.py` | UI starts; messages route through agent |
+| Step | Command | Verifies |
+|------|---------|----------|
+| 1 | `uv run pytest tests/unit/rag/test_chroma_client.py -v` | ChromaDB upsert + search |
+| 2 | `uv run pytest tests/unit/rag/test_embedder.py -v` | MiniLM 384-dim vectors |
+| 3 | `uv run pytest tests/unit/rag/test_schemas.py -v` | Music Intent enum |
+| 4 | `uv run pytest tests/unit/rag/test_fetchers.py -v` | Wikipedia + Tavily (mocked) |
+| 5 | `uv run pytest tests/unit/rag/test_music_rag.py -v` | Full orchestrator (mocked) |
+| 6 | `uv run pytest tests/unit/agent/ -v` | Tool wiring + ALL_TOOLS count |
+| 7 | `uv run pytest tests/unit/rag/ -v` | Full RAG test suite |
+| 8 | `uv run pytest tests/unit/ --tb=short -q` | Full regression |
 
-**Full regression after each step**:
-```bash
-uv run pytest tests/unit/ --tb=short -q
+---
+
+## Dependency Map
+
+```
+Step 1 (ChromaClient) ← independent
+Step 2 (MiniLMEmbedder) ← independent
+Step 3 (schemas) ← independent; Step 7 depends on it
+Step 4 (fetchers) ← needs Step 3
+Step 5 (MusicRAG) ← needs Steps 1 + 2 + 4
+Step 6 (agent tool) ← needs Step 5
+Step 7 (prompts) ← needs Step 3
+Step 8 (smoke) ← needs Steps 5 + 6
 ```
 
 ---
 
 ## Risks & Rollback
 
-### Step 1: paths.py + training run
-- **Risk**: `make train` interrupted again (e.g. OOM at 595k rows). Leaves partial classifiers in `models/`.
-- **Blast radius**: Local. Engine will load with fewer classifiers; playlist pipeline may soft-fail for missing ones.
-- **Rollback**: Re-run `make train` — `train.py` skips playlists with < 20 positives and saves each pkl independently. No full rerun needed; just re-run and it will fill gaps.
-- **Verify rollback**: `ls models/classifier_*.pkl | wc -l` — count increases.
+### ChromaDB path (Step 1)
+- **Risk**: PersistentClient creates at wrong path if `REPO_ROOT` resolution fails
+- **Mitigation**: Anchored via `REPO_ROOT / settings.chroma_persist_directory.lstrip("./")`
+- **Rollback**: Delete `data/vectorstore/` — it's a cache, not source of truth
 
-- **Risk**: `paths.py` import breaks `server.py` or `engine.py` if `PYTHONPATH` doesn't include `src/`.
-- **Blast radius**: Local. Only affects startup; no data touched.
-- **Rollback**: `git checkout src/mcp_server/server.py src/recommend/engine.py` — restores inline paths.
-- **Verify rollback**: `uv run pytest tests/unit/ --tb=short -q` passes.
+### Model download (Step 2)
+- **Risk**: `all-MiniLM-L6-v2` not cached locally → slow first import
+- **Mitigation**: Already used by `recommend/` pipeline — should be in HuggingFace cache
+- **Rollback**: Not applicable (download, not a code bug)
 
-### Step 2: Agent scaffold
-- **Risk**: `AgentState` TypedDict key mismatch causes `KeyError` in nodes (e.g. node returns `intent` but state doesn't define it).
-- **Blast radius**: Local. Fails at runtime in Step 4.
-- **Rollback**: `git revert HEAD --no-edit` (only `src/agent/` files touched).
-- **Verify rollback**: `uv run pytest tests/unit/agent/test_state.py` passes or dir is gone.
+### Import-time MusicRAG (Step 6)
+- **Risk**: `_music_rag` instantiation at first call loads SentenceTransformer → slow
+- **Mitigation**: Lazy singleton (`_music_rag is None` guard); not loaded at import
+- **Rollback**: `git revert HEAD --no-edit` on `tools.py`
 
-### Step 3: Tool wrappers
-- **Risk**: `_engine` loaded at `tools.py` import time — if `models/` is incomplete, entire agent fails to import.
-- **Blast radius**: Local. Blocks Steps 4–9.
-- **Mitigation**: Same `try/except FileNotFoundError` pattern as `server.py`; set `_engine = None` and have each tool return an explanatory string.
-- **Rollback**: `git revert HEAD --no-edit`
-- **Verify rollback**: `from agent import tools` no longer errors.
-
-### Step 4: LangGraph graph
-- **Risk**: Conditional edge routing returns a key not in the edge map — LangGraph raises `ValueError` at compile time.
-- **Blast radius**: Local. Agent fails to build.
-- **Rollback**: `git revert HEAD --no-edit`
-- **Verify rollback**: `from agent.graph import graph` raises no error.
-
-- **Risk**: `MemorySaver` thread ID collision in tests — two tests sharing the same `thread_id` will bleed state.
-- **Blast radius**: Local. Tests may fail non-deterministically.
-- **Mitigation**: Use unique `thread_id` per test (`uuid4()` or test name).
-- **Rollback**: Fix test fixtures — not a code rollback.
-
-### Step 5: Live smoke test
-- **Risk**: LLM returns no tool calls for a genre query — agent goes to `synthesize` directly with no recommendations.
-- **Blast radius**: User-visible (incorrect behaviour). Not a crash.
-- **Mitigation**: Check `INTENT_SYSTEM` prompt; ensure genre queries are unambiguous enough to trigger tool call.
-- **Rollback**: No code change needed — tune system prompt in `nodes.py`.
-
-### Step 6: RAG
-- **Risk**: `chromadb.PersistentClient` creates `data/vectorstore/` relative to CWD, not repo root — path diverges depending on where `chainlit run` is called from.
-- **Blast radius**: Local/User-visible. ChromaDB creates a new empty store on each run from a different directory.
-- **Mitigation**: Path is anchored via `REPO_ROOT / settings.chroma_persist_directory.lstrip("./")` in `rag.py`.
-- **Rollback**: Delete `data/vectorstore/` and re-run — ChromaDB is a cache, not a source of truth.
-
-- **Risk**: Wikipedia `DisambiguationError` for common artist names (e.g. "Genesis" matches band + biblical book).
-- **Blast radius**: Local. `_fetch_wikipedia` returns `None`; Tavily fallback activates.
-- **Mitigation**: Catch `wikipedia.exceptions.DisambiguationError` in `_fetch_wikipedia`.
-- **Rollback**: Fix exception handling — no data affected.
-
-### Step 8: Related artists fetch
-- **Risk**: `SpotifyClient.get` call fails if OAuth token is expired — raises `SpotifyClientError`.
-- **Blast radius**: User-visible. Tool returns error string.
-- **Mitigation**: Tool wraps call in try/except and returns `f"Spotify auth needed: {e}"`.
-- **Rollback**: Not applicable (auth failure, not a code bug).
-
-### Step 9: Chainlit wiring
-- **Risk**: `graph.ainvoke` blocks the event loop if any tool is synchronous-heavy (e.g. 200ms corpus scan inside an async context).
-- **Blast radius**: User-visible. UI freezes during recommendation queries.
-- **Mitigation**: Wrap synchronous tool calls with `asyncio.get_event_loop().run_in_executor(None, fn, ...)` or use `make_async` from Chainlit.
-- **Rollback**: `git checkout src/app/main.py` restores stub.
-- **Verify rollback**: `chainlit run` returns stub responses.
+### Wikipedia DisambiguationError (Step 4)
+- **Risk**: "Genesis", "Prince", "The Weeknd" → disambiguation page
+- **Mitigation**: Catch `DisambiguationError`, try first option, fall back to Tavily
+- **Rollback**: Fix exception handling — no data affected
 
 ### Global rollback
 ```bash
-git revert HEAD~N..HEAD --no-edit   # where N = number of steps applied
-uv run pytest tests/unit/ --tb=short -q   # confirm 190 tests pass
-```
-
----
-
-## Dependency map
-
-```
-Step 1  (paths.py + train)
-  |
-Step 2  (AgentState)
-  |
-Step 3  (tools.py) ← depends on Step 1 (MODELS_DIR, DATA_DIR)
-  |
-Step 4  (nodes.py + graph.py) ← depends on Steps 2 + 3
-  |
-Step 5  (smoke test) ← depends on Steps 1 + 4 (needs trained models + graph)
-  |
-Step 6  (rag.py) ← independent of Steps 2–5, but best after Step 1 (paths.py)
-  |
-Step 7  (wire RAG into tools) ← depends on Steps 3 + 6
-  |
-Step 8  (related artists) ← depends on Step 3 (tools.py exists)
-  |
-Step 9  (Chainlit) ← depends on Steps 4 + 7 + 8 (full graph with all tools)
+git revert HEAD~N..HEAD --no-edit
+uv run pytest tests/unit/ --tb=short -q
 ```
