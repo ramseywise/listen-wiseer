@@ -1,6 +1,6 @@
 COMPOSE = docker compose -f infrastructure/containers/docker-compose.yml
 
-.PHONY: help infra-up infra-down infra-logs app mcp-server auth lint format test test-unit test-data notebook init-db data-sync train
+.PHONY: help infra-up infra-down infra-logs app mcp-server auth lint format test test-unit test-fast test-integration test-data notebook init-db data-sync train
 
 help:
 	@echo "listen-wiseer targets:"
@@ -11,7 +11,9 @@ help:
 	@echo "  data-sync    Live Spotify → DuckDB (requires .spotify_cache)"
 	@echo "  train        Fit GMM + LightGBM → models/*.pkl"
 	@echo "  test         Full test suite"
-	@echo "  test-unit    Fast unit tests (no Spotify)"
+	@echo "  test-unit    Unit tests (with coverage)"
+	@echo "  test-fast    Unit tests (no coverage, quick)"
+	@echo "  test-integration  Integration tests (needs DuckDB/Spotify)"
 	@echo "  lint         ruff check + format check"
 	@echo "  format       ruff fix + format"
 	@echo "  infra-up     Docker stack"
@@ -50,6 +52,12 @@ test:
 test-unit:
 	uv run pytest tests/unit/ -v
 
+test-fast:
+	uv run pytest tests/unit/ --no-cov -q
+
+test-integration:
+	uv run pytest tests/integration/ -v
+
 test-data:
 	uv run pytest tests/unit/test_data_schemas.py tests/unit/test_data_loader.py -v
 
@@ -74,4 +82,4 @@ train-cat:
 
 # Head-to-head comparison (informational, no models saved)
 train-compare:
-PYTHONPATH=src uv run python -m recommend.train --compare
+	PYTHONPATH=src uv run python -m recommend.train --compare

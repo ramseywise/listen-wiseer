@@ -7,10 +7,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from recommend.schemas import RecommendResult
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -249,7 +246,7 @@ def test_search_tracks_no_results(mock_get_client: MagicMock) -> None:
 def test_all_tools_count() -> None:
     from agent.tools import ALL_TOOLS
 
-    assert len(ALL_TOOLS) == 6
+    assert len(ALL_TOOLS) == 8
 
 
 @patch("agent.tools._engine", MagicMock())
@@ -264,5 +261,7 @@ def test_all_tools_names() -> None:
         "recommend_for_playlist",
         "get_recently_played",
         "search_tracks",
+        "manage_taste_memory",
+        "search_taste_memory",
     }
     assert names == expected

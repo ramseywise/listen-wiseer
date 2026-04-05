@@ -56,6 +56,8 @@ dependencies = [
     "gensim>=4.4.0",
     "catboost>=1.2.10",
     "imbalanced-learn>=0.14.1",
+    "langgraph-checkpoint-redis>=0.4.0",
+    "langmem>=0.0.30",
 ]
 
 [project.optional-dependencies]
@@ -161,11 +163,16 @@ python_functions = ["test_*"]
 pythonpath = ["src"]
 addopts = [
     "--verbose",
+    "--strict-markers",
     "--cov=src",
     "--cov-report=term-missing",
     "--cov-report=html",
     "--cov-report=xml",
     "--asyncio-mode=auto",
+]
+markers = [
+    "integration: requires external resources (DuckDB file, Spotify, Redis)",
+    "slow: tests that take >5s",
 ]
 
 [tool.coverage.run]

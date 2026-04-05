@@ -3,8 +3,11 @@
 import json
 from pathlib import Path
 
+import duckdb
 import polars as pl
 import pytest
+
+from etl.db import init_schema
 
 
 @pytest.fixture
@@ -56,3 +59,11 @@ def listening_history_dir(tmp_path: Path) -> Path:
     (tmp_path / "StreamingHistory0.json").write_text(json.dumps(data))
     (tmp_path / "StreamingHistory1.json").write_text(json.dumps([data[0]]))
     return tmp_path
+
+
+@pytest.fixture
+def mem_conn() -> duckdb.DuckDBPyConnection:
+    """In-memory DuckDB with the full listen-wiseer schema (via init_schema)."""
+    conn = duckdb.connect(":memory:")
+    init_schema(conn)
+    return conn

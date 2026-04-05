@@ -1,19 +1,21 @@
 """LangGraph ReAct agent graph for listen-wiseer.
 
 Graph structure:
-    START → trim_history → agent (LLM + tools) → [route]
-        → has tool_calls → call_tools (ToolNode) → agent  (loop)
-        → no tool_calls  → END
+    START -> trim_history -> agent (LLM + tools) -> [route]
+        -> has tool_calls -> call_tools (ToolNode) -> agent  (loop)
+        -> no tool_calls  -> END
 
 The loop is bounded by recursion_limit from config.
 """
 
 from __future__ import annotations
 
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode
+from langgraph.store.base import BaseStore
 
 from agent.nodes import agent_node, route_after_agent, trim_history
 from agent.state import AgentState
@@ -24,8 +26,17 @@ from utils.config import settings
 RECURSION_LIMIT = settings.max_agent_iterations * 2
 
 
-def build_graph() -> CompiledStateGraph:  # type: ignore[type-arg]
-    """Construct and compile the ReAct agent graph."""
+def build_graph(
+    *,
+    checkpointer: BaseCheckpointSaver | None = None,
+    store: BaseStore | None = None,
+) -> CompiledStateGraph:  # type: ignore[type-arg]
+    """Construct and compile the ReAct agent graph.
+
+    Args:
+        checkpointer: Persistence backend. Defaults to ``MemorySaver``.
+        store: Shared key-value / vector store for memory namespaces.
+    """
     builder = StateGraph(AgentState)
 
     builder.add_node("trim_history", trim_history)
@@ -41,8 +52,15 @@ def build_graph() -> CompiledStateGraph:  # type: ignore[type-arg]
     )
     builder.add_edge("call_tools", "agent")  # loop back
 
-    memory = MemorySaver()
-    return builder.compile(checkpointer=memory, recursion_limit=RECURSION_LIMIT)
+    if checkpointer is None:
+        checkpointer = MemorySaver()
+
+    return builder.compile(
+        checkpointer=checkpointer,
+        store=store,
+    )
 
 
+# Default graph instance — used by Chainlit and smoke tests.
+# For Redis-backed sessions, main.py builds a fresh graph with the async checkpointer.
 graph = build_graph()

@@ -15,7 +15,7 @@
 - **Phase 3c** (CatBoost): DONE — train/inference feature gap fixed, CatBoost comparison added (`f7f3474`)
 - **Phase 3d** (EDA notebooks): DONE — 9 notebooks (`00`–`08`), `notebooks/old/` deleted
 - **Phase 4a** (LangGraph agent + Chainlit): DONE — `src/agent/{state,tools,nodes,graph}.py`, `src/app/main.py` (`1c1ee5a`)
-- **Phase 4b** (memory): NOT STARTED — next
+- **Phase 4b** (memory): DONE — `src/agent/{memory_store,dependencies,optimizer}.py`, updated `nodes.py`, `tools.py`, `graph.py`, `main.py`
 - **Tests**: 280 passed, 3 skipped, 32 failed (all `duckdb.IOError` — missing LFS DB on this env, not regressions) (2026-04-05)
 - **Last updated**: 2026-04-05
 
@@ -99,3 +99,5 @@ _compact: 2026-04-05 15:41_
 _compact: 2026-04-05 18:18_
 
 _compact: 2026-04-05 18:52_
+
+_compact: 2026-04-05 20:33_
