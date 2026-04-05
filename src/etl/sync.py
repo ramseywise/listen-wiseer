@@ -13,6 +13,7 @@ Run:
 
 from __future__ import annotations
 
+import tomllib
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -20,6 +21,7 @@ import polars as pl
 
 from etl.db import get_connection, init_schema
 from etl.lastfm import fetch_genres_for_tracks
+from paths import PLAYLIST_CONFIG_PATH
 from spotify.client import SpotifyClient
 from spotify.fetch import (
     fetch_artist_features,
@@ -50,6 +52,36 @@ _MODE_MAP = {0: "Minor", 1: "Major"}
 
 
 # ---------------------------------------------------------------------------
+# Playlist config
+# ---------------------------------------------------------------------------
+
+_VALID_STATUSES = frozenset({"active", "archived", "excluded"})
+
+
+def load_playlist_config() -> dict[str, str]:
+    """Return mapping of playlist_name → status from playlist_status.toml.
+
+    Any playlist not listed defaults to 'excluded'.
+    Logs a warning if the config file is missing.
+    """
+    if not PLAYLIST_CONFIG_PATH.exists():
+        log.warning("sync.config.missing", path=str(PLAYLIST_CONFIG_PATH))
+        return {}
+    with PLAYLIST_CONFIG_PATH.open("rb") as fh:
+        raw = tomllib.load(fh)
+    playlists = raw.get("playlists", {})
+    result: dict[str, str] = {}
+    for name, attrs in playlists.items():
+        status = attrs.get("status", "excluded")
+        if status not in _VALID_STATUSES:
+            log.warning("sync.config.invalid_status", playlist=name, status=status)
+            status = "excluded"
+        result[name] = status
+    log.info("sync.config.loaded", n=len(result), path=str(PLAYLIST_CONFIG_PATH))
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Sync plan
 # ---------------------------------------------------------------------------
 
@@ -66,12 +98,12 @@ class PlaylistSyncItem:
     spotify_track_count: int
     db_track_count: int
     is_new: bool
-    include_in_refresh: bool
+    playlist_status: str  # 'active' | 'archived' | 'excluded'
     last_synced: datetime | None = None
 
     @property
     def needs_sync(self) -> bool:
-        if not self.include_in_refresh:
+        if self.playlist_status != "active":
             return False
         if self.is_new or self.spotify_track_count != self.db_track_count:
             # Still rate-limit: skip if synced recently regardless of count change
@@ -83,9 +115,9 @@ class PlaylistSyncItem:
         return False
 
     @property
-    def status(self) -> str:
-        if not self.include_in_refresh:
-            return "excluded"
+    def sync_status(self) -> str:
+        if self.playlist_status != "active":
+            return self.playlist_status  # 'archived' or 'excluded'
         if self.is_new:
             return "new"
         if self.spotify_track_count != self.db_track_count:
@@ -96,27 +128,35 @@ class PlaylistSyncItem:
 def plan_sync(conn, raw_playlists: list[dict]) -> list[PlaylistSyncItem]:
     """Compare Spotify playlist list against DB state. No writes, no extra API calls.
 
+    Status resolution order:
+      1. playlist_status.toml (by name) — authoritative
+      2. DB status column — used if name not in config
+      3. Default 'excluded' for any playlist not previously seen
+
     Args:
         conn: DuckDB connection (read-only is fine).
         raw_playlists: Raw dicts from fetch_my_playlists (includes tracks.total).
 
     Returns:
-        One PlaylistSyncItem per playlist, sorted by status then name.
+        One PlaylistSyncItem per playlist, sorted by sync_status then name.
     """
+    name_config = load_playlist_config()
+
     rows = conn.execute(
         """
-        SELECT playlist_id, COALESCE(include_in_refresh, TRUE), last_synced
+        SELECT playlist_id, playlist_name, COALESCE(status, 'excluded'), last_synced
         FROM playlists
     """
     ).fetchall()
     db_ids = {row[0] for row in rows}
-    excluded_ids = {row[0] for row in rows if not row[1]}
-    last_synced_map: dict[str, datetime | None] = {row[0]: row[2] for row in rows}
+    db_status_map: dict[str, str] = {row[0]: row[2] for row in rows}
+    last_synced_map: dict[str, datetime | None] = {row[0]: row[3] for row in rows}
 
     db_track_counts: dict[str, int] = dict(
         conn.execute(
             """
-        SELECT playlist_id, COUNT(*) FROM playlist_tracks GROUP BY playlist_id
+        SELECT playlist_id, COUNT(*) FROM playlist_tracks WHERE removed_at IS NULL
+        GROUP BY playlist_id
     """
         ).fetchall()
     )
@@ -124,24 +164,34 @@ def plan_sync(conn, raw_playlists: list[dict]) -> list[PlaylistSyncItem]:
     items = []
     for p in raw_playlists:
         pid = p["id"]
+        name = p["name"]
+        # Config by name takes priority; fall back to DB status; new playlists default excluded
+        if name in name_config:
+            pstatus = name_config[name]
+        elif pid in db_status_map:
+            pstatus = db_status_map[pid]
+        else:
+            pstatus = "excluded"
+
         items.append(
             PlaylistSyncItem(
                 playlist_id=pid,
-                playlist_name=p["name"],
+                playlist_name=name,
                 spotify_track_count=p.get("tracks", {}).get("total", 0),
                 db_track_count=db_track_counts.get(pid, 0),
                 is_new=pid not in db_ids,
-                include_in_refresh=pid not in excluded_ids,
+                playlist_status=pstatus,
                 last_synced=last_synced_map.get(pid),
             )
         )
 
-    by_status = {"new": 0, "stale": 0, "current": 0, "excluded": 0}
+    by_status: dict[str, int] = {"new": 0, "stale": 0, "current": 0, "archived": 0, "excluded": 0}
     for item in items:
-        by_status[item.status] += 1
+        key = item.sync_status
+        by_status[key] = by_status.get(key, 0) + 1
 
     log.info("sync.plan", total=len(items), **by_status)
-    return sorted(items, key=lambda i: (i.status, i.playlist_name))
+    return sorted(items, key=lambda i: (i.sync_status, i.playlist_name))
 
 
 # ---------------------------------------------------------------------------
@@ -150,28 +200,23 @@ def plan_sync(conn, raw_playlists: list[dict]) -> list[PlaylistSyncItem]:
 
 
 def upsert_playlists(conn, items: list[PlaylistSyncItem]) -> None:
-    """Register all playlists in DB. Upserts name + last_synced; preserves include_in_refresh.
-
-    New playlists fetched from Spotify (not previously bootstrapped) default to
-    include_in_refresh=FALSE so they are not swept up in future syncs automatically.
-    """
+    """Register all playlists in DB. Upserts name, status, and last_synced."""
     now = datetime.now(UTC)
     new_count = 0
     for item in items:
         synced_at = now if item.needs_sync else None
-        # New playlists (first seen from Spotify, not bootstrapped) default to FALSE
-        insert_refresh = False if item.is_new else True
         conn.execute(
             """
-            INSERT INTO playlists (playlist_id, playlist_name, include_in_refresh, last_synced)
+            INSERT INTO playlists (playlist_id, playlist_name, status, last_synced)
             VALUES (?, ?, ?, ?)
             ON CONFLICT (playlist_id) DO UPDATE SET
                 playlist_name = excluded.playlist_name,
-                last_synced = CASE WHEN excluded.last_synced IS NOT NULL
-                                   THEN excluded.last_synced
-                                   ELSE playlists.last_synced END
+                status        = excluded.status,
+                last_synced   = CASE WHEN excluded.last_synced IS NOT NULL
+                                     THEN excluded.last_synced
+                                     ELSE playlists.last_synced END
         """,
-            [item.playlist_id, item.playlist_name, insert_refresh, synced_at],
+            [item.playlist_id, item.playlist_name, item.playlist_status, synced_at],
         )
         if item.is_new:
             new_count += 1
@@ -217,6 +262,7 @@ def sync_tracks(
 
     all_track_features = []
     new_track_ids: set[str] = set()
+    now = datetime.now(UTC)
 
     for item in to_sync:
         if max_tracks is not None and len(all_track_features) >= max_tracks:
@@ -228,9 +274,41 @@ def sync_tracks(
             tracks = tracks[:remaining]
         all_track_features.extend(tracks)
 
+        spotify_ids: set[str] = {t.id for t in tracks}
+
         if tracks:
-            pt = pl.DataFrame([{"playlist_id": item.playlist_id, "track_id": t.id} for t in tracks])  # noqa: F841
-            conn.execute("INSERT OR IGNORE INTO playlist_tracks SELECT * FROM pt")
+            # Upsert active members — clear removed_at if track returned to playlist
+            pt = pl.DataFrame(  # noqa: F841
+                [{"playlist_id": item.playlist_id, "track_id": t.id} for t in tracks]
+            )
+            conn.execute(
+                """
+                INSERT INTO playlist_tracks (playlist_id, track_id, removed_at)
+                SELECT playlist_id, track_id, NULL FROM pt
+                ON CONFLICT (playlist_id, track_id) DO UPDATE SET removed_at = NULL
+                """
+            )
+
+        # Mark tracks no longer on Spotify as removed
+        active_db_ids: set[str] = {
+            row[0]
+            for row in conn.execute(
+                "SELECT track_id FROM playlist_tracks WHERE playlist_id = ? AND removed_at IS NULL",
+                [item.playlist_id],
+            ).fetchall()
+        }
+        removed_ids = active_db_ids - spotify_ids
+        if removed_ids:
+            for tid in removed_ids:
+                conn.execute(
+                    "UPDATE playlist_tracks SET removed_at = ? WHERE playlist_id = ? AND track_id = ?",
+                    [now, item.playlist_id, tid],
+                )
+            log.info(
+                "sync.tracks.removed",
+                playlist=item.playlist_name,
+                n_removed=len(removed_ids),
+            )
 
         new_here = [t for t in tracks if t.id not in existing_track_ids]
         new_track_ids.update(t.id for t in new_here)
@@ -239,6 +317,7 @@ def sync_tracks(
             playlist=item.playlist_name,
             total=len(tracks),
             new=len(new_here),
+            removed=len(removed_ids) if removed_ids else 0,
         )
 
     if new_track_ids:

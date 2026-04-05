@@ -12,7 +12,7 @@ build/
 .uv/
 
 # Data (personal / large / generated — not committed)
-data/
+data/archived
 
 # Infrastructure DB is committed (operational DuckDB, ~7MB, no external training data)
 # infrastructure/db/listen_wiseer.db is tracked
@@ -22,9 +22,6 @@ notebooks/
 
 # Trained model artifacts
 models/
-
-# Claude Code — all config committed; only ephemeral local state excluded
-.claude/todo-log.jsonl
 
 # Chainlit
 .chainlit/
