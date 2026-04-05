@@ -227,13 +227,13 @@ Non-trivial tasks follow phases:
 
 | Phase | Command | Artifact |
 |-------|---------|----------|
-| 1. Research | `/research` | `.claude/docs/RESEARCH.md` |
-| 2. Plan | `/plan` | `.claude/docs/PLAN.md` |
-| 2.5. Plan Review | `/plan-review` | `.claude/docs/PLAN.md` (iterated) |
+| 1. Research | `/research <name>` | `.claude/docs/research/<name>.md` |
+| 2. Plan | `/plan <name>` | `.claude/docs/plans/<name>.md` |
+| 2.5. Plan Review | `/plan-review` | active plan (iterated) |
 | 3. Execute | `/execute` | `.claude/docs/CHANGELOG.md` |
-| 4. Review | `/review` | `.claude/docs/EVAL.md` + PR |
+| 4. Review | `/review <name>` | `.claude/docs/reviews/<name>.md` + PR |
 
-All phase artifacts live in `.claude/docs/` (gitignored). Only `CLAUDE.md` lives at the project root.
+All phase artifacts live in `.claude/docs/` subdirectories (gitignored). `SESSION.md` tracks the active plan and research files under `## Active docs`. Only `CLAUDE.md` lives at the project root.
 
 ### Tooling
 

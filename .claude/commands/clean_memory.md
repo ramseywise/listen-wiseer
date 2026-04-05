@@ -12,8 +12,11 @@ After review, apply approved deletions/merges, then rewrite MEMORY.md index to r
 ## 2. Project `.claude/docs/` in the current project directory
 
 Check for:
-- `RESEARCH.md`, `PLAN.md`, `CHANGELOG.md`, `EVAL.md` — if the task they describe is merged/done, delete them (they're gitignored throwaway artifacts)
-- `SESSION.md` — if "current position" is stale (old date, completed step), prompt to reset or archive the next-session prompt
+- `.claude/docs/plans/` — plans for completed/merged tasks are archival. Flag any that are stale but not marked done.
+- `.claude/docs/research/` — research files for completed tasks can be deleted. List candidates and ask.
+- `.claude/docs/reviews/` — review files for merged PRs can be deleted. List candidates and ask.
+- `CHANGELOG.md` — if all entries are merged, prompt to archive or clear the `[Unreleased]` section
+- `SESSION.md` — if "current position" is stale (old date, completed step), prompt to reset or archive the next-session prompt. Check `## Active docs` for stale pointers.
 
 Do NOT touch `CLAUDE.md` or `SESSION.md` content beyond what the user confirms.
 

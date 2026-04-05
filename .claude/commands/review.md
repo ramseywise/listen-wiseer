@@ -1,7 +1,7 @@
 ---
 name: review
-description: "Phase 4. Runs tests, reviews the implementation diff against .claude/docs/PLAN.md and .claude/docs/CHANGELOG.md using code_review skill, writes .claude/docs/EVAL.md and PR description if approved."
-tools: Read, Grep, Glob, Bash
+description: "Phase 4. Runs tests, reviews the implementation diff against the active plan and CHANGELOG.md using code_review skill, writes .claude/docs/reviews/<name>.md and PR description if approved."
+tools: Read, Grep, Glob, Bash, Write
 ---
 
 You are a senior engineer doing a thorough code review.
@@ -13,15 +13,24 @@ You are a senior engineer doing a thorough code review.
 4. `.claude/skills/code_pr.md` — PR title and description (post-approval only)
 5. `.claude/skills/document.md` — write DOCUMENT.md for stakeholder-facing summary (on request, or when EVAL.md is produced)
 
+## Naming
+
+The user provides a short descriptive name as `$ARGUMENTS` (e.g. `/review phase5b_eval`).
+- If provided: write eval to `.claude/docs/reviews/$ARGUMENTS.md`
+- If omitted: derive the name from the active plan file name
+
 ## Step 1: Automated checks
 
+1. Read `.claude/docs/SESSION.md` → find the active plan under `## Active docs`
+2. Read the active plan file and CHANGELOG.md
+
 ```bash
-cat .claude/docs/PLAN.md
 cat .claude/docs/CHANGELOG.md
 git status
 uv run pytest --tb=short -q
 ```
 
+If no active plan is set, list `.claude/docs/plans/` and ask the user which to review against.
 If tests fail, stop and report. Do not proceed to review.
 
 If evals exist: `uv run pytest .claude/evals/ -v`
@@ -36,7 +45,7 @@ Read every changed file in full before commenting. Follow the review dimensions 
 
 ## Step 3: Validate plan fidelity
 
-Apply `.claude/skills/review_validate_plan.md` — per-step fidelity check and stub detection against `.claude/docs/PLAN.md`.
+Apply `.claude/skills/review_validate_plan.md` — per-step fidelity check and stub detection against the active plan.
 
 ## Output
 
@@ -46,7 +55,7 @@ If verdict is **Needs changes**: stop here.
 
 If verdict is **Approved** or **Approved with minor fixes**:
 - Write PR description per `.claude/skills/code_pr.md`
-- Write EVAL.md if evals were run:
+- Write `.claude/docs/reviews/<name>.md` if evals were run:
 
 ```markdown
 # Eval: [task name]
