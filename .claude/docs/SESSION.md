@@ -66,3 +66,30 @@ Start with: /start then read phase3c_agent_chainlit.md plan before executing.
 ```
 
 _compact: 2026-04-04_
+
+_compact: 2026-04-05 14:38_
+
+_compact: 2026-04-05 14:51_
+
+## Notebook Reorganization (2026-04-05)
+
+Steps completed:
+- Step 1: Extended `02_explore_library.ipynb` — artist genre tags (3b), popularity scatter (3c)
+- Step 2: Extended `01_corpus_health.ipynb` — per-playlist centroid outliers (7b)
+- Step 3: Extended `04_genre_clustering.ipynb` — gen_8 per playlist (6b), genre map health (9)
+- Step 4: Extended `06_model_comparison.ipynb` — model registry, live N-model training, IF anomaly (§9), RFE feature selection (§10)
+- Step 5: Created `08_sync.ipynb` — merged old/data_refresh + old/sync_preview
+- Step 6: Verified old/ coverage — 5 notebooks fully ported, 5 have remaining unique views. Awaiting user decision on cleanup.
+- Step 7: Ported remaining unique content — radar charts per gen_4 (§5c), multi-algorithm clustering with Davies-Bouldin (§4b), genre dendrogram (§10) to 04; per-playlist t-SNE (§10) to 05
+- Step 8: Fixed bugs — find_similar dict→ndarray in 00/05, read_only→read_write for init_schema in 00
+- Step 9: Installed git-lfs, pulled DB, generated enoa.csv, ran training (28 classifiers)
+- Step 10: Ran all 8 notebooks (00-07) — all pass. 08_sync skipped (requires Spotify auth)
+- Step 11: Deleted `notebooks/old/` — all high-value content ported
+- Step 12: Added standard model dev diagnostics to `06_model_comparison.ipynb` — §10b KFold CV, §10c SMOTE comparison, §10d GridSearchCV (DT + LightGBM)
+- Step 13: Added standard clustering diagnostics to `04_genre_clustering.ipynb` — §4c PCA scree, KMeans elbow, silhouette k-sweep
+- Step 14: Fixed GridSearchCV Polars SchemaError — pandas fallback for cv_results_ with Object dtype columns
+- Step 15: Re-ran notebooks 04 and 06 — both pass clean
+
+_compact: 2026-04-05 15:16_
+
+_compact: 2026-04-05 15:41_
