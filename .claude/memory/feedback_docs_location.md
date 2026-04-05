@@ -1,20 +1,28 @@
 ---
 name: Phase artifact location convention
-description: All PLAN/RESEARCH/CHANGELOG/EVAL/SESSION docs go in .claude/docs/, not project root. Only CLAUDE.md at root.
+description: Pipeline docs use named subdirectories under .claude/docs/ (plans/, research/, reviews/). SESSION.md tracks active docs. Only CLAUDE.md at project root.
 type: feedback
 ---
 
-All phase artifacts must go in `{project}/.claude/docs/`, not the project root.
+All phase artifacts go in named subdirectories under `.claude/docs/`:
 
-**Why:** Root-level PLAN.md, RESEARCH.md, CHANGES.md etc. add noise to the repo and are visible to anyone cloning. These are working docs "for us not the app." `.claude/` is already gitignored in all projects.
+| Phase | Path pattern |
+|-------|-------------|
+| Research | `.claude/docs/research/<name>.md` |
+| Plan | `.claude/docs/plans/<name>.md` |
+| Review/Eval | `.claude/docs/reviews/<name>.md` |
+| Changelog | `.claude/docs/CHANGELOG.md` (singleton, append-only) |
+| Session | `.claude/docs/SESSION.md` (singleton) |
+
+**Why:** Flat files (`PLAN.md`, `RESEARCH.md`) don't scale — multiple phases produce multiple plans. Named files in subdirectories create a natural archive (e.g. `phase3a_preprocessing.md` through `phase6_dashboard.md`).
 
 **How to apply:**
-- `/research` → writes `.claude/docs/RESEARCH.md`
-- `/plan` → writes `.claude/docs/PLAN.md`
-- `/execute` → appends to `.claude/docs/CHANGELOG.md` per step (no CHANGES.md)
-- `/review` → writes `.claude/docs/EVAL.md`
-- `/start` → reads `.claude/docs/SESSION.md` + `CLAUDE.md`
-- `/end` → updates `.claude/docs/SESSION.md`
-- `CLAUDE.md` stays at project root (committed — guidance for Claude)
-- `.claude/` is gitignored in all projects — nothing inside is committed
-- Never create CHANGES.md or SESSION.md at root; CHANGELOG.md in `.claude/docs/` is the single execution record
+- `/research <name>` → writes `.claude/docs/research/<name>.md`, updates SESSION.md active docs
+- `/plan <name>` → writes `.claude/docs/plans/<name>.md`, updates SESSION.md active docs
+- `/execute` → reads active plan from SESSION.md `## Active docs` section
+- `/review <name>` → writes `.claude/docs/reviews/<name>.md`
+- `/plan-review` → reads active plan + research from SESSION.md
+- `SESSION.md` has `## Active docs` section pointing to current plan and research files
+- `CLAUDE.md` stays at project root (committed)
+- `.claude/` is gitignored — nothing inside is committed
+- Never create flat `PLAN.md`, `RESEARCH.md`, or `EVAL.md` in `.claude/docs/`

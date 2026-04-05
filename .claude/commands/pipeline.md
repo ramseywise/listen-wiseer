@@ -8,14 +8,16 @@ description: "Map the full phased workflow; start from a chosen phase with human
 
 | Phase | Command | Artifact | Gate |
 |-------|---------|----------|------|
-| 1. Research | `/research` | `RESEARCH.md` | Human reviews before continuing |
-| 2. Plan | `/plan` | `PLAN.md` | Human reviews before continuing |
-| 2.5. Plan Review | `/plan-review` | `PLAN.md` (iterated) | Blockers resolved, questions answered |
+| 1. Research | `/research <name>` | `.claude/docs/research/<name>.md` | Human reviews before continuing |
+| 2. Plan | `/plan <name>` | `.claude/docs/plans/<name>.md` | Human reviews before continuing |
+| 2.5. Plan Review | `/plan-review` | plan file (iterated) | Blockers resolved, questions answered |
 | — | `/compact` | — | **Run before execute** |
-| 3. Execute | `/execute` | `CHANGES.md` | Human confirms each step |
-| 4. Review | `/review` | `EVAL.md` + PR | Verdict: go / no-go |
+| 3. Execute | `/execute` | `CHANGELOG.md` | Human confirms each step |
+| 4. Review | `/review <name>` | `.claude/docs/reviews/<name>.md` | Verdict: go / no-go |
 
-**Plan updates anytime:** `/plan-review` re-runs the review and patches PLAN.md.
+All phase artifacts live in `.claude/docs/` subdirectories. `SESSION.md` tracks the active plan and research files under `## Active docs`.
+
+**Plan updates anytime:** `/plan-review` re-runs the review and patches the active plan.
 
 Ad-hoc (skip pipeline): `/debug`, `/code_review`, `/refactor`.
 

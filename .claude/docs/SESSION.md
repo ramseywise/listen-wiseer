@@ -1,16 +1,21 @@
 # SESSION.md — listen-wiseer
 
+## Active docs
+
+- **Plan**: `.claude/docs/plans/phase4a_agent_chainlit.md`
+- **Research**: `.claude/docs/research/infra_support.md`
+
 ## Current position
 
-- **Phase 3a** (preprocessing pipeline): ✓ DONE — `src/recommend/preprocessing.py` complete, 450 tests
-- **Phase 3b** (training pipeline): ✓ DONE — `src/paths.py`, `train.py` complete; models trained locally
+- **Phase 3a** (preprocessing pipeline): DONE — `src/recommend/preprocessing.py` complete, 450 tests
+- **Phase 3b** (training pipeline): DONE — `src/paths.py`, `train.py` complete; models trained locally
   - `models/gmm_corpus.pkl`, `models/scaler_corpus.pkl`, `models/classifier_*.pkl` generated
   - `data/cache/corpus_features.parquet` generated (includes `t2v_0..t2v_63` columns)
   - Track2Vec embeddings stored in `track_embeddings` DuckDB table and joined into corpus
   - `embedding_similarity` now computed at inference via `_add_embedding_similarity` in pipelines
 - **Phase 3c** (LangGraph agent + Chainlit): NOT STARTED — next
 - **Tests**: 247 passed, 3 skipped (2026-04-04)
-- **Last updated**: 2026-04-04
+- **Last updated**: 2026-04-05
 
 ## Token log
 

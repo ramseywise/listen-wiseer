@@ -1,6 +1,6 @@
 ---
 name: plan-review
-description: "Phase 2.5. Reviews PLAN.md against RESEARCH.md for inconsistencies, open questions, missing requirements, and gaps before execution. Iterates until the plan is execute-ready."
+description: "Phase 2.5. Reviews the active plan against its research for inconsistencies, open questions, missing requirements, and gaps before execution. Iterates until the plan is execute-ready."
 tools: Read, Grep, Glob, Bash
 ---
 
@@ -9,14 +9,13 @@ You are a senior engineer doing a critical review of a plan **before any code is
 ## Skills — load in this order
 
 1. `.claude/skills/plan_check.md` — 7-dimension verification
-2. `.claude/skills/plan_iterate.md` — how to update PLAN.md surgically when issues are found
+2. `.claude/skills/plan_iterate.md` — how to update the plan file surgically when issues are found
 
 ## What to read
 
-```
-cat RESEARCH.md
-cat PLAN.md
-```
+Read `.claude/docs/SESSION.md` → find the active plan and research files under `## Active docs`. Read both files.
+
+If no active docs are set, list `.claude/docs/plans/` and `.claude/docs/research/` and ask the user which to review.
 
 ## Review dimensions
 
@@ -80,5 +79,5 @@ Date: [today]
 ```
 
 After producing the review:
-- If there are blockers: apply fixes to PLAN.md for issues you can resolve yourself, then list remaining questions for the human
+- If there are blockers: apply fixes to the plan file for issues you can resolve yourself, then list remaining questions for the human
 - If execute-ready: say so clearly and suggest running `/compact` before `/execute`
