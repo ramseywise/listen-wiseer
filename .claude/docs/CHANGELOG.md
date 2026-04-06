@@ -1,5 +1,68 @@
 # Changelog
 
+## [Unreleased] — Phase 5a: RAG Core Adaptation
+
+### Step 8 — Regression
+- Phase 5a suite: 93/93 passed
+- Agent tests: 28/28 passed
+- RAG tests (excl. pre-existing broken): 110 passed, 1 pre-existing failure (test_retrieval_eval import)
+- Pre-existing failures NOT caused by Phase 5a: test_ingestion_pipeline (6, OpenSearch refs), test_chunker (collection error), test_opensearch_client (collection error)
+- Manual smoke deferred — `make app` requires Spotify auth (not available in CI)
+
+### Step 7 — English prompts + music system prompts
+- Modified: `src/rag_core/generation/generator.py` — replaced all Danish SYSTEM_PROMPTS with English music-domain prompts, `"Dokumentation:"` → `"Context:"`, `"Spørgsmål:"` → `"Question:"`
+- Modified: `src/rag_core/orchestration/graph.py` — replaced Danish NO_ANSWER_MESSAGE, _rewrite_query prompt, _grade_docs prompt with English equivalents
+- Updated: `tests/unit/rag/test_graph_nodes.py` — `"Dokumentation:"` assertions → `"Context:"`
+- Tests: 93 passed (full Phase 5a suite)
+- Deviations: none; no Danish characters remain in generator.py or graph.py
+
+### Step 6 — Wire MusicRAG into agent as tool
+- Modified: `src/agent/tools.py` — added `get_artist_context_tool` (lazy MusicRAG singleton), added to `ALL_TOOLS` (now 9 tools)
+- Modified: `src/agent/nodes.py` — added `get_artist_context` to system prompt tool usage section
+- Created: `tests/unit/agent/test_tools.py` — 4 tests (delegation, lazy init, ALL_TOOLS presence, count)
+- Tests: 4 passed
+- Deviations: none
+
+### Step 5 — MusicRAG orchestrator
+- Created: `src/rag_core/orchestration/music_rag.py` — `MusicRAG` with `get_context` (lazy ingest, has_subject check, Wikipedia→Tavily fallback, StructuredChunker)
+- Created: `tests/unit/rag/test_music_rag.py` — 8 tests (cache hit, cache miss, Tavily fallback, no content, normalization, doc dict)
+- Tests: 8 passed
+- Deviations: none
+
+### Step 4 — Data fetchers (Wikipedia + Tavily)
+- Created: `src/rag_core/preprocessing/fetchers.py` — `fetch_wikipedia` (disambiguation handling) + `fetch_tavily` (lazy import, optional)
+- Modified: `src/utils/config.py` — added `tavily_api_key: str = ""`
+- Created: `tests/unit/rag/test_fetchers.py` — 9 tests (5 Wikipedia + 4 Tavily, all mocked)
+- Tests: 9 passed
+- Deviations: none
+
+### Step 3 — Music intents + English defaults
+- Modified: `src/rag_core/schemas/retrieval.py` — replaced Intent enum (ARTIST_INFO, GENRE_INFO, HISTORY, CHIT_CHAT, OUT_OF_SCOPE)
+- Modified: `src/rag_core/schemas/chunks.py` — changed `ChunkMetadata.language` default from `"da"` to `"en"`
+- Modified: `src/rag_core/schemas/conversation.py` — `initial_state` default intent → `Intent.ARTIST_INFO`
+- Modified: `src/rag_core/generation/generator.py` — remapped `SYSTEM_PROMPTS` keys to new Intent values, updated defaults
+- Modified: `src/rag_core/orchestration/graph.py` — updated `INTENT_MAP` values as bridge mapping, replaced `OpenSearchClient` import with `DuckDBVectorClient`, updated type hints
+- Updated: `tests/unit/rag/test_models.py` — fixed sys.path, updated Intent/language assertions
+- Updated: `tests/unit/rag/test_graph_nodes.py` — fixed sys.path, updated all Intent references to new enum values
+- Tests: 72 passed (13 models + 26 graph_nodes + 15 embedder + 10 registry + 8 duckdb_client)
+- Deviations: also updated graph.py `OpenSearchClient` → `DuckDBVectorClient` import (required to unblock test_graph_nodes from `opensearchpy` ModuleNotFoundError)
+
+### Step 2 — MiniLMEmbedder + registry registration
+- Created: `MiniLMEmbedder` class in `src/rag_core/retrieval/embedder.py` — wraps `all-MiniLM-L6-v2` (384-dim, no prefix)
+- Modified: `src/rag_core/registry.py` — registered `MiniLMEmbedder` under `("embedder", "minilm")`
+- Updated: `tests/unit/rag/test_embedder.py` — fixed sys.path for rag_core, added 6 mocked MiniLM tests (query shape, passages shape, no-prefix verification)
+- Tests: `test_embedder.py` — 15 passed (9 existing + 6 new); `test_registry.py` — 10 passed
+- Deviations: none
+
+### Step 1 — DuckDB schema + DuckDBVectorClient + registry
+- Added: `rag_chunks` table to `src/etl/db.py` `_DDL` (FLOAT[384] embeddings, subject/section/text)
+- Created: `src/rag_core/retrieval/duckdb_client.py` — `DuckDBVectorClient` with `search`, `upsert_chunks`, `has_subject`; uses `array_cosine_similarity` (core DuckDB, no vss extension)
+- Modified: `src/rag_core/registry.py` — replaced OpenSearch registration with DuckDB (`"client"` → `"duckdb"`)
+- Updated: `tests/unit/rag/test_registry.py` — fixed `sys.path` for rag_core imports
+- Created: `tests/unit/rag/test_duckdb_client.py` — 8 tests (round-trip, has_subject, normalization, overwrite, empty)
+- Tests: `test_duckdb_client.py` — 8 passed; `test_registry.py` — 10 passed
+- Deviations: connection_factory param added to DuckDBVectorClient for test injection (plan had `get_connection` only)
+
 ## [Unreleased] — Phase 4b: Long-Term Memory for ENOA
 
 ### P0 — Make agent_node async

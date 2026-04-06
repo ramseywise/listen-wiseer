@@ -3,8 +3,9 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parents[2] / "src"))
-sys.path.insert(0, str(Path(__file__).parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src" / "rag_core"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from schemas.chunks import Chunk, ChunkMetadata
 from schemas.conversation import initial_state
@@ -39,7 +40,7 @@ def _make_chunk(**kwargs) -> Chunk:
 
 def test_chunk_metadata_defaults():
     m = _make_metadata()
-    assert m.language == "da"
+    assert m.language == "en"
     assert m.url == "https://help.example.com/article/1"
 
 
@@ -69,8 +70,9 @@ def test_chunk_with_embedding():
 
 
 def test_intent_values():
-    assert Intent.HOW_TO == "how_to"
-    assert Intent.TROUBLESHOOT == "troubleshoot"
+    assert Intent.ARTIST_INFO == "artist_info"
+    assert Intent.GENRE_INFO == "genre_info"
+    assert Intent.HISTORY == "history"
     assert Intent.CHIT_CHAT == "chit_chat"
     assert Intent.OUT_OF_SCOPE == "out_of_scope"
 
@@ -107,10 +109,10 @@ def test_graded_chunk():
 
 
 def test_initial_state_defaults():
-    state = initial_state("how do I reset my password?")
-    assert state["query"] == "how do I reset my password?"
+    state = initial_state("who is Aphex Twin?")
+    assert state["query"] == "who is Aphex Twin?"
     assert state["standalone_query"] == ""
-    assert state["intent"] == Intent.HOW_TO
+    assert state["intent"] == Intent.ARTIST_INFO
     assert state["query_variants"] == []
     assert state["retrieved_chunks"] == []
     assert state["graded_chunks"] == []

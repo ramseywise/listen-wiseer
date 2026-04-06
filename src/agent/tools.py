@@ -184,6 +184,37 @@ search_tracks_tool = StructuredTool.from_function(
 )
 
 # ---------------------------------------------------------------------------
+# RAG knowledge tool — lazy singleton (avoids SentenceTransformer load at import)
+# ---------------------------------------------------------------------------
+_music_rag = None
+
+
+def _get_music_rag():
+    """Return a lazily-initialized MusicRAG singleton."""
+    global _music_rag  # noqa: PLW0603
+    if _music_rag is None:
+        from rag_core.orchestration.music_rag import MusicRAG
+
+        _music_rag = MusicRAG()
+    return _music_rag
+
+
+def _get_artist_context(subject: str) -> str:
+    """Retrieve biographical info and interesting facts about a musician, band, or genre."""
+    return _get_music_rag().get_context(subject)
+
+
+get_artist_context_tool = StructuredTool.from_function(
+    _get_artist_context,
+    name="get_artist_context",
+    description=(
+        "Retrieve biographical info and interesting facts about a musician or band. "
+        "Use when the user asks who an artist is, what they're known for, "
+        "their history, influences, or style. Also works for music genres."
+    ),
+)
+
+# ---------------------------------------------------------------------------
 # Taste memory tools — backed by langmem + InjectedStore
 #
 # Namespace uses {langgraph_user_id} template — LangGraph resolves it from
@@ -223,6 +254,7 @@ ALL_TOOLS: list[StructuredTool] = [
     recommend_for_playlist,
     get_recently_played_tool,
     search_tracks_tool,
+    get_artist_context_tool,
     manage_taste_memory,
     search_taste_memory,
 ]

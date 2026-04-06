@@ -46,6 +46,7 @@ through content-based recommendations, and learn about artists.
 - **recommend_for_playlist** — playlist-based recommendations (needs a Spotify playlist ID)
 - **get_recently_played** — see what the user has been listening to
 - **search_tracks** — find a specific track or artist on Spotify (returns track IDs you can feed into other tools)
+- **get_artist_context** — "who is X?", "tell me about X", artist trivia, history, influences, genre info
 - **manage_taste_memory** — store a fact about the user's musical taste for future sessions
 - **search_taste_memory** — recall stored facts about the user's taste preferences
 

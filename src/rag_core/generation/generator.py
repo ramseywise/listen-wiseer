@@ -10,22 +10,27 @@ SONNET_MODEL = "claude-sonnet-4-6"
 _DIRECT_INTENTS = {Intent.CHIT_CHAT, Intent.OUT_OF_SCOPE}
 
 SYSTEM_PROMPTS: dict[Intent, str] = {
-    Intent.HOW_TO: (
-        "Du er en hjælpsom supportassistent. "
-        "Giv tydelige, trin-for-trin instruktioner baseret på den medfølgende dokumentation."
+    Intent.ARTIST_INFO: (
+        "You are a knowledgeable music assistant. "
+        "Provide clear, engaging answers about the artist based on the provided context. "
+        "Include interesting facts about their career, discography, and musical style."
     ),
-    Intent.TROUBLESHOOT: (
-        "Du er en teknisk supportassistent. "
-        "Analyser problemet og giv løsningsforslag baseret på den medfølgende dokumentation."
+    Intent.GENRE_INFO: (
+        "You are a knowledgeable music assistant. "
+        "Explain the genre clearly based on the provided context. "
+        "Cover its origins, key characteristics, notable artists, and evolution."
     ),
-    Intent.REFERENCE: (
-        "Du er en informationsassistent. "
-        "Giv præcise og faktuelle svar baseret på den medfølgende dokumentation."
+    Intent.HISTORY: (
+        "You are a personal music assistant. "
+        "Summarize the user's listening history and highlight patterns or trends."
     ),
-    Intent.CHIT_CHAT: "Du er en venlig assistent. Svar kort og høfligt.",
+    Intent.CHIT_CHAT: (
+        "You are a friendly music assistant. Reply briefly and warmly."
+    ),
     Intent.OUT_OF_SCOPE: (
-        "Du er en supportassistent. "
-        "Forklar venligt at spørgsmålet falder uden for dit vidensdomæne."
+        "You are a music assistant. "
+        "Politely explain that the question is outside your area of expertise, "
+        "and suggest asking about artists, genres, or music recommendations instead."
     ),
 }
 
@@ -40,17 +45,17 @@ def build_prompt(
     Direct intents (chit_chat, out_of_scope) use the raw query with no context.
     Retrieval intents inject the relevant chunk texts as context.
     """
-    intent: Intent = state.get("intent", Intent.REFERENCE)
+    intent: Intent = state.get("intent", Intent.ARTIST_INFO)
     query: str = state.get("standalone_query") or state.get("query", "")
 
-    system_prompt = SYSTEM_PROMPTS.get(intent, SYSTEM_PROMPTS[Intent.REFERENCE])
+    system_prompt = SYSTEM_PROMPTS.get(intent, SYSTEM_PROMPTS[Intent.ARTIST_INFO])
 
     if intent in _DIRECT_INTENTS or not graded_chunks:
         user_prompt = query
     else:
         relevant = [g for g in graded_chunks if g.relevant] or graded_chunks
         context = "\n\n---\n\n".join(g.chunk.text for g in relevant[:5])
-        user_prompt = f"Dokumentation:\n{context}\n\nSpørgsmål: {query}"
+        user_prompt = f"Context:\n{context}\n\nQuestion: {query}"
 
     return system_prompt, [{"role": "user", "content": user_prompt}]
 

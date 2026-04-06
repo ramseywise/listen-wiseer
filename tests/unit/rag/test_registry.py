@@ -7,7 +7,9 @@ from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parents[2] / "src"))
+# rag_core modules use bare imports (e.g. ``from retrieval.duckdb_client import …``)
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src" / "rag_core"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src"))
 
 from registry import Registry
 

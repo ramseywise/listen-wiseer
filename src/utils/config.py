@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     rag_top_k: int = 3
     wikipedia_language: str = "en"
     enable_rag: bool = True
+    tavily_api_key: str = ""
 
     # Agent
     max_agent_iterations: int = 10

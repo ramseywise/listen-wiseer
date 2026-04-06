@@ -2,7 +2,7 @@
 
 ## Active docs
 
-- **Plan**: `.claude/docs/plans/phase4b_memory.md`
+- **Plan**: `.claude/docs/plans/phase5a_rag.md`
 - **Research**: `.claude/docs/research/infra_support.md`
 
 ## Current position
@@ -101,3 +101,7 @@ _compact: 2026-04-05 18:18_
 _compact: 2026-04-05 18:52_
 
 _compact: 2026-04-05 20:33_
+
+_compact: 2026-04-06 09:04_
+
+_compact: 2026-04-06 09:08_
