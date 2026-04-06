@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     agent_timeout_seconds: int = 60
     max_history_messages: int = 20
 
+    # Intent routing
+    intent_confidence_threshold: float = 0.4
+    max_tool_validation_retries: int = 1
+
     # Memory / persistence
     redis_url: str = ""
     redis_ttl_minutes: int = 1440

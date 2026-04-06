@@ -109,3 +109,42 @@ class TestSpotifyClientGetPaginated:
         with patch("httpx.get", return_value=_make_response(401)):
             with pytest.raises(SpotifyClientError):
                 client.get_paginated("playlists/1/tracks")
+
+
+class TestFetchRelatedArtists:
+    def test_happy_path(self, client: SpotifyClient) -> None:
+        from spotify.fetch import fetch_related_artists
+
+        payload = {
+            "artists": [
+                {"id": "a1", "name": "Artist One", "genres": ["rock", "indie", "alt", "extra"]},
+                {"id": "a2", "name": "Artist Two", "genres": ["jazz"]},
+            ]
+        }
+        with patch.object(client, "get", return_value=payload):
+            result = fetch_related_artists(client, "seed123")
+
+        assert len(result) == 2
+        assert result[0]["name"] == "Artist One"
+        assert result[1]["name"] == "Artist Two"
+
+    def test_empty_response(self, client: SpotifyClient) -> None:
+        from spotify.fetch import fetch_related_artists
+
+        with patch.object(client, "get", return_value={"artists": []}):
+            result = fetch_related_artists(client, "seed123")
+
+        assert result == []
+
+    def test_truncates_genres_to_three(self, client: SpotifyClient) -> None:
+        from spotify.fetch import fetch_related_artists
+
+        payload = {
+            "artists": [
+                {"id": "a1", "name": "A", "genres": ["g1", "g2", "g3", "g4", "g5"]},
+            ]
+        }
+        with patch.object(client, "get", return_value=payload):
+            result = fetch_related_artists(client, "seed123")
+
+        assert len(result[0]["genres"]) == 3

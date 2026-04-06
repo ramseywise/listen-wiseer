@@ -56,7 +56,36 @@ def test_get_artist_context_tool_in_all_tools():
 
 
 def test_all_tools_count():
-    """ALL_TOOLS should have 9 tools after adding get_artist_context."""
+    """ALL_TOOLS should have 10 tools after adding get_related_artists."""
     from agent.tools import ALL_TOOLS
 
-    assert len(ALL_TOOLS) == 9
+    assert len(ALL_TOOLS) == 10
+
+
+def test_get_related_artists_in_all_tools():
+    """get_related_artists_tool is present in ALL_TOOLS."""
+    from agent.tools import ALL_TOOLS
+
+    tool_names = [t.name for t in ALL_TOOLS]
+    assert "get_related_artists" in tool_names
+
+
+def test_get_related_artists_formats_output():
+    """_get_related_artists formats artist list into readable lines."""
+    from unittest.mock import MagicMock
+
+    mock_artists = [
+        {"id": "a1", "name": "Artist A", "genres": ["rock", "indie"]},
+        {"id": "a2", "name": "Artist B", "genres": []},
+    ]
+
+    with patch("agent.tools.fetch_related_artists", return_value=mock_artists), \
+         patch("agent.tools._get_client", return_value=MagicMock()):
+        from agent.tools import _get_related_artists
+
+        result = _get_related_artists("seed_id")
+
+    assert "Artist A" in result
+    assert "rock, indie" in result
+    assert "Artist B" in result
+    assert "unknown genre" in result

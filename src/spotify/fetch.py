@@ -99,6 +99,17 @@ def fetch_artist_features(client: SpotifyClient, artist_ids: list[str]) -> list[
     return results
 
 
+def fetch_related_artists(client: SpotifyClient, artist_id: str) -> list[dict]:
+    """Fetch up to 20 related artists for a given artist ID."""
+    response = client.get(f"artists/{artist_id}/related-artists")
+    artists = response.get("artists", [])
+    log.info("spotify.fetch_related_artists", artist_id=artist_id, n=len(artists))
+    return [
+        {"id": a["id"], "name": a["name"], "genres": a.get("genres", [])[:3]}
+        for a in artists
+    ]
+
+
 def fetch_recently_played(client: SpotifyClient, limit: int = 50) -> list[TrackFeatures]:
     """Fetch the current user's recently played tracks (max 50)."""
     response = client.get("me/player/recently-played", limit=min(limit, 50))
