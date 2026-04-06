@@ -36,13 +36,12 @@ NO_ANSWER_MESSAGE = (
     "Try asking about a specific artist, band, or music genre."
 )
 
-# Maps QueryAnalyzer intent strings → Intent enum
-# Bridge mapping until Phase 5b replaces QueryAnalyzer with music-domain classifier
 INTENT_MAP: dict[str, Intent] = {
-    "factual": Intent.ARTIST_INFO,
-    "procedural": Intent.ARTIST_INFO,
-    "exploratory": Intent.GENRE_INFO,
-    "troubleshooting": Intent.ARTIST_INFO,
+    "artist_info": Intent.ARTIST_INFO,
+    "genre_info": Intent.GENRE_INFO,
+    "recommendation": Intent.RECOMMENDATION,
+    "history": Intent.HISTORY,
+    "chit_chat": Intent.CHIT_CHAT,
 }
 
 _DIRECT_INTENTS = {Intent.CHIT_CHAT, Intent.OUT_OF_SCOPE}

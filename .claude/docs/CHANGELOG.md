@@ -1,5 +1,49 @@
 # Changelog
 
+## [Unreleased] — Phase 5b: Intent Routing + Query Understanding
+
+### Step 5 — Related artists tool
+- Modified: `src/spotify/fetch.py` — added `fetch_related_artists` (up to 20 related artists, genres truncated to 3)
+- Modified: `src/agent/tools.py` — added `_get_related_artists` wrapper + `get_related_artists_tool`; `ALL_TOOLS` now 10 items
+- Modified: `src/agent/nodes.py` — added `get_related_artists` to system prompt tool docs
+- Extended: `tests/unit/test_spotify_client.py` — 3 new tests (happy path, empty, genre truncation)
+- Extended: `tests/unit/agent/test_tools.py` — 3 new tests (count=10, tool presence, output format)
+- Tests: 20 passed (tools+spotify), 97 total regression passed
+- Deviations: none
+
+### Step 4 — Post-tool output validation node
+- Modified: `src/agent/state.py` — added `tool_validation_retries: int` field
+- Modified: `src/utils/config.py` — added `max_tool_validation_retries: int = 1`
+- Modified: `src/agent/nodes.py` — added `_TOOL_INTENT_MAP`, `_ERROR_SIGNALS`, `validate_tool_output` node (empty/error check, intent-tool alignment, entity coverage soft check, 1-retry cap)
+- Modified: `src/agent/graph.py` — inserted `validate_tool_output` between `call_tools` and `agent`; topology: call_tools → validate_tool_output → agent
+- Extended: `tests/unit/agent/test_intent_routing.py` — 6 new tests (good output passthrough, empty output, error signal, intent misalignment, retry cap, no tool messages)
+- Tests: 24 passed (intent routing), 81 total regression passed
+- Deviations: none
+
+### Step 3 — Query rewriting for multi-turn context
+- Modified: `src/agent/nodes.py` — added `_COREFERENCE_SIGNALS`, `rewrite_query` node (coreference-gated Haiku rewrite, reuses `_llm`)
+- Modified: `src/agent/graph.py` — replaced `_rewrite_query_stub` with real `rewrite_query` import
+- Extended: `tests/unit/agent/test_intent_routing.py` — 3 new tests (single-turn passthrough, no-coreference passthrough, pronoun fires LLM)
+- Tests: 18 passed (intent routing), 75 total regression passed
+- Deviations: none
+
+### Step 2 — Intent router + clarification node
+- Modified: `src/utils/config.py` — added `intent_confidence_threshold: float = 0.4`
+- Replaced: `src/agent/state.py` — added `intent`, `intent_confidence`, `entities`, `query_variants` fields (TypedDict total=False)
+- Modified: `src/agent/nodes.py` — added `classify_intent_node`, `route_after_classify`, `clarify_or_proceed` nodes; injected intent hint into `agent_node` system prompt
+- Replaced: `src/agent/graph.py` — new topology: trim_history → classify_intent → [route] → clarify_or_proceed|rewrite_query(stub) → agent; rewrite_query is a passthrough stub
+- Created: `tests/unit/agent/test_intent_routing.py` — 15 tests
+- Tests: 15 passed (new), 111 total regression passed
+- Deviations: none
+
+### Step 1 — Extend Intent enum + music query understanding
+- Modified: `src/rag_core/schemas/retrieval.py` — added `RECOMMENDATION` to `Intent` enum
+- Replaced: `src/rag_core/orchestration/query_understanding.py` — Danish customer-support patterns → music-domain (5 intents: artist_info, genre_info, recommendation, history, chit_chat); music entity extraction (mood, time_period, context); music synonym expansion; English decomposition
+- Modified: `src/rag_core/orchestration/graph.py` — updated INTENT_MAP bridge from old Danish intent strings to new music-domain strings
+- Created: `tests/unit/rag/test_query_understanding.py` — 29 tests
+- Tests: 29 passed (new), 39 regression (models + graph_nodes) passed
+- Deviations: none
+
 ## [Unreleased] — Phase 5a: RAG Core Adaptation
 
 ### Step 8 — Regression

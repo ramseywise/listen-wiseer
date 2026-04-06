@@ -9,16 +9,15 @@ InMemoryStore compiled into the graph.
 
 from __future__ import annotations
 
+import duckdb
 from langchain_core.tools import StructuredTool
 from langmem import create_manage_memory_tool, create_search_memory_tool
-
-import duckdb
 
 from paths import DATA_DIR, MODELS_DIR
 from recommend.engine import RecommendationEngine
 from recommend.schemas import RecommendRequest, RecommendResult
 from spotify.client import SpotifyClient
-from spotify.fetch import fetch_recently_played
+from spotify.fetch import fetch_recently_played, fetch_related_artists
 from utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -183,6 +182,34 @@ search_tracks_tool = StructuredTool.from_function(
     description="Search Spotify for tracks matching a text query.",
 )
 
+
+def _get_related_artists(artist_id: str) -> str:
+    """Find artists similar to a given Spotify artist ID."""
+    from utils.exceptions import SpotifyClientError
+
+    try:
+        artists = fetch_related_artists(_get_client(), artist_id)
+        if not artists:
+            return f"No related artists found for {artist_id}"
+        return "\n".join(
+            f"- {a['name']} ({', '.join(a['genres']) or 'unknown genre'})"
+            for a in artists
+        )
+    except SpotifyClientError as exc:
+        log.warning("tool.get_related_artists.failed", error=str(exc))
+        return f"Failed to fetch related artists: {exc}"
+
+
+get_related_artists_tool = StructuredTool.from_function(
+    _get_related_artists,
+    name="get_related_artists",
+    description=(
+        "Find artists that sound similar to a given Spotify artist ID. "
+        "Use for 'who sounds like X?' or 'artists similar to X' queries. "
+        "Requires a Spotify artist ID — use search_tracks first to find the ID."
+    ),
+)
+
 # ---------------------------------------------------------------------------
 # RAG knowledge tool — lazy singleton (avoids SentenceTransformer load at import)
 # ---------------------------------------------------------------------------
@@ -254,6 +281,7 @@ ALL_TOOLS: list[StructuredTool] = [
     recommend_for_playlist,
     get_recently_played_tool,
     search_tracks_tool,
+    get_related_artists_tool,
     get_artist_context_tool,
     manage_taste_memory,
     search_taste_memory,
