@@ -32,7 +32,7 @@ Follow Anthropic's agent eval taxonomy. Start with deterministic Tier 1 evals (i
 
 ## Steps
 
-### Step 1: Add deps + LangFuse config
+### Step 1: Add deps + LangFuse config ✓ DONE — 2026-04-06
 
 **Files**:
 - `pyproject.toml` (lines 8-61 — `dependencies` list)
@@ -61,14 +61,13 @@ enable_langfuse: bool = False
 
 ---
 
-### Step 2: LangFuse callback + tracing helper
+### Step 2: LangFuse callback + tracing helper ✓ DONE — 2026-04-06
 
 **Files**:
 - `src/utils/langfuse_tracing.py` (new)
-- `src/agent/graph.py` (lines 40-84 — `build_graph` + module-level `graph`)
 - `tests/unit/agent/test_langfuse_tracing.py` (new)
 
-**What**: Create a LangFuse callback factory that returns a `CallbackHandler` when enabled, `None` when disabled. Update `build_graph()` to accept an optional callbacks list. The module-level `graph` stays unchanged (no callbacks by default — tracing is opt-in at invocation time).
+**What**: Create a LangFuse callback factory that returns a `CallbackHandler` when enabled, `None` when disabled. No changes to `build_graph()` or `graph.py` — tracing is opt-in at invocation time via the `config["callbacks"]` pattern. The module-level `graph` stays unchanged.
 
 **Snippet**:
 ```python
@@ -133,7 +132,7 @@ def test_handler_created_when_enabled(monkeypatch):
 
 ---
 
-### Step 3: Golden dataset models + JSONL files
+### Step 3: Golden dataset models + JSONL files ✓ DONE — 2026-04-06
 
 **Files**:
 - `evals/tasks/models.py` (lines 1-44 — add `AgentGoldenSample`, `IntentEvalMetrics`)
@@ -198,7 +197,7 @@ def test_adversarial_samples_exist():
 
 ---
 
-### Step 4: Tier 1 — Deterministic intent + route eval
+### Step 4: Tier 1 — Deterministic intent + route eval ✓ DONE — 2026-04-06
 
 **Files**:
 - `evals/agent/__init__.py` (new)
@@ -241,9 +240,27 @@ def evaluate_intent(samples: list[AgentGoldenSample]) -> IntentEvalMetrics:
         confidence_threshold=settings.intent_confidence_threshold,
     )
 
+def _route_after_classify(intent: str, confidence: float) -> str:
+    """Replicated from agent.nodes — avoids DuckDB import chain."""
+    if intent == "chit_chat":
+        return "rewrite_query"
+    if confidence < settings.intent_confidence_threshold:
+        return "clarify_or_proceed"
+    return "rewrite_query"
+
 def evaluate_routing(samples: list[AgentGoldenSample]) -> dict:
-    """Check route_after_classify matches expected_route for each sample."""
-    ...
+    """Check route matches expected_route for each sample.
+
+    Uses replicated routing logic (not imported from agent.nodes)
+    to avoid the DuckDB import chain.
+    """
+    correct = 0
+    for sample in samples:
+        result = _analyzer.analyze(sample.query)
+        predicted_route = _route_after_classify(result.intent, result.confidence)
+        if predicted_route == sample.expected_route:
+            correct += 1
+    return {"route_accuracy": correct / len(samples), "n_samples": len(samples)}
 ```
 
 **Test**:
@@ -265,21 +282,65 @@ def test_evaluate_routing_correct():
 
 ---
 
-### Step 5: Tier 2 — Trajectory eval with LangFuse tracing
+### Step 5: Tier 2 — Trajectory eval with LangFuse tracing ✓ DONE — 2026-04-06
 
 **Files**:
+- `evals/agent/cost_gate.py` (new — env-var-driven cost gate)
+- `evals/graders/answer_eval.py` (update — import from `cost_gate` instead of hardcoded bool)
 - `evals/agent/trajectory_eval.py` (new)
 - `tests/unit/eval/test_trajectory_eval.py` (new)
+- `tests/unit/eval/test_cost_gate.py` (new)
 
-**What**: Run golden queries through the compiled graph with mocked tools. Record which nodes were visited and which tools were called. Assert tool calls match `expected_tools`. Optionally attach LangFuse `CallbackHandler` for full trace capture. Cost-gated — requires `CONFIRM_EXPENSIVE_OPS=True` (LLM calls for `agent_node` and `rewrite_query`).
+**What**: Create an env-var-driven cost gate (`evals/agent/cost_gate.py`) so Makefile targets can toggle it. Update `evals/graders/answer_eval.py` to import from the new gate instead of using its hardcoded `False`. Run golden queries through the compiled graph with mocked tools. Record which nodes were visited and which tools were called. Assert tool calls match `expected_tools`. Optionally attach LangFuse `CallbackHandler` for full trace capture. Cost-gated — requires `CONFIRM_EXPENSIVE_OPS=true` env var (LLM calls for `agent_node` and `rewrite_query`).
 
 **Snippet**:
+```python
+# evals/agent/cost_gate.py
+"""Env-var-driven cost gate for LLM-calling eval tiers.
+
+Reads from the CONFIRM_EXPENSIVE_OPS env var so Makefile
+targets can toggle it: CONFIRM_EXPENSIVE_OPS=true make eval-trajectory
+
+All eval modules (including evals/graders/answer_eval.py) import from here.
+"""
+from __future__ import annotations
+import os
+
+CONFIRM_EXPENSIVE_OPS: bool = os.getenv("CONFIRM_EXPENSIVE_OPS", "").lower() in ("true", "1")
+```
+
+```python
+# evals/graders/answer_eval.py — replace the two hardcoded lines:
+#   CONFIRM_EXPENSIVE_OPS = False  # flip consciously, never commit as True
+#   CONFIRM_EXPENSIVE_OPS = False  # never commit as True
+# with:
+from evals.agent.cost_gate import CONFIRM_EXPENSIVE_OPS
+```
+
+```python
+# tests/unit/eval/test_cost_gate.py
+def test_cost_gate_default_false(monkeypatch):
+    monkeypatch.delenv("CONFIRM_EXPENSIVE_OPS", raising=False)
+    # Re-import to pick up env change
+    import importlib
+    import evals.agent.cost_gate as cg
+    importlib.reload(cg)
+    assert cg.CONFIRM_EXPENSIVE_OPS is False
+
+def test_cost_gate_true_when_set(monkeypatch):
+    monkeypatch.setenv("CONFIRM_EXPENSIVE_OPS", "true")
+    import importlib
+    import evals.agent.cost_gate as cg
+    importlib.reload(cg)
+    assert cg.CONFIRM_EXPENSIVE_OPS is True
+```
+
 ```python
 # evals/agent/trajectory_eval.py
 from __future__ import annotations
 from dataclasses import dataclass
 from evals.tasks.models import AgentGoldenSample
-from evals.graders.answer_eval import CONFIRM_EXPENSIVE_OPS
+from evals.agent.cost_gate import CONFIRM_EXPENSIVE_OPS
 from utils.langfuse_tracing import get_langfuse_handler
 from utils.logging import get_logger
 
@@ -305,7 +366,9 @@ async def evaluate_trajectory(
 ) -> list[TrajectoryResult]:
     """Run graph on each sample and collect trajectory. Cost-gated."""
     if not CONFIRM_EXPENSIVE_OPS:
-        raise RuntimeError("Set CONFIRM_EXPENSIVE_OPS=True for trajectory eval.")
+        raise RuntimeError(
+            "Set CONFIRM_EXPENSIVE_OPS=true env var for trajectory eval."
+        )
     ...
 ```
 
@@ -327,7 +390,7 @@ def test_trajectory_result_tool_match():
 
 ---
 
-### Step 6: Tier 3 — RAGAS + DeepEval graders
+### Step 6: Tier 3 — RAGAS + DeepEval graders ✓ DONE — 2026-04-06
 
 **Files**:
 - `evals/agent/graders.py` (new)
@@ -340,6 +403,7 @@ def test_trajectory_result_tool_match():
 # evals/agent/graders.py
 from __future__ import annotations
 from langchain_anthropic import ChatAnthropic
+from evals.agent.cost_gate import CONFIRM_EXPENSIVE_OPS
 from utils.config import settings
 from utils.logging import get_logger
 
@@ -389,7 +453,7 @@ def test_tool_correctness_no_expected():
 
 ---
 
-### Step 7: Eval runner CLI + Makefile targets
+### Step 7: Eval runner CLI + Makefile targets ✓ DONE — 2026-04-06
 
 **Files**:
 - `evals/run_agent_eval.py` (new)
@@ -451,7 +515,7 @@ def test_tier1_runs_without_llm():
 
 ---
 
-### Step 8: Regression
+### Step 8: Regression ✓ DONE — 2026-04-06
 
 ```bash
 uv run pytest tests/unit/ -k "eval or intent_routing or nodes or state" --tb=short -q
@@ -474,7 +538,7 @@ PYTHONPATH=src uv run python -m evals.run_agent_eval --tier 1
 | 2 | `uv run pytest tests/unit/agent/test_langfuse_tracing.py -v` | LangFuse handler factory |
 | 3 | `uv run pytest tests/unit/eval/test_golden_models.py -v` | Golden dataset loads + validates |
 | 4 | `uv run pytest tests/unit/eval/test_intent_eval.py -v` | Deterministic intent eval |
-| 5 | `uv run pytest tests/unit/eval/test_trajectory_eval.py -v` | Trajectory data structures |
+| 5 | `uv run pytest tests/unit/eval/test_cost_gate.py tests/unit/eval/test_trajectory_eval.py -v` | Cost gate + trajectory data structures |
 | 6 | `uv run pytest tests/unit/eval/test_graders.py -v` | Tool correctness grader |
 | 7 | `uv run pytest tests/unit/eval/test_run_agent_eval.py -v` + `make eval-unit` | CLI runner + Makefile |
 | 8 | `uv run pytest tests/unit/ -k "eval or intent_routing or nodes" --tb=short -q` | Full regression |
@@ -492,9 +556,9 @@ Step 3 (golden dataset) ← needs Step 1 (models)
   ↓
 Step 4 (Tier 1 eval) ← needs Step 3
   ↓
-Step 5 (Tier 2 eval) ← needs Steps 2 + 3 + 4
+Step 5 (Tier 2 eval + cost_gate.py) ← needs Steps 2 + 3 + 4
   ↓
-Step 6 (Tier 3 graders) ← needs Step 1 (deps)
+Step 6 (Tier 3 graders) ← needs Steps 1 (deps) + 5 (cost_gate)
   ↓
 Step 7 (runner + Makefile) ← needs Steps 4 + 5 + 6
   ↓
@@ -523,11 +587,14 @@ Step 8 (regression) ← needs all
 - **Rollback**: Edit JSONL — no code changes needed
 - **Verify rollback**: Re-run `uv run pytest tests/unit/eval/test_golden_models.py`
 
-### Step 5: Trajectory eval
-- **Risk**: LLM calls in `agent_node` cost more than expected for 50 samples
+### Step 5: Cost gate + trajectory eval
+- **Risk (cost_gate.py)**: Changing `answer_eval.py` to import from `cost_gate.py` could break the existing `test_answer_eval_raises_without_flag` test if import path changes incorrectly
+- **Mitigation**: Existing test calls `run_answer_eval()` which internally checks the flag — import source is transparent to the caller
+- **Verify**: `uv run pytest tests/unit/rag/test_retrieval_eval.py::test_answer_eval_raises_without_flag -v`
+- **Risk (trajectory)**: LLM calls in `agent_node` cost more than expected for 50 samples
 - **Blast radius**: Local (cost) — `CONFIRM_EXPENSIVE_OPS` gate prevents accidental spend
-- **Rollback**: N/A — cost gate prevents unintended execution
-- **Verify rollback**: Run without `CONFIRM_EXPENSIVE_OPS` → RuntimeError raised
+- **Rollback**: `git revert HEAD --no-edit && uv run pytest tests/unit/rag/test_retrieval_eval.py -v`
+- **Verify rollback**: Run without `CONFIRM_EXPENSIVE_OPS` env var → RuntimeError raised
 
 ### Step 6: RAGAS + DeepEval graders
 - **Risk**: RAGAS defaults to OpenAI, fails without OpenAI key if Anthropic config not wired correctly

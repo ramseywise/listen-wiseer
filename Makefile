@@ -1,6 +1,6 @@
 COMPOSE = docker compose -f infrastructure/containers/docker-compose.yml
 
-.PHONY: help infra-up infra-down infra-logs app mcp-server auth lint format test test-unit test-fast test-integration test-data notebook init-db data-sync train
+.PHONY: help infra-up infra-down infra-logs app mcp-server auth lint format test test-unit test-fast test-integration test-data notebook init-db data-sync train eval-unit eval-trajectory eval-e2e
 
 help:
 	@echo "listen-wiseer targets:"
@@ -14,6 +14,9 @@ help:
 	@echo "  test-unit    Unit tests (with coverage)"
 	@echo "  test-fast    Unit tests (no coverage, quick)"
 	@echo "  test-integration  Integration tests (needs DuckDB/Spotify)"
+	@echo "  eval-unit    Tier 1 intent/route eval (free, CI-safe)"
+	@echo "  eval-trajectory  Tier 2 trajectory eval (costs money)"
+	@echo "  eval-e2e     Tier 3 RAGAS + DeepEval eval (costs money)"
 	@echo "  lint         ruff check + format check"
 	@echo "  format       ruff fix + format"
 	@echo "  infra-up     Docker stack"
@@ -83,3 +86,14 @@ train-cat:
 # Head-to-head comparison (informational, no models saved)
 train-compare:
 	PYTHONPATH=src uv run python -m recommend.train --compare
+
+# --- Agent eval harness ---
+
+eval-unit:
+	PYTHONPATH=src uv run python -m evals.run_agent_eval --tier 1
+
+eval-trajectory:
+	CONFIRM_EXPENSIVE_OPS=true PYTHONPATH=src uv run python -m evals.run_agent_eval --tier 2
+
+eval-e2e:
+	CONFIRM_EXPENSIVE_OPS=true PYTHONPATH=src uv run python -m evals.run_agent_eval --tier 3
