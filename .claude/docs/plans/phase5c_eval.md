@@ -1,515 +1,468 @@
-# Plan: Phase 5c — Eval Harness
-Date: 2026-04-05
-Predecessor: Phase 5b (intent routing)
-Next: Phase 6 (Spotify recommendations API)
+# Plan: Phase 5c — Eval Harness (v2)
+Date: 2026-04-06
+Based on: `.claude/docs/research/eval-harness.md`
 
----
+## Goal
 
-## Context & What Exists
+A three-tier eval harness (unit → trajectory → e2e) with LangFuse tracing, RAGAS + DeepEval graders, and a hand-crafted music-domain golden dataset that can run deterministic evals in CI and LLM-graded evals on demand.
 
-The `evals/` directory was built for a Danish customer support assistant.
-Reusable as-is:
-- `evals/tasks/models.py` — `EvalRunConfig`, `GoldenSample`, `RetrievalMetrics`
-- `evals/tasks/tracing.py` — `PipelineTracer`, `FailureClusterer`, `PipelineTrace`
-- `evals/graders/answer_eval.py` — `AnswerJudge`, `ClosedBookBaseline` (needs music system prompt)
+## Approach
 
-Needs adaptation:
-- `evals/run_local_eval.py` — hard-coded to OpenSearch + Danish golden JSONL
-- `evals/tasks/extract_golden.py`, `generate_synthetic.py` — not implemented
-- `evals/trials/` — empty
-- Golden datasets — none exist yet
-- `evals/metrics/retrieval_eval.py` — uses `expected_doc_url`, not meaningful for music
+Follow Anthropic's agent eval taxonomy. Start with deterministic Tier 1 evals (intent classification accuracy, route correctness) that need zero LLM calls and catch ~70% of regressions. Wire LangFuse tracing into the graph so Tier 2 trajectory evals capture node sequences. Add RAGAS + DeepEval as Tier 3 graders behind a cost gate. The golden dataset starts small (50 samples) and grows from conversation captures later.
 
-**Goal**: Working eval harness covering:
-1. **Smoke dataset** — 10-15 examples, manually written, covers all intent types
-2. **RAG eval** — keyword hit rate (no LLM) + optional LLM judge
-3. **Tool selection eval** — did the agent pick the right tool?
-4. **Eval runner** — single `python -m evals.run_eval` entry point
-5. **Notebook** — `notebooks/eda/09_eval.ipynb` for interactive exploration
+## Open Questions (resolved before planning)
 
-**Note on dataset size**: Smoke dataset is intentionally small (10-15 samples).
-The harness is more important than volume at this stage. Document clearly where
-to add examples as new intents / edge cases are discovered.
-
----
+- Q: Where does agent eval code live? A: `evals/agent/` — consistent with existing `evals/` structure.
+- Q: LangFuse cloud or self-hosted? A: Cloud free tier for dev. Self-host later if needed.
+- Q: RAGAS + DeepEval LLM backend? A: Both configured with `langchain_anthropic.ChatAnthropic` (Haiku) to stay in-stack. DeepEval via `DeepEvalBaseLLM` subclass.
+- Q: `pyproject.toml` changes? A: Yes — add `langfuse`, `ragas`, `deepeval` deps. User confirms before touching.
+- Q: Phoenix deps removal? A: Deferred to future cleanup — not in scope.
 
 ## Out of Scope
 
-- Automated dataset generation from real user traffic (needs production data first)
-- LangFuse custom score logging (Phase 6+ once production traffic exists)
-- Trajectory eval / loop detection (useful later, not blocking now)
-- CI integration (Phase 6+)
-- RAGAS integration (revisit when dataset grows to 50+ samples)
+- **Phoenix deps cleanup** — `arize-phoenix-otel`, `openinference-*` stay in `pyproject.toml` for now
+- **LangSmith integration** — comparison documented in research; implement only if LangFuse proves insufficient
+- **CI integration** — `make eval-unit` will be CI-ready but wiring into GitHub Actions is Phase 6+
+- **Conversation capture pipeline** — aspirational golden set enrichment, needs production traffic
+- **Dashboard / visualization** — Phase 6b
+- **Playwright UI testing** — Phase 6a
+- **Automated dataset generation** — needs production logs
 
 ---
 
 ## Steps
 
-### Step 1: Music-specific sample schemas + smoke datasets
+### Step 1: Add deps + LangFuse config
 
 **Files**:
-- `evals/tasks/models.py` (extend — add `MusicGoldenSample`, `ToolSelectionSample`)
-- `evals/datasets/smoke_rag.jsonl` (new — 10 RAG samples)
-- `evals/datasets/smoke_tool_selection.jsonl` (new — 15 tool selection samples)
-- `tests/unit/eval/test_models.py` (new)
+- `pyproject.toml` (lines 8-61 — `dependencies` list)
+- `src/utils/config.py` (lines 59-62 — add LangFuse fields after `max_tool_validation_retries`)
 
-**New models**:
+**What**: Add `langfuse`, `ragas`, `deepeval` to project deps. Add LangFuse config fields to `Settings`.
+
+**Snippet**:
 ```python
-# evals/tasks/models.py — add:
+# pyproject.toml — add to dependencies:
+"langfuse>=2.0.0",
+"ragas>=0.2.0",
+"deepeval>=1.0.0",
 
-class MusicGoldenSample(BaseModel):
-    """RAG eval sample for listen-wiseer artist/genre queries."""
-    query_id: str
-    query: str
-    expected_answer_contains: list[str]  # key terms that must appear in the answer
-    intent: str       # "artist_info" | "genre_info" | "history" | "recommendation"
-    subject: str      # artist or genre name to look up
-    difficulty: str = "easy"   # easy | medium | hard
-    notes: str = ""
-
-
-class ToolSelectionSample(BaseModel):
-    """Tool selection eval sample."""
-    query_id: str
-    query: str
-    expected_tool: str    # exact tool name, or "none" if no tool expected
-    expected_params: dict = {}
-    intent: str = ""      # expected intent from classify_intent node
-    notes: str = ""
+# src/utils/config.py — add after line 62 (redis_ttl_minutes):
+# LangFuse
+langfuse_public_key: str = ""
+langfuse_secret_key: str = ""
+langfuse_host: str = "https://cloud.langfuse.com"
+enable_langfuse: bool = False
 ```
 
-**Smoke RAG dataset** (`evals/datasets/smoke_rag.jsonl` — 10 samples):
-```jsonl
-{"query_id": "rag_001", "query": "Who is Aphex Twin?", "expected_answer_contains": ["electronic", "Richard"], "intent": "artist_info", "subject": "Aphex Twin", "difficulty": "easy"}
-{"query_id": "rag_002", "query": "What is zouk music?", "expected_answer_contains": ["Brazilian", "dance"], "intent": "genre_info", "subject": "zouk", "difficulty": "easy"}
-{"query_id": "rag_003", "query": "Tell me about Radiohead", "expected_answer_contains": ["British", "rock"], "intent": "artist_info", "subject": "Radiohead", "difficulty": "easy"}
-{"query_id": "rag_004", "query": "What is bossa nova?", "expected_answer_contains": ["Brazilian", "jazz"], "intent": "genre_info", "subject": "bossa nova", "difficulty": "easy"}
-{"query_id": "rag_005", "query": "What are the origins of afrobeats?", "expected_answer_contains": ["Nigeria", "Africa"], "intent": "genre_info", "subject": "afrobeats", "difficulty": "medium"}
-{"query_id": "rag_006", "query": "Who influenced Boards of Canada?", "expected_answer_contains": ["electronic", "ambient"], "intent": "artist_info", "subject": "Boards of Canada", "difficulty": "medium"}
-{"query_id": "rag_007", "query": "What style of music does Flying Lotus make?", "expected_answer_contains": ["hip-hop", "electronic"], "intent": "artist_info", "subject": "Flying Lotus", "difficulty": "easy"}
-{"query_id": "rag_008", "query": "What is ambient music?", "expected_answer_contains": ["Brian Eno", "atmosphere"], "intent": "genre_info", "subject": "ambient music", "difficulty": "easy"}
-{"query_id": "rag_009", "query": "Tell me something about John Coltrane", "expected_answer_contains": ["jazz", "saxophone"], "intent": "artist_info", "subject": "John Coltrane", "difficulty": "easy"}
-{"query_id": "rag_010", "query": "What is the difference between house and techno?", "expected_answer_contains": ["tempo", "Detroit"], "intent": "genre_info", "subject": "house music", "difficulty": "medium", "notes": "multi-genre query — tests subject selection"}
-```
+**Test**: `uv sync && uv run python -c "from utils.config import settings; print(settings.enable_langfuse)"`
 
-**Smoke tool selection dataset** (`evals/datasets/smoke_tool_selection.jsonl` — 15 samples):
-```jsonl
-{"query_id": "tool_001", "query": "recommend me zouk tracks", "expected_tool": "recommend_by_genre", "intent": "recommendation"}
-{"query_id": "tool_002", "query": "find tracks similar to this song", "expected_tool": "recommend_similar_tracks", "intent": "recommendation"}
-{"query_id": "tool_003", "query": "who is Aphex Twin?", "expected_tool": "get_artist_context", "intent": "artist_info"}
-{"query_id": "tool_004", "query": "what have I been listening to recently?", "expected_tool": "get_recently_played", "intent": "history"}
-{"query_id": "tool_005", "query": "recommend tracks for this artist", "expected_tool": "recommend_for_artist", "intent": "recommendation"}
-{"query_id": "tool_006", "query": "what is bossa nova?", "expected_tool": "get_artist_context", "intent": "genre_info"}
-{"query_id": "tool_007", "query": "who sounds like Radiohead?", "expected_tool": "get_related_artists", "intent": "artist_info"}
-{"query_id": "tool_008", "query": "suggest tracks from my saved playlists", "expected_tool": "recommend_for_playlist", "intent": "recommendation"}
-{"query_id": "tool_009", "query": "hello, what can you do?", "expected_tool": "none", "intent": "chit_chat"}
-{"query_id": "tool_010", "query": "find me something chill to listen to", "expected_tool": "recommend_by_genre", "intent": "recommendation"}
-{"query_id": "tool_011", "query": "tell me about the history of jazz", "expected_tool": "get_artist_context", "intent": "genre_info"}
-{"query_id": "tool_012", "query": "remember that I like melancholic music", "expected_tool": "manage_taste_memory", "intent": "history"}
-{"query_id": "tool_013", "query": "what are my music preferences?", "expected_tool": "search_taste_memory", "intent": "history"}
-{"query_id": "tool_014", "query": "find tracks by Floating Points", "expected_tool": "search_tracks", "intent": "recommendation"}
-{"query_id": "tool_015", "query": "recommend based on my listening history", "expected_tool": "get_recently_played", "intent": "history"}
-```
-
-**Tests**:
-```python
-# tests/unit/eval/test_models.py
-def test_music_golden_sample_loads():
-    import json
-    from pathlib import Path
-    from evals.tasks.models import MusicGoldenSample
-    path = Path("evals/datasets/smoke_rag.jsonl")
-    samples = [MusicGoldenSample.model_validate(json.loads(l)) for l in path.read_text().splitlines() if l.strip()]
-    assert len(samples) == 10
-    intents = {s.intent for s in samples}
-    assert "artist_info" in intents and "genre_info" in intents
-
-def test_tool_selection_sample_loads():
-    import json
-    from pathlib import Path
-    from evals.tasks.models import ToolSelectionSample
-    path = Path("evals/datasets/smoke_tool_selection.jsonl")
-    samples = [ToolSelectionSample.model_validate(json.loads(l)) for l in path.read_text().splitlines() if l.strip()]
-    assert len(samples) == 15
-    assert any(s.expected_tool == "none" for s in samples)  # chit_chat case
-```
-
-**Run**: `uv run pytest tests/unit/eval/test_models.py -v`
-
-**Done when**: Both JSONL files load and validate; `MusicGoldenSample` fields correct.
+**Done when**: `uv sync` succeeds, `settings.enable_langfuse` returns `False`, imports for `langfuse`, `ragas`, `deepeval` resolve.
 
 ---
 
-### Step 2: RAG eval — keyword hit rate + optional LLM judge
+### Step 2: LangFuse callback + tracing helper
 
 **Files**:
-- `evals/metrics/music_rag_eval.py` (new)
-- `evals/graders/answer_eval.py` (update `_JUDGE_SYSTEM` to music context)
-- `tests/unit/eval/test_music_rag_eval.py` (new)
+- `src/utils/langfuse_tracing.py` (new)
+- `src/agent/graph.py` (lines 40-84 — `build_graph` + module-level `graph`)
+- `tests/unit/agent/test_langfuse_tracing.py` (new)
 
-**What**: Two-tier RAG evaluation:
-1. **Keyword hit rate** — no LLM, always runs. Checks `expected_answer_contains` in answer.
-2. **LLM judge** — gated by `CONFIRM_EXPENSIVE_OPS`. Uses `AnswerJudge` with music prompt.
+**What**: Create a LangFuse callback factory that returns a `CallbackHandler` when enabled, `None` when disabled. Update `build_graph()` to accept an optional callbacks list. The module-level `graph` stays unchanged (no callbacks by default — tracing is opt-in at invocation time).
 
+**Snippet**:
 ```python
-# evals/metrics/music_rag_eval.py
+# src/utils/langfuse_tracing.py
 from __future__ import annotations
-
-from dataclasses import dataclass
-from evals.tasks.models import MusicGoldenSample
-from evals.graders.answer_eval import AnswerJudge, JudgeResult, CONFIRM_EXPENSIVE_OPS
+from langfuse.callback import CallbackHandler
+from utils.config import settings
 from utils.logging import get_logger
 
 log = get_logger(__name__)
 
-
-@dataclass
-class RAGEvalResult:
-    query_id: str
-    query: str
-    subject: str
-    answer: str
-    keyword_hit_rate: float
-    keywords_found: list[str]
-    keywords_missing: list[str]
-    judge_result: JudgeResult | None = None
-
-
-def evaluate_rag_sample(
-    sample: MusicGoldenSample,
-    get_context_fn,   # callable(subject: str, top_k: int) -> str
-    judge: AnswerJudge | None = None,
-) -> RAGEvalResult:
-    """Evaluate a single RAG sample. get_context_fn is MusicRAG.get_context."""
-    answer = get_context_fn(sample.subject, 3)
-    answer_lower = answer.lower()
-
-    found = [kw for kw in sample.expected_answer_contains if kw.lower() in answer_lower]
-    missing = [kw for kw in sample.expected_answer_contains if kw.lower() not in answer_lower]
-    hit_rate = len(found) / len(sample.expected_answer_contains) if sample.expected_answer_contains else 1.0
-
-    judge_result = None
-    if judge and CONFIRM_EXPENSIVE_OPS:
-        judge_result = judge.evaluate(
-            query_id=sample.query_id,
-            question=sample.query,
-            context_chunks=[answer],
-            answer=answer,
-        )
-
-    log.info("eval.rag.sample", query_id=sample.query_id, hit_rate=hit_rate,
-             n_found=len(found), n_missing=len(missing))
-    return RAGEvalResult(
-        query_id=sample.query_id, query=sample.query, subject=sample.subject,
-        answer=answer, keyword_hit_rate=hit_rate,
-        keywords_found=found, keywords_missing=missing, judge_result=judge_result,
+def get_langfuse_handler(
+    session_id: str | None = None,
+    user_id: str | None = None,
+    trace_name: str = "listen-wiseer",
+) -> CallbackHandler | None:
+    """Return a LangFuse CallbackHandler if enabled, else None."""
+    if not settings.enable_langfuse or not settings.langfuse_public_key:
+        return None
+    handler = CallbackHandler(
+        public_key=settings.langfuse_public_key,
+        secret_key=settings.langfuse_secret_key,
+        host=settings.langfuse_host,
+        session_id=session_id,
+        user_id=user_id,
+        trace_name=trace_name,
     )
-
-
-def evaluate_rag_dataset(
-    samples: list[MusicGoldenSample],
-    get_context_fn,
-    judge: AnswerJudge | None = None,
-) -> list[RAGEvalResult]:
-    return [evaluate_rag_sample(s, get_context_fn, judge) for s in samples]
-
-
-def summarize_rag(results: list[RAGEvalResult]) -> dict:
-    n = len(results)
-    avg_hit_rate = sum(r.keyword_hit_rate for r in results) / n if n else 0.0
-    return {
-        "n_samples": n,
-        "avg_keyword_hit_rate": avg_hit_rate,
-        "pass": avg_hit_rate >= 0.8,
-        "failures": [
-            {"query_id": r.query_id, "missing": r.keywords_missing}
-            for r in results if r.keyword_hit_rate < 1.0
-        ],
-    }
+    log.info("langfuse.handler.created", session_id=session_id)
+    return handler
 ```
 
-**AnswerJudge music prompt** (update `evals/graders/answer_eval.py`):
+The graph invocation pattern (used by eval runner + Chainlit):
 ```python
-_JUDGE_SYSTEM = """\
-You are an expert evaluator for a music information RAG system.
-Evaluate the generated answer on three dimensions:
-1. faithfulness — does it only claim what the retrieved context supports?
-2. relevance — does it address the user's music question?
-3. completeness — are the key facts about the artist or genre present?
-
-Return ONLY a JSON object:
-{
-  "is_correct": <true if faithful and relevant>,
-  "score": <float 0.0-1.0>,
-  "faithfulness": <float 0.0-1.0>,
-  "relevance": <float 0.0-1.0>,
-  "completeness": <float 0.0-1.0>,
-  "reasoning": <one sentence>
-}
-No other text."""
+handler = get_langfuse_handler(session_id="eval_run_001")
+config = {"configurable": {"thread_id": "..."}}
+if handler:
+    config["callbacks"] = [handler]
+result = await graph.ainvoke(state, config=config)
 ```
 
-**Tests**:
+**Test**: Unit test mocks `settings` to verify handler creation when enabled / None when disabled. No real LangFuse calls.
+
 ```python
-def test_evaluate_rag_sample_full_hit():
-    sample = MusicGoldenSample(
-        query_id="rag_001", query="Who is Aphex Twin?",
-        expected_answer_contains=["electronic", "Richard"],
-        intent="artist_info", subject="Aphex Twin"
-    )
-    get_context = lambda subject, top_k: "Aphex Twin is a British electronic musician named Richard"
-    result = evaluate_rag_sample(sample, get_context)
-    assert result.keyword_hit_rate == 1.0
-    assert result.keywords_missing == []
+# tests/unit/agent/test_langfuse_tracing.py
+def test_handler_none_when_disabled(monkeypatch):
+    monkeypatch.setattr("utils.config.settings.enable_langfuse", False)
+    from utils.langfuse_tracing import get_langfuse_handler
+    assert get_langfuse_handler() is None
 
-def test_evaluate_rag_sample_partial_miss():
-    sample = MusicGoldenSample(
-        query_id="rag_001", query="Who is Aphex Twin?",
-        expected_answer_contains=["electronic", "Richard", "ambient"],
-        intent="artist_info", subject="Aphex Twin"
-    )
-    get_context = lambda subject, top_k: "Aphex Twin makes electronic music"
-    result = evaluate_rag_sample(sample, get_context)
-    assert result.keyword_hit_rate < 1.0
-    assert "ambient" in result.keywords_missing
-
-def test_summarize_rag_pass():
-    from evals.metrics.music_rag_eval import RAGEvalResult, summarize_rag
-    results = [
-        RAGEvalResult("q1", "q", "s", "a", 1.0, ["electronic"], [], None),
-        RAGEvalResult("q2", "q", "s", "a", 0.9, ["jazz"], ["piano"], None),
-    ]
-    summary = summarize_rag(results)
-    assert summary["pass"] is True
+def test_handler_created_when_enabled(monkeypatch):
+    monkeypatch.setattr("utils.config.settings.enable_langfuse", True)
+    monkeypatch.setattr("utils.config.settings.langfuse_public_key", "pk-lf-test")
+    monkeypatch.setattr("utils.config.settings.langfuse_secret_key", "sk-lf-test")
+    from utils.langfuse_tracing import get_langfuse_handler
+    handler = get_langfuse_handler(session_id="test")
+    assert handler is not None
 ```
 
-**Run**: `uv run pytest tests/unit/eval/test_music_rag_eval.py -v`
+**Run**: `uv run pytest tests/unit/agent/test_langfuse_tracing.py -v`
 
-**Done when**: Keyword eval works without LLM; `summarize_rag` reports pass/fail.
+**Done when**: Handler factory returns `CallbackHandler` when enabled, `None` when disabled. No changes to graph compilation.
 
 ---
 
-### Step 3: Tool selection eval
+### Step 3: Golden dataset models + JSONL files
 
 **Files**:
-- `evals/metrics/tool_selection_eval.py` (new)
-- `tests/unit/eval/test_tool_selection_eval.py` (new)
+- `evals/tasks/models.py` (lines 1-44 — add `AgentGoldenSample`, `IntentEvalMetrics`)
+- `evals/datasets/golden_intent.jsonl` (new — 50 samples)
+- `tests/unit/eval/__init__.py` (new)
+- `tests/unit/eval/test_golden_models.py` (new)
 
-**What**: Run agent on each `ToolSelectionSample`, extract first tool called from
-message trace, check against `expected_tool`. Gated by `CONFIRM_EXPENSIVE_OPS`.
+**What**: Add `AgentGoldenSample` model alongside existing `GoldenSample` (don't modify existing models). Create 50 hand-crafted golden samples covering all 5 intents (10 per intent), each annotated with expected intent, confidence range, route, tools, and entities. Add `IntentEvalMetrics` for results.
 
+**Snippet**:
 ```python
-# evals/metrics/tool_selection_eval.py
-from __future__ import annotations
+# evals/tasks/models.py — add after RetrievalMetrics (line 44):
 
-from dataclasses import dataclass
-from evals.tasks.models import ToolSelectionSample
-from evals.graders.answer_eval import CONFIRM_EXPENSIVE_OPS
+class AgentGoldenSample(BaseModel):
+    """Golden sample for agent eval — intent, routing, and tool selection."""
+    sample_id: str
+    query: str
+    expected_intent: str
+    expected_confidence_min: float = 0.0
+    expected_tools: list[str] = []
+    expected_entities: dict[str, list[str]] = {}
+    expected_route: str = "rewrite_query"  # or "clarify_or_proceed"
+    difficulty: str = "easy"
+    eval_tier: int = 1  # 1=unit, 2=trajectory, 3=e2e
+    notes: str = ""
+
+
+class IntentEvalMetrics(BaseModel):
+    """Aggregate intent classification eval results."""
+    accuracy: float
+    per_intent_f1: dict[str, float]
+    confusion: dict[str, dict[str, int]]
+    n_samples: int
+    confidence_threshold: float
+```
+
+**JSONL samples** (10 per intent, 50 total). Intent distribution:
+- `artist_info` × 10: "who is Aphex Twin?", "tell me about Radiohead", edge cases
+- `genre_info` × 10: "what is zouk?", "explain ambient music", edge cases
+- `recommendation` × 10: "recommend tracks like X", "suggest chill music", edge cases
+- `history` × 10: "what have I been listening to?", "my recent plays", edge cases
+- `chit_chat` × 10: "hello", "thanks", "how are you", edge cases
+
+Include 5-8 adversarial samples (ambiguous, multi-intent, low-confidence) spread across intents.
+
+**Test**:
+```python
+# tests/unit/eval/test_golden_models.py
+def test_golden_samples_load_and_validate():
+    ...  # load JSONL, validate with AgentGoldenSample, check 50 samples
+
+def test_all_intents_covered():
+    ...  # assert all 5 intents have >= 8 samples
+
+def test_adversarial_samples_exist():
+    ...  # assert difficulty="hard" samples exist
+```
+
+**Run**: `uv run pytest tests/unit/eval/test_golden_models.py -v`
+
+**Done when**: 50 samples load and validate. All 5 intents covered. Hard samples present.
+
+---
+
+### Step 4: Tier 1 — Deterministic intent + route eval
+
+**Files**:
+- `evals/agent/__init__.py` (new)
+- `evals/agent/intent_eval.py` (new)
+- `tests/unit/eval/test_intent_eval.py` (new)
+
+**What**: Evaluator that runs `classify_intent()` and `route_after_classify()` against every golden sample. Computes accuracy, per-intent F1, confusion matrix. Imports `QueryAnalyzer` directly (no DuckDB chain). No LLM calls — fully deterministic.
+
+**Snippet**:
+```python
+# evals/agent/intent_eval.py
+from __future__ import annotations
+from collections import defaultdict
+from evals.tasks.models import AgentGoldenSample, IntentEvalMetrics
+from rag_core.orchestration.query_understanding import QueryAnalyzer
+from utils.config import settings
 from utils.logging import get_logger
 
 log = get_logger(__name__)
+_analyzer = QueryAnalyzer()
 
-
-@dataclass
-class ToolSelectionResult:
-    query_id: str
-    query: str
-    expected_tool: str
-    actual_tool: str | None
-    correct: bool
-    intent_correct: bool
-    actual_intent: str = ""
-
-
-def extract_first_tool_call(messages: list) -> str | None:
-    """Extract the name of the first tool called from an agent message list."""
-    for msg in messages:
-        if hasattr(msg, "tool_calls") and msg.tool_calls:
-            return msg.tool_calls[0].get("name")
-        if hasattr(msg, "additional_kwargs"):
-            calls = msg.additional_kwargs.get("tool_calls", [])
-            if calls:
-                return calls[0].get("function", {}).get("name")
-    return None
-
-
-async def evaluate_tool_selection(
-    samples: list[ToolSelectionSample],
-    graph,  # compiled LangGraph agent
-) -> list[ToolSelectionResult]:
-    """Run agent on each sample. Requires CONFIRM_EXPENSIVE_OPS=True."""
-    if not CONFIRM_EXPENSIVE_OPS:
-        raise RuntimeError(
-            "Set CONFIRM_EXPENSIVE_OPS=True to run tool selection eval. "
-            "Estimated cost: ~$0.01-0.05 per sample."
-        )
-
-    import uuid
-    from langchain_core.messages import HumanMessage
-
-    results = []
+def evaluate_intent(samples: list[AgentGoldenSample]) -> IntentEvalMetrics:
+    """Run deterministic intent classification eval. No LLM calls."""
+    confusion: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    correct = 0
     for sample in samples:
-        config = {"configurable": {"thread_id": str(uuid.uuid4())}}
-        state = {"messages": [HumanMessage(content=sample.query)]}
-        try:
-            result_state = await graph.ainvoke(state, config=config)
-            actual_tool = extract_first_tool_call(result_state.get("messages", []))
-            actual_intent = result_state.get("intent", "")
-        except Exception as exc:
-            log.error("eval.tool_selection.error", query_id=sample.query_id, error=str(exc))
-            actual_tool = None
-            actual_intent = ""
+        result = _analyzer.analyze(sample.query)
+        predicted = result.intent
+        expected = sample.expected_intent
+        confusion[expected][predicted] += 1
+        if predicted == expected:
+            correct += 1
+    # compute per-intent F1 from confusion matrix
+    ...
+    return IntentEvalMetrics(
+        accuracy=correct / len(samples),
+        per_intent_f1=f1_scores,
+        confusion=dict(confusion),
+        n_samples=len(samples),
+        confidence_threshold=settings.intent_confidence_threshold,
+    )
 
-        expected = sample.expected_tool
-        correct = (expected == "none" and actual_tool is None) or (actual_tool == expected)
-        intent_correct = (actual_intent == sample.intent) if sample.intent else True
-
-        log.info("eval.tool_selection.sample", query_id=sample.query_id,
-                 expected=expected, actual=actual_tool, correct=correct)
-        results.append(ToolSelectionResult(
-            query_id=sample.query_id, query=sample.query,
-            expected_tool=expected, actual_tool=actual_tool,
-            correct=correct, intent_correct=intent_correct, actual_intent=actual_intent,
-        ))
-    return results
-
-
-def summarize_tool_selection(results: list[ToolSelectionResult]) -> dict:
-    n = len(results)
-    n_correct = sum(r.correct for r in results)
-    n_intent_correct = sum(r.intent_correct for r in results)
-    return {
-        "n_samples": n,
-        "tool_accuracy": n_correct / n if n else 0.0,
-        "intent_accuracy": n_intent_correct / n if n else 0.0,
-        "pass": (n_correct / n if n else 0.0) >= 0.80,
-        "failures": [
-            {"query_id": r.query_id, "query": r.query[:60],
-             "expected": r.expected_tool, "actual": r.actual_tool}
-            for r in results if not r.correct
-        ],
-    }
+def evaluate_routing(samples: list[AgentGoldenSample]) -> dict:
+    """Check route_after_classify matches expected_route for each sample."""
+    ...
 ```
 
-**Tests** (no LLM calls):
+**Test**:
 ```python
-def test_extract_first_tool_call():
-    from evals.metrics.tool_selection_eval import extract_first_tool_call
-    msg = MagicMock()
-    msg.tool_calls = [{"name": "recommend_by_genre"}]
-    assert extract_first_tool_call([msg]) == "recommend_by_genre"
+# tests/unit/eval/test_intent_eval.py — synthetic samples, not golden file
+def test_evaluate_intent_perfect():
+    samples = [AgentGoldenSample(sample_id="t1", query="who is Aphex Twin?",
+               expected_intent="artist_info", ...)]
+    metrics = evaluate_intent(samples)
+    assert metrics.accuracy == 1.0
 
-def test_extract_no_tool_returns_none():
-    from evals.metrics.tool_selection_eval import extract_first_tool_call
-    msg = MagicMock(); msg.tool_calls = []
-    assert extract_first_tool_call([msg]) is None
-
-def test_summarize_tool_selection():
-    from evals.metrics.tool_selection_eval import ToolSelectionResult, summarize_tool_selection
-    results = [
-        ToolSelectionResult("q1", "q", "recommend_by_genre", "recommend_by_genre", True, True),
-        ToolSelectionResult("q2", "q", "get_artist_context", "recommend_by_genre", False, False),
-    ]
-    summary = summarize_tool_selection(results)
-    assert summary["tool_accuracy"] == 0.5
-    assert summary["pass"] is False
-    assert len(summary["failures"]) == 1
+def test_evaluate_routing_correct():
+    ...  # high confidence → rewrite_query, low → clarify_or_proceed
 ```
 
-**Run**: `uv run pytest tests/unit/eval/test_tool_selection_eval.py -v`
+**Run**: `uv run pytest tests/unit/eval/test_intent_eval.py -v`
 
-**Done when**: `extract_first_tool_call` works; `summarize_tool_selection` computes accuracy.
+**Done when**: `evaluate_intent` returns accuracy + F1 + confusion matrix. `evaluate_routing` returns route accuracy. Both work with synthetic fixtures.
 
 ---
 
-### Step 4: Eval runner — single CLI entry point
+### Step 5: Tier 2 — Trajectory eval with LangFuse tracing
 
 **Files**:
-- `evals/run_eval.py` (replace/rewrite current `run_local_eval.py`)
-- `tests/unit/eval/test_run_eval.py` (new — test loaders/printers only)
+- `evals/agent/trajectory_eval.py` (new)
+- `tests/unit/eval/test_trajectory_eval.py` (new)
 
-**What**: Single entry point running all evals. RAG eval always runs (no LLM).
-Tool eval requires `CONFIRM_EXPENSIVE_OPS=True`.
+**What**: Run golden queries through the compiled graph with mocked tools. Record which nodes were visited and which tools were called. Assert tool calls match `expected_tools`. Optionally attach LangFuse `CallbackHandler` for full trace capture. Cost-gated — requires `CONFIRM_EXPENSIVE_OPS=True` (LLM calls for `agent_node` and `rewrite_query`).
 
+**Snippet**:
 ```python
-# evals/run_eval.py
+# evals/agent/trajectory_eval.py
+from __future__ import annotations
+from dataclasses import dataclass
+from evals.tasks.models import AgentGoldenSample
+from evals.graders.answer_eval import CONFIRM_EXPENSIVE_OPS
+from utils.langfuse_tracing import get_langfuse_handler
+from utils.logging import get_logger
+
+log = get_logger(__name__)
+
+@dataclass
+class TrajectoryResult:
+    sample_id: str
+    query: str
+    actual_intent: str
+    expected_intent: str
+    tools_called: list[str]
+    expected_tools: list[str]
+    tool_match: bool
+    intent_match: bool
+    node_sequence: list[str]  # for future trajectory assertions
+
+async def evaluate_trajectory(
+    samples: list[AgentGoldenSample],
+    graph,  # CompiledStateGraph
+    *,
+    enable_tracing: bool = False,
+) -> list[TrajectoryResult]:
+    """Run graph on each sample and collect trajectory. Cost-gated."""
+    if not CONFIRM_EXPENSIVE_OPS:
+        raise RuntimeError("Set CONFIRM_EXPENSIVE_OPS=True for trajectory eval.")
+    ...
+```
+
+Uses the integration conftest mock pattern (`patch("agent.tools._engine", mock_engine)`) to avoid real Spotify/DuckDB calls. The LLM calls (Haiku) are real — that's what we're evaluating.
+
+**Test** (no LLM — mock `_llm_with_tools.ainvoke`):
+```python
+# tests/unit/eval/test_trajectory_eval.py
+def test_extract_tools_from_messages():
+    ...  # verify tool extraction from AIMessage.tool_calls
+
+def test_trajectory_result_tool_match():
+    ...  # verify match logic
+```
+
+**Run**: `uv run pytest tests/unit/eval/test_trajectory_eval.py -v`
+
+**Done when**: `TrajectoryResult` captures tools called + intent + match status. Unit tests pass with mocked graph.
+
+---
+
+### Step 6: Tier 3 — RAGAS + DeepEval graders
+
+**Files**:
+- `evals/agent/graders.py` (new)
+- `tests/unit/eval/test_graders.py` (new)
+
+**What**: Wrap RAGAS faithfulness/relevancy and DeepEval tool correctness as grader functions. Configure both with Anthropic Haiku as the evaluator LLM. Cost-gated behind `CONFIRM_EXPENSIVE_OPS`. Scores log to LangFuse traces when enabled.
+
+**Snippet**:
+```python
+# evals/agent/graders.py
+from __future__ import annotations
+from langchain_anthropic import ChatAnthropic
+from utils.config import settings
+from utils.logging import get_logger
+
+log = get_logger(__name__)
+
+HAIKU_MODEL = "claude-haiku-4-5-20251001"
+
+def get_ragas_llm() -> ChatAnthropic:
+    """Return Haiku instance for RAGAS grading."""
+    return ChatAnthropic(model=HAIKU_MODEL, api_key=settings.anthropic_api_key)
+
+def grade_faithfulness(question: str, answer: str, contexts: list[str]) -> float:
+    """RAGAS faithfulness score. Cost-gated."""
+    from ragas.metrics import faithfulness
+    from ragas import evaluate
+    ...
+
+def grade_tool_correctness(
+    query: str,
+    expected_tools: list[str],
+    actual_tools: list[str],
+) -> float:
+    """DeepEval tool correctness. Deterministic — no LLM needed for exact match."""
+    if not expected_tools:
+        return 1.0 if not actual_tools else 0.0
+    matches = set(expected_tools) & set(actual_tools)
+    return len(matches) / len(expected_tools)
+```
+
+**Test** (no LLM — test the deterministic `grade_tool_correctness` and mock RAGAS):
+```python
+# tests/unit/eval/test_graders.py
+def test_tool_correctness_perfect_match():
+    assert grade_tool_correctness("q", ["search_tracks"], ["search_tracks"]) == 1.0
+
+def test_tool_correctness_partial():
+    assert grade_tool_correctness("q", ["search_tracks", "recommend_for_artist"],
+                                   ["search_tracks"]) == 0.5
+
+def test_tool_correctness_no_expected():
+    assert grade_tool_correctness("q", [], []) == 1.0
+```
+
+**Run**: `uv run pytest tests/unit/eval/test_graders.py -v`
+
+**Done when**: `grade_tool_correctness` works deterministically. RAGAS + DeepEval wrappers defined (LLM-graded paths tested only with `CONFIRM_EXPENSIVE_OPS`).
+
+---
+
+### Step 7: Eval runner CLI + Makefile targets
+
+**Files**:
+- `evals/run_agent_eval.py` (new)
+- `Makefile` (lines 82-86 area — add `eval-unit`, `eval-trajectory`, `eval-e2e`)
+- `tests/unit/eval/test_run_agent_eval.py` (new)
+
+**What**: Single CLI entry point with `--tier` flag. `eval-unit` runs Tier 1 (free). `eval-trajectory` and `eval-e2e` require `CONFIRM_EXPENSIVE_OPS=True`.
+
+**Snippet**:
+```python
+# evals/run_agent_eval.py
 """
-Listen-wiseer eval harness.
+Listen-wiseer agent eval harness.
 
 Usage:
-    # RAG keyword eval (no LLM calls, always safe):
-    PYTHONPATH=src uv run python -m evals.run_eval --eval rag
+    # Tier 1 — deterministic intent/route eval (free, CI-safe):
+    PYTHONPATH=src uv run python -m evals.run_agent_eval --tier 1
 
-    # Tool selection eval (costs money — requires explicit opt-in):
-    CONFIRM_EXPENSIVE_OPS=true PYTHONPATH=src uv run python -m evals.run_eval --eval tools
+    # Tier 2 — trajectory eval with LangFuse (costs money):
+    CONFIRM_EXPENSIVE_OPS=true PYTHONPATH=src uv run python -m evals.run_agent_eval --tier 2
 
-    # Both:
-    PYTHONPATH=src uv run python -m evals.run_eval --eval all
+    # Tier 3 — e2e with RAGAS + DeepEval graders (costs money):
+    CONFIRM_EXPENSIVE_OPS=true PYTHONPATH=src uv run python -m evals.run_agent_eval --tier 3
+
+    # All tiers:
+    CONFIRM_EXPENSIVE_OPS=true PYTHONPATH=src uv run python -m evals.run_agent_eval --tier all
 """
 ```
 
-Loader functions:
-```python
-def load_rag_samples(path: Path = Path("evals/datasets/smoke_rag.jsonl")) -> list[MusicGoldenSample]:
-    ...
+**Makefile targets**:
+```makefile
+eval-unit:
+	PYTHONPATH=src uv run python -m evals.run_agent_eval --tier 1
 
-def load_tool_samples(path: Path = Path("evals/datasets/smoke_tool_selection.jsonl")) -> list[ToolSelectionSample]:
-    ...
+eval-trajectory:
+	CONFIRM_EXPENSIVE_OPS=true PYTHONPATH=src uv run python -m evals.run_agent_eval --tier 2
+
+eval-e2e:
+	CONFIRM_EXPENSIVE_OPS=true PYTHONPATH=src uv run python -m evals.run_agent_eval --tier 3
 ```
 
-Pass thresholds: RAG keyword hit rate ≥ 0.8 = PASS; tool accuracy ≥ 0.8 = PASS.
-
-**Tests**:
+**Test**:
 ```python
-def test_load_rag_samples():
-    from evals.run_eval import load_rag_samples
-    samples = load_rag_samples()
-    assert len(samples) >= 10
+# tests/unit/eval/test_run_agent_eval.py
+def test_load_golden_samples():
+    from evals.run_agent_eval import load_golden_samples
+    samples = load_golden_samples()
+    assert len(samples) >= 50
 
-def test_load_tool_samples():
-    from evals.run_eval import load_tool_samples
-    samples = load_tool_samples()
-    assert len(samples) >= 15
+def test_tier1_runs_without_llm():
+    ...  # verify tier 1 doesn't raise CONFIRM_EXPENSIVE_OPS error
 ```
 
-**Run**: `uv run pytest tests/unit/eval/test_run_eval.py -v`
+**Run**: `uv run pytest tests/unit/eval/test_run_agent_eval.py -v`
 
-**CLI smoke**: `PYTHONPATH=src uv run python -m evals.run_eval --eval rag`
+**CLI smoke**: `PYTHONPATH=src uv run python -m evals.run_agent_eval --tier 1`
 
-**Done when**: Runner prints per-sample results + aggregate PASS/FAIL for RAG eval.
+**Done when**: `make eval-unit` runs end-to-end and prints accuracy + F1 for intent classification. Tier 2/3 raise cost-gate error without `CONFIRM_EXPENSIVE_OPS`.
 
 ---
 
-### Step 5: Eval notebook
-
-**Files**:
-- `notebooks/eda/09_eval.ipynb` (new)
-
-**Sections**:
-1. Setup — imports, `configure_logging()`, `MusicRAG()` init
-2. Load smoke RAG dataset — print sample count + intent distribution
-3. Run RAG keyword eval — per-sample table: query / hit_rate / missing keywords
-4. Aggregate: avg hit rate, PASS/FAIL
-5. (Commented out) LLM judge — how to enable, estimated cost
-6. Load tool selection dataset — show intent distribution
-7. Notes: how to add new eval examples, when to graduate from smoke to full dataset
-
-**Commit clean** (no output cells).
-
-**Done when**: Notebook runs clean end-to-end.
-
----
-
-### Step 6: Regression
+### Step 8: Regression
 
 ```bash
-uv run pytest tests/unit/ --tb=short -q
-PYTHONPATH=src uv run python -m evals.run_eval --eval rag
+uv run pytest tests/unit/ -k "eval or intent_routing or nodes or state" --tb=short -q
+PYTHONPATH=src uv run python -m evals.run_agent_eval --tier 1
 ```
 
-**Pass**:
-- ≥ 280 unit tests pass
-- RAG keyword hit rate ≥ 0.8 on smoke dataset
+**Pass criteria**:
+- All new eval tests pass (≥12 new tests)
+- Existing 65 agent/rag tests still pass
+- Tier 1 eval runs end-to-end: accuracy + per-intent F1 printed
+- No regressions in intent routing or state tests
 
 ---
 
@@ -517,56 +470,75 @@ PYTHONPATH=src uv run python -m evals.run_eval --eval rag
 
 | Step | Command | Verifies |
 |------|---------|----------|
-| 1 | `uv run pytest tests/unit/eval/test_models.py -v` | Schema + JSONL loading |
-| 2 | `uv run pytest tests/unit/eval/test_music_rag_eval.py -v` | Keyword eval logic |
-| 3 | `uv run pytest tests/unit/eval/test_tool_selection_eval.py -v` | Tool extraction + accuracy |
-| 4 | `uv run pytest tests/unit/eval/test_run_eval.py -v` | Dataset loaders |
-| 5 | `uv run pytest tests/unit/ --tb=short -q` | Full regression |
-| 6 | `PYTHONPATH=src uv run python -m evals.run_eval --eval rag` | End-to-end RAG eval |
+| 1 | `uv sync && uv run python -c "from utils.config import settings; print(settings.enable_langfuse)"` | Deps install, config fields |
+| 2 | `uv run pytest tests/unit/agent/test_langfuse_tracing.py -v` | LangFuse handler factory |
+| 3 | `uv run pytest tests/unit/eval/test_golden_models.py -v` | Golden dataset loads + validates |
+| 4 | `uv run pytest tests/unit/eval/test_intent_eval.py -v` | Deterministic intent eval |
+| 5 | `uv run pytest tests/unit/eval/test_trajectory_eval.py -v` | Trajectory data structures |
+| 6 | `uv run pytest tests/unit/eval/test_graders.py -v` | Tool correctness grader |
+| 7 | `uv run pytest tests/unit/eval/test_run_agent_eval.py -v` + `make eval-unit` | CLI runner + Makefile |
+| 8 | `uv run pytest tests/unit/ -k "eval or intent_routing or nodes" --tb=short -q` | Full regression |
 
 ---
 
 ## Dependency Map
 
 ```
-Step 1 (schemas + datasets) ← independent
+Step 1 (deps + config) ← independent
   ↓
-Step 2 (RAG eval) ← needs Step 1 + Phase 5a MusicRAG
+Step 2 (LangFuse handler) ← needs Step 1
   ↓
-Step 3 (tool eval) ← needs Step 1 + Phase 5b intent graph
+Step 3 (golden dataset) ← needs Step 1 (models)
   ↓
-Step 4 (runner) ← needs Steps 2 + 3
+Step 4 (Tier 1 eval) ← needs Step 3
   ↓
-Step 5 (notebook) ← needs Steps 1-4
+Step 5 (Tier 2 eval) ← needs Steps 2 + 3 + 4
   ↓
-Step 6 (regression) ← needs all
+Step 6 (Tier 3 graders) ← needs Step 1 (deps)
+  ↓
+Step 7 (runner + Makefile) ← needs Steps 4 + 5 + 6
+  ↓
+Step 8 (regression) ← needs all
 ```
 
 ---
 
 ## Risks & Rollback
 
-### Dataset keyword quality (Step 1)
-- **Risk**: Keywords too specific — Wikipedia doesn't use exact term
-- **Mitigation**: Broad genre-defining terms only; adjust if first run fails
-- **Rollback**: Edit JSONL — no code changes
+### Step 1: Add deps + LangFuse config
+- **Risk**: `langfuse` / `ragas` / `deepeval` version conflicts with existing LangChain ecosystem
+- **Blast radius**: Local — only affects dep resolution
+- **Rollback**: `git checkout pyproject.toml src/utils/config.py && uv sync`
+- **Verify rollback**: `uv run python -c "from utils.config import settings"` succeeds
 
-### LLM cost gate (Step 3)
-- **Risk**: `CONFIRM_EXPENSIVE_OPS=True` committed accidentally
-- **Mitigation**: Hardcoded `False` in source; env var must be explicitly set in shell
-- **Rollback**: Not applicable — gate prevents spend
+### Step 2: LangFuse callback
+- **Risk**: `langfuse.callback.CallbackHandler` API changes between versions
+- **Blast radius**: Local — handler is opt-in, default graph unchanged
+- **Rollback**: `git revert HEAD --no-edit`
+- **Verify rollback**: `uv run pytest tests/unit/agent/ --tb=short -q` passes
 
-### Pass threshold (Step 6)
-- **Risk**: 0.8 keyword hit rate fails (Wikipedia text varies by subject)
-- **Mitigation**: 0.8 is intentionally lenient; adjust threshold if legitimately borderline
-- **Rollback**: Lower threshold, not a code issue
+### Step 3: Golden dataset
+- **Risk**: Golden samples have wrong expected_intent (keyword classifier behaves differently than annotator assumed)
+- **Blast radius**: Local — JSONL files only, no production code affected
+- **Rollback**: Edit JSONL — no code changes needed
+- **Verify rollback**: Re-run `uv run pytest tests/unit/eval/test_golden_models.py`
 
----
+### Step 5: Trajectory eval
+- **Risk**: LLM calls in `agent_node` cost more than expected for 50 samples
+- **Blast radius**: Local (cost) — `CONFIRM_EXPENSIVE_OPS` gate prevents accidental spend
+- **Rollback**: N/A — cost gate prevents unintended execution
+- **Verify rollback**: Run without `CONFIRM_EXPENSIVE_OPS` → RuntimeError raised
 
-## Future extensions (not in scope)
+### Step 6: RAGAS + DeepEval graders
+- **Risk**: RAGAS defaults to OpenAI, fails without OpenAI key if Anthropic config not wired correctly
+- **Blast radius**: Local — graders are cost-gated, won't run in CI
+- **Rollback**: `git revert HEAD --no-edit`
+- **Verify rollback**: `uv run pytest tests/unit/eval/test_graders.py` (deterministic tests still pass)
 
-- Generate 100+ samples from real conversation logs (once production traffic exists)
-- `difficulty: hard` samples — niche artists, multi-hop genre questions
-- Trajectory eval — loop detection (add when loop failures are observed)
-- LangFuse custom score logging — Phase 6+ once production monitoring is set up
-- RAGAS integration — if dataset grows to 50+ samples
+### Global rollback
+If multiple steps need reversal:
+```bash
+git revert HEAD~N..HEAD --no-edit  # where N = steps applied
+uv sync
+uv run pytest tests/unit/agent/ --tb=short -q  # verify baseline
+```
