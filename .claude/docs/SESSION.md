@@ -2,7 +2,8 @@
 
 ## Active docs
 
-- **Plan**: `.claude/docs/plans/phase5b_intent.md` (DONE)
+- **Plan**: `.claude/docs/plans/phase5c_eval.md` (v2, ACTIVE)
+- **Plan (prior)**: `.claude/docs/plans/phase5b_intent.md` (DONE)
 - **Research**: `.claude/docs/research/eval-harness.md`
 - **Research (prior)**: `.claude/docs/research/infra_support.md`
 
@@ -97,3 +98,11 @@ Key context for 5c:
 
 Start with: /research eval-harness
 ```
+
+_compact: 2026-04-06 20:21_
+
+_compact: 2026-04-06 21:14_
+
+_compact: 2026-04-06 21:51_
+
+_compact: 2026-04-06 21:56_

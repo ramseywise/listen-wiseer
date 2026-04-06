@@ -1,5 +1,59 @@
 # Changelog
 
+## [Unreleased] — Phase 5c: Eval Harness
+
+### Step 8 — Regression
+- Ran: `tests/unit/ -k "eval or intent_routing or nodes or state"` — 80/80 passed (2 pre-existing rag import errors excluded)
+- Ran: `PYTHONPATH=src uv run python -m evals.run_agent_eval --tier 1` — 50 samples, 100% accuracy + F1, 100% route accuracy
+- No regressions in intent routing, nodes, or state tests
+
+### Step 7 — Eval runner CLI + Makefile targets
+- Created: `evals/run_agent_eval.py` — `load_golden_samples()`, `run_tier1/2/3()`, `main()` with `--tier {1,2,3,all}` CLI
+- Modified: `Makefile` — added `eval-unit`, `eval-trajectory`, `eval-e2e` targets with PHONY declarations
+- Created: `tests/unit/eval/test_run_agent_eval.py` — 8 tests (loader, tier filter, missing file, path exists, tier1 runs, CLI exit 0, tier2 cost gate, invalid tier)
+- Tests: 8 passed
+- Deviations: none
+
+### Step 6 — Tier 3 RAGAS + DeepEval graders
+- Created: `evals/agent/graders.py` — `get_ragas_llm()`, `grade_faithfulness()`, `grade_answer_relevancy()` (RAGAS 0.4 API, cost-gated), `grade_tool_correctness()` (deterministic)
+- Created: `tests/unit/eval/test_graders.py` — 8 tests (6 tool correctness variants + 2 cost-gate guards)
+- Tests: 8 passed
+- Deviations: added `grade_answer_relevancy()` alongside faithfulness (both use RAGAS `EvaluationDataset`/`SingleTurnSample`)
+
+### Step 5 — Tier 2 trajectory eval + cost gate
+- Created: `evals/agent/cost_gate.py` — env-var-driven `CONFIRM_EXPENSIVE_OPS` gate
+- Modified: `evals/graders/answer_eval.py` — replaced 2 hardcoded `False` with import from `cost_gate.py`
+- Created: `evals/agent/trajectory_eval.py` — `TrajectoryResult`, `extract_tools_from_messages()`, `check_tool_match()`, `evaluate_trajectory()`
+- Created: `tests/unit/eval/test_cost_gate.py` — 4 tests (default false, true, "1", random string)
+- Created: `tests/unit/eval/test_trajectory_eval.py` — 10 tests (tool extraction, match logic, dataclass, cost gate error)
+- Tests: 14 passed; pre-existing `test_retrieval_eval.py` failures unchanged (broken `schemas.retrieval` import)
+- Deviations: none
+
+### Step 4 — Tier 1 deterministic intent + route eval
+- Created: `evals/agent/__init__.py`, `evals/agent/intent_eval.py` — `evaluate_intent()` (accuracy, F1, confusion matrix) + `evaluate_routing()` (route accuracy)
+- Created: `tests/unit/eval/test_intent_eval.py` — 9 tests (perfect/partial accuracy, confusion matrix, F1, routing for chit_chat/low-conf/high-conf)
+- Tests: 9 passed
+- Deviations: none
+
+### Step 3 — Golden dataset models + JSONL files
+- Modified: `evals/tasks/models.py` — added `AgentGoldenSample` + `IntentEvalMetrics` models
+- Created: `evals/datasets/golden_intent.jsonl` — 50 hand-crafted samples (10 per intent), validated against classifier
+- Created: `tests/unit/eval/__init__.py`, `tests/unit/eval/test_golden_models.py` — 5 tests
+- Tests: 5 passed (load/validate, intent coverage, unique IDs, adversarial samples, valid routes)
+- Deviations: added `test_sample_ids_unique` and `test_routes_are_valid` beyond plan spec for robustness; 2 adversarial samples marked with actual classifier output (hi07→artist_info, cc08→artist_info)
+
+### Step 2 — LangFuse callback + tracing helper
+- Created: `src/utils/langfuse_tracing.py` — `get_langfuse_handler()` factory returning `CallbackHandler | None`
+- Created: `tests/unit/agent/test_langfuse_tracing.py` — 3 tests (disabled, no key, enabled)
+- Tests: 3 passed, 100% coverage on new module
+- Deviations: import path is `langfuse.langchain.CallbackHandler` (v4 API), not `langfuse.callback` (v2 plan)
+
+### Step 1 — Add deps + LangFuse config
+- Modified: `pyproject.toml` — added `langfuse>=2.0.0`, `ragas>=0.2.0`, `deepeval>=1.0.0` to dependencies
+- Modified: `src/utils/config.py` — added `langfuse_public_key`, `langfuse_secret_key`, `langfuse_host`, `enable_langfuse` fields to `Settings`
+- Tests: 54 agent tests passed, `settings.enable_langfuse` returns `False`
+- Deviations: none
+
 ## [Unreleased] — Phase 5b: Intent Routing + Query Understanding
 
 ### Step 5 — Related artists tool

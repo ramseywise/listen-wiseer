@@ -11,9 +11,7 @@ Two evaluation modes:
                            Useful for measuring retrieval lift.
 
 Cost gate: CONFIRM_EXPENSIVE_OPS must be True to run either. Estimated cost:
-~$0.01-0.03 per sample with Haiku.
-
-CONFIRM_EXPENSIVE_OPS = False  # flip consciously, never commit as True
+~$0.01-0.03 per sample with Haiku. Controlled via env var (see cost_gate.py).
 """
 
 from __future__ import annotations
@@ -24,11 +22,10 @@ from typing import Any
 
 import anthropic
 
+from evals.agent.cost_gate import CONFIRM_EXPENSIVE_OPS
 from utils.logging import get_logger
 
 log = get_logger(__name__)
-
-CONFIRM_EXPENSIVE_OPS = False  # never commit as True
 
 HAIKU_MODEL = "claude-haiku-4-5-20251001"
 
