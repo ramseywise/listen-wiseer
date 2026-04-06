@@ -12,7 +12,9 @@
 - **Phase 4b** (memory): DONE — episodic, taste, procedural memory
 - **Phase 5a** (RAG core adaptation): DONE — DuckDB vector store, MiniLM embedder, Wikipedia/Tavily fetchers, MusicRAG orchestrator, 93 RAG tests passing
 - **Phase 5b** (intent routing): DONE — all 6 steps complete (Step 6 smoke deferred to local manual testing)
-- **Phase 5c** (eval harness): UP NEXT
+- **Phase 5c** (eval harness): UP NEXT — LangFuse tracing, golden dataset, intent/tool metrics
+- **Phase 6a** (testing): PLANNED — Playwright MCP for UI smoke tests, screenshot-based visual regression, Chainlit UX validation
+- **Phase 6b** (dashboard): PLANNED — observability dashboard, metrics visualization, eval results display
 - **Last updated**: 2026-04-06
 
 ## Phase 5b summary
