@@ -7,6 +7,8 @@ repos:
       - id: check-merge-conflict
       - id: check-yaml
       - id: check-toml
+      - id: check-json
+      - id: check-ast
       - id: detect-private-key
       # Disabled: solo project, committing directly to main is fine
       # - id: no-commit-to-branch
@@ -36,6 +38,13 @@ repos:
 
   - repo: local
     hooks:
+      - id: pyright
+        name: pyright type check
+        language: system
+        entry: uv run pyright src/
+        pass_filenames: false
+        types: [python]
+
       - id: no-hardcoded-paths
         name: no hardcoded /Users/ paths in src/
         language: pygrep
