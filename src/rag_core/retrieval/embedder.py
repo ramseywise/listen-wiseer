@@ -39,3 +39,23 @@ class MultilingualEmbedder:
         prefixed = [self.PASSAGE_PREFIX + t for t in texts]
         vectors = self.model.encode(prefixed, convert_to_numpy=True)
         return [v.tolist() for v in vectors]
+
+
+class MiniLMEmbedder:
+    """Wraps all-MiniLM-L6-v2 (384 dims). No prefix required.
+
+    Default embedder for listen-wiseer RAG pipeline.
+    """
+
+    def __init__(self, model_name: str = "all-MiniLM-L6-v2") -> None:
+        self.model = SentenceTransformer(model_name)
+
+    def embed_query(self, text: str) -> list[float]:
+        """Embed a single query string."""
+        vector = self.model.encode(text, convert_to_numpy=True)
+        return vector.tolist()
+
+    def embed_passages(self, texts: list[str]) -> list[list[float]]:
+        """Embed a batch of passages."""
+        vectors = self.model.encode(texts, convert_to_numpy=True)
+        return [v.tolist() for v in vectors]

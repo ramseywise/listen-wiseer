@@ -1,4 +1,4 @@
-"""LangGraph query pipeline for RAG help assistant.
+"""LangGraph query pipeline for RAG music assistant.
 
 Graph nodes (each returns a partial state update dict):
     classify_intent  → rewrite_query → retrieve → grade_docs ─┐
@@ -15,7 +15,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
-from retrieval.client import OpenSearchClient
+from retrieval.duckdb_client import DuckDBVectorClient
 from retrieval.embedder import MultilingualEmbedder
 from schemas.conversation import RAGState
 from schemas.retrieval import GradedChunk, Intent, RetrievalResult
@@ -32,15 +32,17 @@ log = get_logger(__name__)
 HAIKU_MODEL = "claude-haiku-4-5-20251001"
 
 NO_ANSWER_MESSAGE = (
-    "Jeg kan desværre ikke besvare dit spørgsmål baseret på den tilgængelige dokumentation."
+    "I'm sorry, I couldn't find enough information to answer your question. "
+    "Try asking about a specific artist, band, or music genre."
 )
 
 # Maps QueryAnalyzer intent strings → Intent enum
+# Bridge mapping until Phase 5b replaces QueryAnalyzer with music-domain classifier
 INTENT_MAP: dict[str, Intent] = {
-    "factual": Intent.REFERENCE,
-    "procedural": Intent.HOW_TO,
-    "exploratory": Intent.REFERENCE,
-    "troubleshooting": Intent.TROUBLESHOOT,
+    "factual": Intent.ARTIST_INFO,
+    "procedural": Intent.ARTIST_INFO,
+    "exploratory": Intent.GENRE_INFO,
+    "troubleshooting": Intent.ARTIST_INFO,
 }
 
 _DIRECT_INTENTS = {Intent.CHIT_CHAT, Intent.OUT_OF_SCOPE}
@@ -87,7 +89,7 @@ async def _classify_intent(state: RAGState) -> dict:
             break
 
     analysis = _analyzer.analyze(query)
-    intent = INTENT_MAP.get(analysis.intent, Intent.REFERENCE)
+    intent = INTENT_MAP.get(analysis.intent, Intent.ARTIST_INFO)
 
     # Collect up to 3 query variants from expansion + sub-queries
     variants: list[str] = []
@@ -127,11 +129,11 @@ async def _rewrite_query(state: RAGState, haiku: ChatAnthropic) -> dict:
     history = "\n".join(history_lines)
 
     prompt = (
-        f"Baseret på samtalehistorikken, omformuler følgende spørgsmål "
-        f"til et selvstændigt spørgsmål uden pronominer:\n\n"
-        f"Historik:\n{history}\n\n"
-        f"Spørgsmål: {query}\n\n"
-        f"Selvstændigt spørgsmål (kun spørgsmålet, ingen forklaring):"
+        f"Based on the conversation history, rewrite the following question "
+        f"as a standalone question without pronouns or references:\n\n"
+        f"History:\n{history}\n\n"
+        f"Question: {query}\n\n"
+        f"Standalone question (question only, no explanation):"
     )
     response: AIMessage = await haiku.ainvoke([HumanMessage(content=prompt)])
     standalone = str(response.content).strip()
@@ -141,7 +143,7 @@ async def _rewrite_query(state: RAGState, haiku: ChatAnthropic) -> dict:
 
 async def _retrieve(
     state: RAGState,
-    client: OpenSearchClient,
+    client: DuckDBVectorClient,
     embedder: MultilingualEmbedder,
 ) -> dict:
     """Hybrid search for standalone_query + each variant; deduplicate by chunk.id."""
@@ -179,11 +181,11 @@ async def _grade_docs(state: RAGState, haiku: ChatAnthropic) -> dict:
 
     for result in chunks:
         prompt = (
-            f"Er følgende tekst relevant for at besvare spørgsmålet? "
-            f"Svar KUN med et tal mellem 0 og 1 (fx 0.8).\n\n"
-            f"Spørgsmål: {query}\n\n"
-            f"Tekst: {result.chunk.text[:500]}\n\n"
-            f"Relevans (0–1):"
+            f"Is the following text relevant to answering the question? "
+            f"Reply ONLY with a number between 0 and 1 (e.g. 0.8).\n\n"
+            f"Question: {query}\n\n"
+            f"Text: {result.chunk.text[:500]}\n\n"
+            f"Relevance (0–1):"
         )
         response: AIMessage = await haiku.ainvoke([HumanMessage(content=prompt)])
         raw = str(response.content).strip()
@@ -219,7 +221,7 @@ async def _grade_docs(state: RAGState, haiku: ChatAnthropic) -> dict:
 
 async def _generate(state: RAGState, sonnet: ChatAnthropic) -> dict:
     """Generate answer using Claude Sonnet with intent-specific system prompt."""
-    intent: Intent = state.get("intent", Intent.REFERENCE)
+    intent: Intent = state.get("intent", Intent.ARTIST_INFO)
     graded: list[GradedChunk] = state.get("graded_chunks", [])
 
     system_prompt, messages = build_prompt(state, graded)
@@ -235,7 +237,7 @@ async def _confidence_gate(state: RAGState) -> dict:
     Direct-path intents (chit_chat / out_of_scope) skip the retrieval check —
     they never populate graded_chunks, so the empty-chunks guard must not apply.
     """
-    intent = state.get("intent", Intent.REFERENCE)
+    intent = state.get("intent", Intent.ARTIST_INFO)
     if intent in _DIRECT_INTENTS:
         return {}
     if not state.get("confident", True) or not state.get("graded_chunks"):
@@ -250,7 +252,7 @@ async def _confidence_gate(state: RAGState) -> dict:
 
 
 def build_graph(
-    opensearch_client: OpenSearchClient,
+    client: DuckDBVectorClient,
     embedder: MultilingualEmbedder,
     anthropic_api_key: str | None = None,
 ) -> StateGraph:
@@ -265,7 +267,7 @@ def build_graph(
         return await _rewrite_query(state, haiku)
 
     async def retrieve_node(state: RAGState) -> dict:
-        return await _retrieve(state, opensearch_client, embedder)
+        return await _retrieve(state, client, embedder)
 
     async def grade_docs_node(state: RAGState) -> dict:
         return await _grade_docs(state, haiku)
@@ -310,7 +312,7 @@ def build_graph(
 
 
 def create_rag_app(
-    opensearch_client: OpenSearchClient,
+    client: DuckDBVectorClient,
     embedder: MultilingualEmbedder,
     anthropic_api_key: str | None = None,
     checkpointer: BaseCheckpointSaver | None = None,
@@ -324,5 +326,5 @@ def create_rag_app(
         config = {"configurable": {"thread_id": session_id}}
         result = await app.ainvoke({"messages": [HumanMessage(content=query)]}, config=config)
     """
-    graph = build_graph(opensearch_client, embedder, anthropic_api_key)
+    graph = build_graph(client, embedder, anthropic_api_key)
     return graph.compile(checkpointer=checkpointer or MemorySaver())

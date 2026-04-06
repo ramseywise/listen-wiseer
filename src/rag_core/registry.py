@@ -65,9 +65,11 @@ class Registry:
 # ---------------------------------------------------------------------------
 
 from generation.generator import call_llm  # noqa: E402
-from retrieval.client import OpenSearchClient  # noqa: E402
+from retrieval.duckdb_client import DuckDBVectorClient  # noqa: E402
+from retrieval.embedder import MiniLMEmbedder  # noqa: E402
 
-Registry.register("client", "hybrid")(OpenSearchClient)
+Registry.register("client", "duckdb")(DuckDBVectorClient)
+Registry.register("embedder", "minilm")(MiniLMEmbedder)
 
 
 class ClaudeGenerator:

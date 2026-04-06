@@ -7,7 +7,7 @@ class ChunkMetadata(BaseModel):
     url: str
     title: str
     section: str
-    language: str = "da"
+    language: str = "en"
     doc_id: str  # hash of url + section
     parent_id: str | None = None  # set by ParentDocChunker; points to parent section chunk
 

@@ -13,7 +13,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parents[2] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src" / "rag_core"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src"))
 
 
 # ---------------------------------------------------------------------------
@@ -63,7 +64,7 @@ def _base_state(**overrides) -> dict:
         "messages": [HumanMessage(content=default_query)],
         "query": default_query,
         "standalone_query": "",
-        "intent": Intent.HOW_TO,
+        "intent": Intent.ARTIST_INFO,
         "query_variants": [],
         "retrieved_chunks": [],
         "graded_chunks": [],
@@ -90,7 +91,7 @@ def _mock_llm_response(text: str):
 
 @pytest.mark.asyncio
 async def test_classify_intent_procedural_query():
-    """Procedural Danish query maps to Intent.HOW_TO.
+    """Procedural Danish query maps to Intent.ARTIST_INFO via bridge INTENT_MAP.
 
     Uses multiple unambiguous procedural keywords so the intent scores above factual.
     "vejledning" + "trin" + "konfigurere" → procedural score 3, factual score 0.
@@ -102,20 +103,20 @@ async def test_classify_intent_procedural_query():
     state = _base_state(query=query)
     result = await _classify_intent(state)
 
-    assert result["intent"] == Intent.HOW_TO
+    assert result["intent"] == Intent.ARTIST_INFO
     assert result["query"] == query
 
 
 @pytest.mark.asyncio
 async def test_classify_intent_troubleshooting_query():
-    """Error/problem query maps to Intent.TROUBLESHOOT."""
+    """Error/problem query maps to Intent.ARTIST_INFO via bridge INTENT_MAP."""
     from orchestration.graph import _classify_intent
     from schemas.retrieval import Intent
 
     state = _base_state(query="Der er en fejl i mit abonnement, det virker ikke")
     result = await _classify_intent(state)
 
-    assert result["intent"] == Intent.TROUBLESHOOT
+    assert result["intent"] == Intent.ARTIST_INFO
 
 
 @pytest.mark.asyncio
@@ -320,7 +321,7 @@ async def test_generate_with_graded_chunks_builds_context():
     mock_llm.ainvoke = AsyncMock(return_value=_mock_llm_response("Her er svaret."))
 
     state = _base_state(
-        intent=Intent.HOW_TO,
+        intent=Intent.ARTIST_INFO,
         standalone_query="Hvordan nulstiller jeg adgangskode?",
         graded_chunks=[_make_graded_chunk("c1", relevant=True)],
     )
@@ -329,7 +330,7 @@ async def test_generate_with_graded_chunks_builds_context():
     assert result["response"] == "Her er svaret."
     # call_llm passes [SystemMessage, HumanMessage] to llm.ainvoke
     lc_messages = mock_llm.ainvoke.call_args[0][0]
-    assert "Dokumentation:" in lc_messages[1].content
+    assert "Context:" in lc_messages[1].content
 
 
 @pytest.mark.asyncio
@@ -350,7 +351,7 @@ async def test_generate_direct_intent_no_context():
     await _generate(state, mock_llm)
 
     lc_messages = mock_llm.ainvoke.call_args[0][0]
-    assert "Dokumentation:" not in lc_messages[1].content
+    assert "Context:" not in lc_messages[1].content
 
 
 # ---------------------------------------------------------------------------
@@ -421,11 +422,11 @@ async def test_confidence_gate_sets_no_answer_when_no_chunks():
 # ---------------------------------------------------------------------------
 
 
-def test_route_intent_returns_retrieval_for_how_to():
+def test_route_intent_returns_retrieval_for_artist_info():
     from orchestration.graph import route_intent
     from schemas.retrieval import Intent
 
-    state = _base_state(intent=Intent.HOW_TO)
+    state = _base_state(intent=Intent.ARTIST_INFO)
     assert route_intent(state) == "retrieval"
 
 
