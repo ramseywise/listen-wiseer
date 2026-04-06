@@ -3,7 +3,8 @@
 ## Active docs
 
 - **Plan**: `.claude/docs/plans/phase5b_intent.md` (DONE)
-- **Research**: `.claude/docs/research/infra_support.md`
+- **Research**: `.claude/docs/research/eval-harness.md`
+- **Research (prior)**: `.claude/docs/research/infra_support.md`
 
 ## Current position
 
