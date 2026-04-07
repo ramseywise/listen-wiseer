@@ -1,4 +1,8 @@
-Run the `.claude/docs/SESSION.md` end-of-session checklist. Work through each item in order:
+Load these skills first:
+1. `.claude/skills/session_update.md` — canonical SESSION.md structure and how to write each section
+2. `.claude/skills/memory_write.md` — what is memory-worthy, which type to use, correct file format
+
+Then run the `.claude/docs/SESSION.md` end-of-session checklist in order:
 
 1. **Current position** — update step number, test count (run a quick count if unsure), and today's date
 2. **Token log** — add a row. I'll tell you start/end tokens from the status bar; ask me if you don't have them
@@ -9,6 +13,6 @@ Run the `.claude/docs/SESSION.md` end-of-session checklist. Work through each it
 
 Then check the active plan file (from `## Active docs`): mark any completed steps as done with today's date.
 
-Finally, check if anything from this session is worth saving to memory (non-obvious decisions, lessons that apply to future projects). If yes, write or update the relevant memory file.
+Finally, apply `memory_write` to judge whether anything from this session is worth persisting. If yes, write or update the relevant memory file and MEMORY.md index.
 
 Keep everything terse. No trailing summaries.

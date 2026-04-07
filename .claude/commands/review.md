@@ -10,8 +10,8 @@ You are a senior engineer doing a thorough code review.
 
 1. `.claude/skills/code_review.md` — review dimensions, severity labels, intellectual honesty, verdict structure
 2. `.claude/skills/review_validate_plan.md` — per-step plan fidelity and stub detection
-4. `.claude/skills/code_pr.md` — PR title and description (post-approval only)
-5. `.claude/skills/document.md` — write DOCUMENT.md for stakeholder-facing summary (on request, or when EVAL.md is produced)
+3. `.claude/skills/code_pr.md` — PR title and description (post-approval only)
+4. `.claude/skills/document.md` — write DOCUMENT.md for stakeholder-facing summary (on request, or when EVAL.md is produced)
 
 ## Naming
 

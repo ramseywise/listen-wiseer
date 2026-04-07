@@ -1,4 +1,4 @@
-Read `.claude/docs/SESSION.md` and `CLAUDE.md` in the current project directory.
+Load `.claude/skills/session_update.md`, then read `.claude/docs/SESSION.md` and `CLAUDE.md` in the current project directory.
 
 Then output:
 1. **Current position** — step, test count, last updated
