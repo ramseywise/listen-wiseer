@@ -1,5 +1,5 @@
 ---
-name: scope
+name: size
 description: "Quick sizing of a task. Estimate files touched, complexity, and whether it needs the full pipeline or just /debug."
 tools: Read, Grep, Glob, Bash
 ---
