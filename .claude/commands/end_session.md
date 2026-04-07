@@ -9,6 +9,34 @@ Run the `.claude/docs/SESSION.md` end-of-session checklist. Work through each it
 
 Then check the active plan file (from `## Active docs`): mark any completed steps as done with today's date.
 
-Finally, check if anything from this session is worth saving to memory (non-obvious decisions, lessons that apply to future projects). If yes, write or update the relevant memory file.
+Then check if anything from this session is worth saving to memory (non-obvious decisions, lessons that apply to future projects). If yes, write or update the relevant memory file.
+
+Finally, write `.claude/memory/sessions/YYYY-MM-DD_<3-word-slug>.md` using today's date and a slug from the main task. Use the hall taxonomy:
+
+```markdown
+---
+date: YYYY-MM-DD
+project: <project dir name>
+slug: <3-word-slug>
+---
+
+## Events
+- <what we built/debugged — 2-4 bullets>
+
+## Decisions
+- <locked choices, architectural tradeoffs — or "none">
+
+## Discoveries
+- <non-obvious findings, root causes, surprises — or "none">
+
+## Friction
+- <tool errors, retries, path mistakes, misunderstandings — or "none">
+
+## Context
+- Compacted: yes/no | Input: ~Xk | Output: ~Xk (from status bar; omit if unavailable)
+- Memory files written: <names or "none">
+```
+
+Keep the file to ~15 lines. This feeds `/insights`.
 
 Keep everything terse. No trailing summaries.

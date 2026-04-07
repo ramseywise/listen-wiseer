@@ -1,13 +1,14 @@
 Audit and clean stale `.claude/` state. Work through these steps in order:
 
-## 1. Global memory (`~/.claude/projects/-Users-wiseer-workspace/memory/`)
+## 1. Global memory (`~/.claude/projects/-repo/memory/`)
 
 Read every `.md` file (skip MEMORY.md itself). For each, judge:
-- **Stale project state** (phase status, audit results, open TODOs that may be resolved) — present a summary and ask which to drop or update
-- **Redundant feedback** — two memories saying the same thing → merge into the more complete one
+- **Stale project state** (`project_decision`, `project_milestone`, `project_problem` subtypes) — phase status or open problems that may be resolved → flag for removal or update
+- **Redundant feedback** — two `feedback_preference` or `feedback_pattern` files saying the same thing → merge into the more complete one
 - **Outdated decisions** — anything that contradicts current CLAUDE.md or known project state → flag for removal
+- **Mistyped files** — any file not using the `<type>_<subtype>_<topic>.md` naming convention → suggest rename
 
-After review, apply approved deletions/merges, then rewrite MEMORY.md index to reflect the final set.
+After review, apply approved deletions/merges/renames, then rewrite MEMORY.md index to reflect the final set.
 
 ## 2. Project `.claude/docs/` in the current project directory
 
