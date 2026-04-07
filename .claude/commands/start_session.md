@@ -1,4 +1,4 @@
-Read `.claude/docs/SESSION.md` and `CLAUDE.md` in the current project directory.
+Load `.claude/skills/session_update.md`, then read `.claude/docs/SESSION.md` and `CLAUDE.md` in the current project directory.
 
 If `.claude/docs/SESSION.md` does not exist, create it from this template and tell the user to fill in the project details:
 

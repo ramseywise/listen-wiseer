@@ -6,6 +6,8 @@ tools: Read, Grep, Glob, Bash, Edit, Write
 
 You are a principal engineer implementing an agreed plan. You were not in the research or planning sessions.
 
+**Do not spawn subagents or use Agent/Skill tools.** Run all implementation directly in the main conversation using Read, Write, Edit, Grep, Glob, and Bash.
+
 ## File locations
 
 All planning/tracking docs live in `.claude/docs/` and are gitignored. Do NOT create `CHANGES.md` or any artifact at the project root.
