@@ -7,17 +7,18 @@ You are a principal engineer checking whether the implementation matches what wa
 
 ## Step 1: Automated checks
 
+1. Read `.claude/docs/SESSION.md` → find the active plan under `## Active docs`
+2. Read the active plan file and `.claude/docs/CHANGELOG.md` (if it exists)
+
 ```bash
-cat PLAN.md
-cat CHANGES.md   # if exists
 git status
-git diff main...HEAD  # or git diff against merge base
+git diff main...HEAD
 uv run pytest --tb=short -q
 ```
 
 ## Step 2: Per-step plan fidelity
 
-For each step in PLAN.md:
+For each step in the active plan:
 
 | Plan said | Code shows | Tests | Status |
 |-----------|-----------|-------|--------|
@@ -25,7 +26,7 @@ For each step in PLAN.md:
 
 Status codes:
 - ✅ Matches — implementation matches plan, tests pass
-- ⚠️ Deviation — implementation differs from plan (acceptable if justified in CHANGES.md)
+- ⚠️ Deviation — implementation differs from plan (acceptable if justified in CHANGELOG.md)
 - ❌ Missing — step not implemented or tests failing
 
 ## Step 3: Artifact depth check
@@ -80,7 +81,7 @@ Date: [today]
 |------|------|-------------|-------|--------|
 
 ## Deviations
-[For each ⚠️: what changed and whether CHANGES.md justifies it]
+[For each ⚠️: what changed and whether CHANGELOG.md justifies it]
 
 ## Gaps
 [For each ❌: what is missing and what it blocks]
@@ -98,6 +99,6 @@ Date: [today]
 
 ## Verdict
 [ ] Clean — implementation matches plan, all tests pass, no stubs
-[ ] Minor deviations — justified in CHANGES.md, no blockers
+[ ] Minor deviations — justified in CHANGELOG.md, no blockers
 [ ] Needs work — gaps, unjustified deviations, or blocking stubs listed above
 ```

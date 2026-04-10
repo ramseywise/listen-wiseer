@@ -24,11 +24,37 @@ src/
     schemas.py, train.py, engine.py, pipelines.py
     modules/: similarity, clustering, classifiers, genre (ENOA)
   mcp_server/   — 4 recommend_* tools + Spotify tools
-  agent/        — LangGraph (Phase 3, in progress)
+  agent/        — LangGraph agent + Chainlit app
+    graph.py, nodes.py, state.py, memory/, rag/, intent/
   app/          — Chainlit entry point
 
 models/         — serialized artifacts (gitignored)
 ```
+
+## Phase status
+
+| Phase | Status |
+|-------|--------|
+| 1–2 — stack, OAuth, GMM/LightGBM, 8 MCP tools | ✓ DONE |
+| 3a–3d — ETL hardening, feature engineering, EDA | ✓ DONE |
+| 4a — LangGraph agent + Chainlit | ✓ DONE |
+| 4b — episodic, taste, procedural memory | ✓ DONE |
+| 5a — RAG core (DuckDB vector, MiniLM, Wikipedia/Tavily, 93 tests) | ✓ DONE |
+| 5b — Intent routing (5 intents, clarify node, 10 tools, 97 tests) | ✓ DONE |
+| **5c — Eval harness (LangFuse, golden dataset, intent/tool metrics)** | **UP NEXT** |
+| 6a — Playwright UI smoke tests | PLANNED |
+| 6b — Observability dashboard | PLANNED |
+
+Active plan: `.claude/docs/plans/phase5c_eval.md` · Research: `.claude/docs/research/eval-harness.md`
+
+## Active gotchas
+
+- `listen_wiseer.db` via Git LFS — other environments can't pull. Decision deferred.
+- `models/` and `data/cache/` gitignored — regenerate after pull (`make train`)
+- `audio-features` Spotify endpoint dead (403, deprecated 2025) — Last.fm is the replacement path
+- Last.fm error 10 = pending manual activation (not wrong key) — just wait
+- 32 test failures are `duckdb.IOError` (missing LFS DB) — not regressions; use `tests/unit/` targeted runs
+- `REDIS_URL` needed for cross-session memory; `InMemoryStore` for dev
 
 ## Environment
 
@@ -51,10 +77,6 @@ LLM orchestration (LangGraph), Polars, DuckDB, structlog. Skip basics unless ask
 - Don't add unsolicited comments, docstrings, or refactors to code I didn't ask to change.
 
 ---
-
-@.claude/rules/style.md
-@.claude/rules/logging.md
-@.claude/rules/ml.md
 
 ---
 
@@ -87,12 +109,36 @@ Non-trivial tasks follow phases:
 | 3. Execute | `/execute` | `.claude/docs/CHANGELOG.md` |
 | 4. Review | `/review <name>` | `.claude/docs/reviews/<name>.md` + PR |
 
-All phase artifacts live in `.claude/docs/` subdirectories (gitignored). `SESSION.md` tracks the active plan and research files under `## Active docs`. Only `CLAUDE.md` lives at the project root.
+All phase artifacts live in `.claude/docs/` subdirectories (gitignored). Only `CLAUDE.md` lives at the project root.
 
 ### Tooling
 
 - `uv run pytest tests/unit/` — unit only (fast, no external deps)
 - `.env` never committed; `.env.example` is the template
+
+### Hook-enforced standards
+
+All standards below are enforced via `settings.json` hooks — do not run manually.
+
+**PostToolUse (Write|Edit):**
+- ruff format + check on every `.py` write
+- pyright type check (pyrightconfig-aware, advisory)
+- `[no-print]` no `print()` in `src/` — use structlog
+- `[bare-except]` no bare `except:` — catch specific exceptions
+- `[use-structlog]` no stdlib `logging` — use structlog
+- `[use-polars]` no pandas — use polars
+- `[mutable-default]` no `def f(x=[])` — use `None` sentinel
+- `[sdk-factory]` no bare `anthropic.Anthropic/AsyncAnthropic()` outside `utils/client.py`
+- `[sdk-model]` no hardcoded `claude-*` model strings — use settings
+- Test coverage warning on untested public functions
+- File size warning at >400 lines
+- Phase artifact writes trigger compact reminder on next prompt
+
+**PostToolUse (Bash):** Failed commands → `.claude/friction-log.jsonl` · long test runs → desktop notification
+
+**PreToolUse (Write|Edit):** Review gate (show before/after, confirm via `touch .claude/.edit_ok`) · secrets scan
+
+**PreToolUse (Bash):** `git commit` blocked if tests fail · `git commit` blocked if `uv.lock` out of sync · `pip install` blocked · destructive commands blocked
 
 ### Path convention
 

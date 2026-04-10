@@ -55,6 +55,11 @@ If verdict is **Needs changes**: stop here.
 
 If verdict is **Approved** or **Approved with minor fixes**:
 - Write PR description per `.claude/skills/code_pr.md`
+
+**PR description test quality checklist** (always include):
+- [ ] Fixtures use distinct field values when code deduplicates/groups by a field (shared defaults silently collapse results)
+- [ ] Graph nodes reachable via multiple routing paths have per-path tests (not just isolated node I/O)
+
 - Write `.claude/docs/reviews/<name>.md` if evals were run:
 
 ```markdown
