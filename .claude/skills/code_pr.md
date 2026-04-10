@@ -1,6 +1,6 @@
 ---
 name: code_pr
-description: "Write a PR title and description from the current diff and CHANGES.md. Used by the review agent post-approval and standalone via /code_pr."
+description: "Write a PR title and description from the current diff and CHANGELOG.md. Used by the review agent post-approval and standalone via /code_pr."
 ---
 
 Write a pull request title and description for the current branch. Read the context, then produce the output — do not ask clarifying questions unless the diff is genuinely ambiguous.
@@ -10,9 +10,11 @@ Write a pull request title and description for the current branch. Read the cont
 ```bash
 git diff main...HEAD --stat        # scope: which files changed
 git log main...HEAD --oneline      # commit history on this branch
-cat CHANGES.md 2>/dev/null         # deviations and what was implemented
-cat PLAN.md 2>/dev/null            # original intent and goal
 ```
+
+Also read:
+- `.claude/docs/CHANGELOG.md` — deviations and what was implemented
+- active plan file (from SESSION.md `## Active docs`) — original intent and goal
 
 Read every changed file that isn't obvious from its name. The PR description must reflect what was actually shipped, not just what was planned.
 
@@ -30,7 +32,7 @@ Read every changed file that isn't obvious from its name. The PR description mus
 One paragraph. What does this change do from the user/caller's perspective? Avoid implementation details here.
 
 ## Why
-One paragraph. What problem does this solve, or what capability does it add? Reference the goal from PLAN.md if it adds context.
+One paragraph. What problem does this solve, or what capability does it add? Reference the goal from the active plan if it adds context.
 
 ## How
 Bullet list of key implementation decisions — non-obvious choices only. If the approach is obvious from the diff, omit this section.
@@ -41,16 +43,20 @@ Bullet list of key implementation decisions — non-obvious choices only. If the
 - Run with: `uv run pytest [targeted path] -v`
 - Manual validation: [what was run and what was checked — "none" if fully covered by tests]
 
+## Test quality checks
+- [ ] Fixtures use distinct field values when code deduplicates/groups by a field (shared defaults silently collapse results)
+- [ ] Graph nodes reachable via multiple routing paths have per-path tests (not just isolated node I/O)
+
 ## Checklist
-- [ ] Tests pass (`uv run pytest`)
+- [ ] Tests pass (`uv run pytest tests/unit/`)
 - [ ] Lint passes (`uv run ruff check .`)
 - [ ] No hardcoded paths or secrets
-- [ ] CHANGES.md deviations documented (or "none")
+- [ ] CHANGELOG.md deviations documented (or "none")
 ```
 
 ## Rules
 
 - Omit sections that have nothing to say — a PR with no non-obvious implementation decisions should have no `## How` section
 - Do not pad — if the change is small, the description should be short
-- If CHANGES.md records deviations from PLAN.md, the `## What` or `## How` must explain them
+- If CHANGELOG.md records deviations from the active plan, the `## What` or `## How` must explain them
 - The checklist is always included — it is the merge gate reminder, not optional prose

@@ -33,9 +33,15 @@ If tests fail, stop and report. Do not review from the diff alone — read every
 - Stable function signatures? Consistent return types?
 - Public APIs documented with docstrings?
 
-**Plan fidelity** (if PLAN.md exists)
-- Does the implementation match what PLAN.md specified?
-- Are deviations in CHANGES.md justified?
+**Plan fidelity** (if active plan exists)
+- Read the active plan from SESSION.md `## Active docs` and CHANGELOG.md
+- Per-step table:
+
+| Plan said | Code shows | Tests | Status |
+|-----------|-----------|-------|--------|
+| Step 1: ... | [what was done] | PASS/FAIL | Match / Deviation / Missing |
+
+- Are deviations in CHANGELOG.md justified?
 
 **Tests**
 - New functions covered by tests?
@@ -64,6 +70,21 @@ Every finding gets exactly one label:
 - **[Nit]** — take it or leave it: style preference beyond what ruff enforces, minor naming suggestions, alternative approach that is not clearly better
 
 If there are zero Blocking findings, state it explicitly in the Verdict — do not make the reader hunt for it.
+
+## Test writing conventions
+
+When evaluating or requesting test additions:
+
+- **Synthetic fixtures only** — no real files, no network calls, no model weights
+- **Test behavior, not implementation** — test what a function does, not how
+- `tmp_path` for file-based tests, `monkeypatch` for external calls
+- Descriptive names: `test_loader_raises_on_missing_file` not `test_3`
+- Parametrize for multiple inputs
+- Every new public function gets at least one test
+- **Fixture dedup trap**: when code deduplicates/groups by a field, use distinct field values across fixtures — shared defaults silently collapse to 1 result
+- **Graph path coverage**: nodes reachable via multiple routing paths need per-path tests, not just isolated node I/O
+
+What NOT to test: private helpers (test via public API), framework behavior, third-party libraries.
 
 ## Review discipline
 
