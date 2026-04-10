@@ -3,7 +3,7 @@ from __future__ import annotations
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from schemas.conversation import RAGState
-from schemas.retrieval import GradedChunk, Intent
+from schemas.retrieval import Intent, RankedChunk
 
 SONNET_MODEL = "claude-sonnet-4-6"
 
@@ -20,13 +20,16 @@ SYSTEM_PROMPTS: dict[Intent, str] = {
         "Explain the genre clearly based on the provided context. "
         "Cover its origins, key characteristics, notable artists, and evolution."
     ),
+    Intent.RECOMMENDATION: (
+        "You are a helpful music recommendation assistant. "
+        "Suggest artists, albums, or tracks based on the context and the user's request. "
+        "Explain why each recommendation fits."
+    ),
     Intent.HISTORY: (
         "You are a personal music assistant. "
         "Summarize the user's listening history and highlight patterns or trends."
     ),
-    Intent.CHIT_CHAT: (
-        "You are a friendly music assistant. Reply briefly and warmly."
-    ),
+    Intent.CHIT_CHAT: ("You are a friendly music assistant. Reply briefly and warmly."),
     Intent.OUT_OF_SCOPE: (
         "You are a music assistant. "
         "Politely explain that the question is outside your area of expertise, "
@@ -37,27 +40,36 @@ SYSTEM_PROMPTS: dict[Intent, str] = {
 
 def build_prompt(
     state: RAGState,
-    graded_chunks: list[GradedChunk],
+    ranked_chunks: list[RankedChunk],
 ) -> tuple[str, list[dict]]:
     """Build (system_prompt, messages) for the generation LLM call.
 
-    Returns the system string and a single-element messages list.
-    Direct intents (chit_chat, out_of_scope) use the raw query with no context.
-    Retrieval intents inject the relevant chunk texts as context.
+    Direct intents (chit_chat, out_of_scope) return the full conversation
+    history with no retrieval context injected.
+
+    Retrieval intents replace the last HumanMessage with a grounded version
+    that prepends ``[Source: url]\\ntext`` blocks, enabling the model to
+    cite sources accurately.
     """
     intent: Intent = state.get("intent", Intent.ARTIST_INFO)
-    query: str = state.get("standalone_query") or state.get("query", "")
+    messages = list(state.get("messages", []))
+    query: str = state.get("query", "")
 
     system_prompt = SYSTEM_PROMPTS.get(intent, SYSTEM_PROMPTS[Intent.ARTIST_INFO])
 
-    if intent in _DIRECT_INTENTS or not graded_chunks:
-        user_prompt = query
+    if intent in _DIRECT_INTENTS or not ranked_chunks:
+        user_content = query
     else:
-        relevant = [g for g in graded_chunks if g.relevant] or graded_chunks
-        context = "\n\n---\n\n".join(g.chunk.text for g in relevant[:5])
-        user_prompt = f"Context:\n{context}\n\nQuestion: {query}"
+        context_blocks = "\n---\n".join(
+            f"[Source: {rc.chunk.metadata.url}]\n{rc.chunk.text}" for rc in ranked_chunks
+        )
+        user_content = f"{context_blocks}\n\nQuestion: {query}"
 
-    return system_prompt, [{"role": "user", "content": user_prompt}]
+    # Preserve conversation history; swap in the grounded user message at the end
+    history = [m for m in messages if not isinstance(m, HumanMessage)]
+    history.append(HumanMessage(content=user_content))
+
+    return system_prompt, [{"role": "user", "content": user_content}]
 
 
 async def call_llm(
@@ -65,10 +77,10 @@ async def call_llm(
     system: str,
     messages: list[dict],
 ) -> str:
-    """Send messages to Claude and return the response text.
+    """Invoke Claude and return the response text.
 
-    Converts the (system, messages) pair into LangChain message objects so the
-    CallbackHandler captures the LLM span (model, tokens, latency) in LangFuse.
+    Converts (system, messages) into LangChain message objects so the
+    CallbackHandler can capture LLM spans (model, tokens, latency).
     """
     if not messages:
         raise ValueError("call_llm requires at least one message")
@@ -78,3 +90,19 @@ async def call_llm(
     ]
     response: AIMessage = await llm.ainvoke(lc_messages)
     return str(response.content).strip()
+
+
+def extract_citations(ranked_chunks: list[RankedChunk]) -> list[dict]:
+    """Deduplicate and return source citations from ranked chunks.
+
+    Returns:
+        List of ``{url, title}`` dicts, one per unique URL.
+    """
+    seen: set[str] = set()
+    citations: list[dict] = []
+    for rc in ranked_chunks:
+        url = rc.chunk.metadata.url
+        if url and url not in seen:
+            seen.add(url)
+            citations.append({"url": url, "title": rc.chunk.metadata.title})
+    return citations

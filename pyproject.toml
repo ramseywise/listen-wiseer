@@ -140,6 +140,7 @@ ignore = [
 "tests/**" = ["S101", "S105", "S106"]  # allow assert and hardcoded passwords in tests
 "notebooks/**" = ["ALL"]
 "*.ipynb" = ["ALL"]
+"src/**/storage/*.py" = ["S608"]  # SQL templates use only literal column names, no user input interpolated
 
 [tool.black]
 line-length = 100

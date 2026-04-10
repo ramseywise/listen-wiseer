@@ -9,10 +9,10 @@ class Registry:
     """Decorator-based registry for swappable pipeline components.
 
     Usage:
-        @Registry.register("client", "hybrid")
-        class OpenSearchClient: ...
+        @Registry.register("client", "chroma")
+        class ChromaRetriever: ...
 
-        client = Registry.create("client", "hybrid", **settings)
+        client = Registry.create("client", "chroma", **settings)
     """
 
     _modules: dict[str, dict[str, type]] = {}
@@ -65,9 +65,11 @@ class Registry:
 # ---------------------------------------------------------------------------
 
 from generation.generator import call_llm  # noqa: E402
+from retrieval.chroma_client import ChromaRetriever  # noqa: E402
 from retrieval.duckdb_client import DuckDBVectorClient  # noqa: E402
 from retrieval.embedder import MiniLMEmbedder  # noqa: E402
 
+Registry.register("client", "chroma")(ChromaRetriever)
 Registry.register("client", "duckdb")(DuckDBVectorClient)
 Registry.register("embedder", "minilm")(MiniLMEmbedder)
 

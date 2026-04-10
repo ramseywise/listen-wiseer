@@ -1,114 +1,89 @@
-"""Query Router.
+"""Query Router — music-domain routing decisions.
 
-Routes queries to the appropriate pipeline based on analysis.
+Routes queries to the appropriate knowledge base and retrieval strategy.
 
 Routing hierarchy:
-1. Simple Factual Query → SimplePipeline
-2. Procedural/How-to Query → EnhancedPipeline
-3. Complex Multi-hop Query → AgenticPipeline
+    artist_db   → artist biography / discography knowledge (Wikipedia, biographies)
+    genre_db    → genre explanation / history knowledge
+    history     → user's personal listening history (Spotify data)
+    snippet     → fast FTS bypass for simple factual lookups
+    direct      → no retrieval needed (chit_chat, out_of_scope)
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
-from typing import Any
+from enum import StrEnum
 
 from orchestration.query_understanding import QueryAnalysis, QueryAnalyzer
 
 
-class RoutingStrategy(str, Enum):
-    """Available routing strategies."""
-
-    SIMPLE = "simple"
-    ENHANCED = "enhanced"
-    AGENTIC = "agentic"
+class RoutingStrategy(StrEnum):
+    ARTIST_DB = "artist_db"  # artist info → Wikipedia / biography corpus
+    GENRE_DB = "genre_db"  # genre info → genre guide corpus
+    HISTORY = "history"  # personal history → Spotify listening data
+    SNIPPET = "snippet"  # fast FTS bypass for simple factual lookups
+    DIRECT = "direct"  # no retrieval (chit_chat, out_of_scope)
 
 
 @dataclass
 class RoutingDecision:
-    """Result of routing decision."""
-
     strategy: RoutingStrategy
+    retrieval_mode: str  # "dense" | "hybrid" | "snippet"
     confidence: float
     reason: str
     query_analysis: QueryAnalysis | None = None
-    metadata: dict[str, Any] | None = None
+
+
+_INTENT_TO_STRATEGY: dict[str, RoutingStrategy] = {
+    "artist_info": RoutingStrategy.ARTIST_DB,
+    "genre_info": RoutingStrategy.GENRE_DB,
+    "recommendation": RoutingStrategy.ARTIST_DB,  # recommendations pull artist/genre context
+    "history": RoutingStrategy.HISTORY,
+    "chit_chat": RoutingStrategy.DIRECT,
+    "out_of_scope": RoutingStrategy.DIRECT,
+}
 
 
 class QueryRouter:
-    """Routes queries to appropriate pipeline.
+    """Routes queries to music knowledge bases and retrieval modes.
 
     Decision flow:
-    1. Analyze query (intent, complexity)
-    2. Route based on analysis
+        1. Analyze query (intent, complexity, retrieval_mode)
+        2. Map intent → strategy
+        3. If retrieval_mode==snippet AND strategy is a DB → promote to SNIPPET
     """
 
-    SIMPLE_COMPLEXITIES = {"simple"}
-    AGENTIC_COMPLEXITIES = {"complex"}
-
-    def __init__(self, query_analyzer: QueryAnalyzer | None = None):
-        """Initialize router.
-
-        Args:
-            query_analyzer: Query understanding component
-
-        """
-        self.query_analyzer = query_analyzer or QueryAnalyzer()
+    def __init__(self, query_analyzer: QueryAnalyzer | None = None) -> None:
+        self._analyzer = query_analyzer or QueryAnalyzer()
 
     def route(self, query: str) -> RoutingDecision:
-        """Route query to appropriate pipeline.
+        """Route *query* and return a RoutingDecision.
 
         Args:
-            query: User query
+            query: Raw user query string.
 
         Returns:
-            RoutingDecision with strategy and metadata
-
+            RoutingDecision with strategy, retrieval_mode, confidence, and reason.
         """
-        analysis = self.query_analyzer.analyze(query)
+        analysis = self._analyzer.analyze(query)
+        strategy = _INTENT_TO_STRATEGY.get(analysis.intent, RoutingStrategy.ARTIST_DB)
 
-        if analysis.complexity in self.AGENTIC_COMPLEXITIES:
-            return RoutingDecision(
-                strategy=RoutingStrategy.AGENTIC,
-                confidence=0.8,
-                reason=f"High complexity ({analysis.complexity}) requires iterative retrieval",
-                query_analysis=analysis,
-                metadata={
-                    "complexity": analysis.complexity,
-                    "sub_queries": analysis.sub_queries,
-                },
-            )
+        # Promote simple factual DB lookups to fast snippet path
+        if analysis.retrieval_mode == "snippet" and strategy in (
+            RoutingStrategy.ARTIST_DB,
+            RoutingStrategy.GENRE_DB,
+        ):
+            strategy = RoutingStrategy.SNIPPET
 
-        if analysis.complexity in self.SIMPLE_COMPLEXITIES and analysis.intent == "factual":
-            return RoutingDecision(
-                strategy=RoutingStrategy.SIMPLE,
-                confidence=0.85,
-                reason="Simple factual query",
-                query_analysis=analysis,
-                metadata={"intent": analysis.intent, "complexity": analysis.complexity},
-            )
-
-        return RoutingDecision(
-            strategy=RoutingStrategy.ENHANCED,
-            confidence=0.75,
-            reason=f"Query type '{analysis.intent}' benefits from enhanced pipeline",
-            query_analysis=analysis,
-            metadata={
-                "intent": analysis.intent,
-                "complexity": analysis.complexity,
-                "has_entities": bool(analysis.entities),
-            },
+        reason = (
+            f"intent={analysis.intent} complexity={analysis.complexity} "
+            f"retrieval_mode={analysis.retrieval_mode}"
         )
-
-    def get_stats(self) -> dict[str, Any]:
-        """Get routing statistics (for monitoring)."""
-        # TODO(3): Implement routing stats tracking
-        return {
-            "total_routed": 0,
-            "by_strategy": {
-                "simple": 0,
-                "enhanced": 0,
-                "agentic": 0,
-            },
-        }
+        return RoutingDecision(
+            strategy=strategy,
+            retrieval_mode=analysis.retrieval_mode,
+            confidence=analysis.confidence,
+            reason=reason,
+            query_analysis=analysis,
+        )
