@@ -1,15 +1,16 @@
 """Thin production orchestrator for music knowledge RAG.
 
-Wires: MiniLMEmbedder → DuckDBVectorClient → lazy-fetch → ingest → return.
-This is what the agent tool calls — no LangGraph overhead.
+Wires: MiniLMEmbedder → ChromaRetriever → lazy-fetch → ingest → return.
+This is what the agent MCP tools call — no LangGraph overhead.
 """
 
 from __future__ import annotations
 
 from preprocessing.chunker import ChunkerConfig, StructuredChunker
 from preprocessing.fetchers import fetch_tavily, fetch_wikipedia
-from retrieval.duckdb_client import DuckDBVectorClient
+from retrieval.chroma_client import ChromaRetriever
 from retrieval.embedder import MiniLMEmbedder
+
 from utils.config import settings
 from utils.logging import get_logger
 
@@ -28,7 +29,7 @@ class MusicRAG:
 
     Flow:
         1. Normalize subject
-        2. Check has_subject (cheap SQL count)
+        2. Check has_subject (cheap Chroma metadata query)
         3. Cache hit  → embed query → search → return passages
         4. Cache miss → fetch Wikipedia (fallback Tavily) → chunk → embed → upsert → search → return
     """
@@ -36,10 +37,10 @@ class MusicRAG:
     def __init__(
         self,
         embedder: MiniLMEmbedder | None = None,
-        client: DuckDBVectorClient | None = None,
+        client: ChromaRetriever | None = None,
     ) -> None:
         self._embedder = embedder or MiniLMEmbedder()
-        self._client = client or DuckDBVectorClient()
+        self._client = client or ChromaRetriever()
         self._chunker = StructuredChunker(_CHUNK_CONFIG)
 
     def get_context(self, subject: str, top_k: int | None = None) -> str:
@@ -47,7 +48,7 @@ class MusicRAG:
 
         Args:
             subject: Artist name, band name, or genre to look up.
-            top_k: Number of passages to return. Defaults to ``settings.rag_top_k``.
+            top_k:   Number of passages to return. Defaults to settings.rag_top_k.
 
         Returns:
             Concatenated passage text, or a fallback message if nothing found.
@@ -63,7 +64,8 @@ class MusicRAG:
                 return _NO_CONTENT_MESSAGE
 
         query_vector = self._embedder.embed_query(subject)
-        results = self._client.search(
+        results = self._client.search_sync(
+            query_text=subject,
             query_vector=query_vector,
             k=top_k,
             subject_filter=normalized,
@@ -73,11 +75,7 @@ class MusicRAG:
             return _NO_CONTENT_MESSAGE
 
         passages = [r.chunk.text for r in results]
-        log.info(
-            "music_rag.context_ready",
-            subject=normalized,
-            n_passages=len(passages),
-        )
+        log.info("music_rag.context_ready", subject=normalized, n_passages=len(passages))
         return "\n\n---\n\n".join(passages)
 
     def _ingest(self, subject: str, normalized: str) -> bool:

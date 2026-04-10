@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -19,10 +20,29 @@ class Intent(StrEnum):
 class RetrievalResult(BaseModel):
     chunk: Chunk
     score: float
-    source: str = "hybrid"  # "vector" | "bm25" | "hybrid"
+    source: Literal["vector", "bm25", "hybrid", "snippet"] = "hybrid"
 
 
 class GradedChunk(BaseModel):
     chunk: Chunk
     score: float
     relevant: bool
+
+
+class RankedChunk(BaseModel):
+    """Output of the reranker — carries a [0,1] relevance score and absolute rank."""
+
+    chunk: Chunk
+    relevance_score: float  # sigmoid-normalised cross-encoder logit
+    rank: int
+
+
+class QueryPlan(BaseModel):
+    """Structured output of the analyze node."""
+
+    intent: Intent
+    routing: str  # "direct" | "retrieve" | "snippet"
+    query_variants: list[str] = []
+    retrieval_mode: str = "dense"  # "dense" | "hybrid" | "snippet"
+    needs_clarification: bool = False
+    clarification_question: str | None = None

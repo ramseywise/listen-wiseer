@@ -8,8 +8,12 @@ class ChunkMetadata(BaseModel):
     title: str
     section: str
     language: str = "en"
-    doc_id: str  # hash of url + section
-    parent_id: str | None = None  # set by ParentDocChunker; points to parent section chunk
+    doc_id: str
+    parent_id: str | None = None
+    # Music-domain enrichment fields
+    topic: str | None = None  # e.g. "artist", "genre", "history"
+    content_type: str | None = None  # e.g. "biography", "wiki", "commentary"
+    source_id: str | None = None  # upstream identifier (Spotify ID, MusicBrainz, etc.)
 
 
 class Chunk(BaseModel):

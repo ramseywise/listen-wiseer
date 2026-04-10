@@ -1,5 +1,7 @@
 """Document parsing, cleaning, and deduplication for RAG preprocessing."""
 
+from __future__ import annotations
+
 import hashlib
 import re
 from typing import Any
@@ -15,32 +17,17 @@ logger = get_logger(__name__)
 
 
 def clean_text(text: str) -> str:
-    """Clean text by removing noise and normalizing whitespace.
-
-    Args:
-        text: Raw input text
-
-    Returns:
-        Cleaned text
-
-    """
+    """Normalize whitespace and strip common noise patterns."""
     if not text:
         return ""
 
-    # Normalize whitespace
     text = re.sub(r"\s+", " ", text)
-
-    # Remove excessive newlines
     text = re.sub(r"\n{3,}", "\n\n", text)
 
-    # Remove common email signatures/noise
     noise_patterns = [
         r"Sent from my iPhone",
-        r"Отправлено с iPhone",
-        r"Envoyé de mon iPhone",
-        r"Von meinem iPhone gesendet",
         r"Get Outlook for .*",
-        r"--\s*\n.*$",  # Email signature separator
+        r"--\s*\n.*$",
     ]
     for pattern in noise_patterns:
         text = re.sub(pattern, "", text, flags=re.IGNORECASE | re.MULTILINE)
@@ -48,128 +35,23 @@ def clean_text(text: str) -> str:
     return text.strip()
 
 
-def normalize_german_text(text: str) -> str:
-    """Normalize German-specific text patterns.
-
-    Args:
-        text: Input text
-
-    Returns:
-        Normalized text
-
-    """
-    if not text:
-        return ""
-
-    # Normalize umlauts (optional - for search matching)
-    # text = text.replace("ä", "ae").replace("ö", "oe").replace("ü", "ue")
-
-    # Normalize common terms
-    text = re.sub(r"sev\s*desk", "sevdesk", text, flags=re.IGNORECASE)
-    text = re.sub(r"sev\s*Desk", "sevDesk", text)
-
-    return text
-
-
 def remove_boilerplate(text: str, patterns: list[str] | None = None) -> str:
-    """Remove boilerplate content from documents.
+    """Remove boilerplate content using caller-supplied patterns.
 
     Args:
-        text: Input text
-        patterns: Optional custom patterns to remove
+        text: Input text.
+        patterns: Optional list of regex patterns to strip.
 
     Returns:
-        Text with boilerplate removed
-
+        Text with matched patterns removed.
     """
     if not text:
         return ""
 
-    default_patterns = [
-        r"Cookie-Einstellungen",
-        r"Datenschutzerklärung",
-        r"Impressum",
-        r"© \d{4}.*$",
-        r"Alle Rechte vorbehalten",
-    ]
-
-    all_patterns = (patterns or []) + default_patterns
-
-    for pattern in all_patterns:
+    for pattern in patterns or []:
         text = re.sub(pattern, "", text, flags=re.IGNORECASE | re.MULTILINE)
 
     return text.strip()
-
-
-# =============================================================================
-# LANGUAGE DETECTION
-# =============================================================================
-
-
-def detect_language(text: str) -> dict[str, Any]:
-    """Detect language and non-German content.
-
-    Args:
-        text: Input text
-
-    Returns:
-        Language detection results
-
-    """
-    if not text or len(text.strip()) < 10:
-        return {"language": "unknown", "confidence": 0.0, "issues": ["too_short"]}
-
-    issues = []
-
-    # Check for Cyrillic (Russian, etc.)
-    if re.search(r"[\u0400-\u04FF]", text):
-        issues.append("cyrillic")
-
-    # Check for Chinese/Japanese/Korean
-    if re.search(r"[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]", text):
-        issues.append("cjk")
-
-    # Check for Arabic
-    if re.search(r"[\u0600-\u06FF]", text):
-        issues.append("arabic")
-
-    # German indicators
-    german_indicators = ["ä", "ö", "ü", "ß", "und", "die", "der", "das", "ist", "nicht"]
-    german_count = sum(1 for ind in german_indicators if ind.lower() in text.lower())
-
-    if issues:
-        return {"language": "non_german", "confidence": 0.9, "issues": issues}
-    elif german_count >= 3:
-        return {"language": "german", "confidence": 0.8, "issues": []}
-    else:
-        return {"language": "uncertain", "confidence": 0.5, "issues": []}
-
-
-def filter_non_german(documents: list[dict], text_field: str = "text") -> list[dict]:
-    """Filter out non-German documents.
-
-    Args:
-        documents: List of document dictionaries
-        text_field: Field name containing text
-
-    Returns:
-        Filtered list of German documents
-
-    """
-    german_docs = []
-    filtered_count = 0
-
-    for doc in documents:
-        text = doc.get(text_field) or doc.get("Text") or doc.get("content", "")
-        lang = detect_language(text)
-
-        if lang["language"] in ["german", "uncertain"]:
-            german_docs.append(doc)
-        else:
-            filtered_count += 1
-
-    logger.info(f"Filtered {filtered_count} non-German documents, kept {len(german_docs)}")
-    return german_docs
 
 
 # =============================================================================
@@ -178,20 +60,18 @@ def filter_non_german(documents: list[dict], text_field: str = "text") -> list[d
 
 
 def compute_text_hash(text: str, normalize: bool = True) -> str:
-    """Compute hash for text deduplication.
+    """Compute MD5 hash for exact deduplication.
 
     Args:
-        text: Input text
-        normalize: Whether to normalize before hashing
+        text: Input text.
+        normalize: Lowercase + collapse whitespace before hashing.
 
     Returns:
-        MD5 hash of text
-
+        Hex digest string.
     """
     if normalize:
         text = text.lower().strip()
         text = re.sub(r"\s+", " ", text)
-
     return hashlib.md5(text.encode(), usedforsecurity=False).hexdigest()
 
 
@@ -200,25 +80,24 @@ def deduplicate_exact(
     text_field: str = "text",
     keep: str = "first",
 ) -> list[dict]:
-    """Remove exact duplicate documents.
+    """Remove exact-duplicate documents by text hash.
 
     Args:
-        documents: List of document dictionaries
-        text_field: Field name containing text
-        keep: Which duplicate to keep ('first' or 'last')
+        documents: List of document dicts.
+        text_field: Key containing the document text.
+        keep: Which duplicate to keep — ``'first'`` or ``'last'``.
 
     Returns:
-        Deduplicated document list
-
+        Deduplicated list in original order.
     """
     seen_hashes: set[str] = set()
-    unique_docs = []
+    unique_docs: list[dict] = []
     duplicate_count = 0
 
     docs_to_process = documents if keep == "first" else list(reversed(documents))
 
     for doc in docs_to_process:
-        text = doc.get(text_field) or doc.get("Text") or doc.get("content", "")
+        text = doc.get(text_field) or doc.get("content", "")
         text_hash = compute_text_hash(text)
 
         if text_hash not in seen_hashes:
@@ -228,48 +107,43 @@ def deduplicate_exact(
             duplicate_count += 1
 
     result = unique_docs if keep == "first" else list(reversed(unique_docs))
-    logger.info(f"Removed {duplicate_count} exact duplicates, kept {len(result)}")
+    logger.info("parsing.dedup.exact.done", removed=duplicate_count, kept=len(result))
     return result
 
 
 def deduplicate_fuzzy(
     documents: list[dict],
-    embedder,
+    embedder: Any,
     text_field: str = "text",
     threshold: float = 0.95,
 ) -> list[dict]:
-    """Remove near-duplicate documents using embedding similarity.
+    """Remove near-duplicate documents using embedding cosine similarity.
 
     Args:
-        documents: List of document dictionaries
-        embedder: Function to create embeddings
-        text_field: Field name containing text
-        threshold: Similarity threshold for duplicates
+        documents: List of document dicts.
+        embedder: Callable that returns a list of float vectors.
+        text_field: Key containing the document text.
+        threshold: Cosine similarity above which two docs are considered duplicates.
 
     Returns:
-        Deduplicated document list
-
+        Deduplicated list (earlier document kept).
     """
     from sklearn.metrics.pairwise import cosine_similarity
 
-    texts = [doc.get(text_field) or doc.get("Text") or doc.get("content", "") for doc in documents]
-
-    # Embed all texts
-    embeddings = embedder([t[:500] for t in texts])  # Truncate for speed
-
-    # Find duplicates
+    texts = [doc.get(text_field) or doc.get("content", "") for doc in documents]
+    embeddings = embedder([t[:500] for t in texts])
     sim_matrix = cosine_similarity(embeddings)
-    to_remove = set()
+    to_remove: set[int] = set()
 
     for i in range(len(sim_matrix)):
         if i in to_remove:
             continue
         for j in range(i + 1, len(sim_matrix)):
             if sim_matrix[i, j] >= threshold:
-                to_remove.add(j)  # Keep earlier document
+                to_remove.add(j)
 
     unique_docs = [doc for i, doc in enumerate(documents) if i not in to_remove]
-    logger.info(f"Removed {len(to_remove)} fuzzy duplicates, kept {len(unique_docs)}")
+    logger.info("parsing.dedup.fuzzy.done", removed=len(to_remove), kept=len(unique_docs))
     return unique_docs
 
 
@@ -279,70 +153,46 @@ def deduplicate_fuzzy(
 
 
 def extract_metadata(text: str, url: str | None = None) -> dict[str, Any]:
-    """Extract metadata from document text.
+    """Extract lightweight metadata from document text and URL.
 
     Args:
-        text: Document text
-        url: Optional source URL
+        text: Document text.
+        url: Optional source URL used to infer content category.
 
     Returns:
-        Extracted metadata
-
+        Dict with ``word_count``, ``char_count``, and optional ``type``.
     """
-    metadata = {}
+    metadata: dict[str, Any] = {
+        "word_count": len(text.split()),
+        "char_count": len(text),
+    }
 
-    # Extract category from URL if available
-    if url:
-        if "hilfe.sevdesk" in url:
-            metadata["source"] = "help_center"
-        elif "blog.sevdesk" in url:
-            metadata["source"] = "blog"
-        elif "api.sevdesk" in url:
-            metadata["source"] = "api_docs"
-
-        # Extract article ID from URL
-        id_match = re.search(r"/articles/(\d+)", url)
-        if id_match:
-            metadata["article_id"] = id_match.group(1)
-
-    # Detect document type from content
-    if "Schritt 1" in text or "Anleitung" in text.lower():
-        metadata["type"] = "procedural"
-    elif "FAQ" in text or "?" in text[:100]:
+    if "?" in text[:100]:
         metadata["type"] = "faq"
     else:
         metadata["type"] = "informational"
-
-    # Word count
-    metadata["word_count"] = len(text.split())
-    metadata["char_count"] = len(text)
 
     return metadata
 
 
 def enrich_documents(documents: list[dict], text_field: str = "text") -> list[dict]:
-    """Enrich documents with extracted metadata.
+    """Attach extracted metadata to each document dict in-place.
 
     Args:
-        documents: List of document dictionaries
-        text_field: Field name containing text
+        documents: List of document dicts.
+        text_field: Key containing the document text.
 
     Returns:
-        Enriched documents
-
+        Enriched list (same objects, extra keys merged in).
     """
     enriched = []
-
     for doc in documents:
-        text = doc.get(text_field) or doc.get("Text") or doc.get("content", "")
-        url = doc.get("url") or doc.get("URL", "")
-
+        text = doc.get(text_field) or doc.get("content", "")
+        url = doc.get("url", "")
         metadata = extract_metadata(text, url)
+        enriched.append({**doc, **metadata})
 
-        enriched_doc = {**doc, **metadata}
-        enriched.append(enriched_doc)
-
-    logger.info(f"Enriched {len(enriched)} documents with metadata")
+    logger.info("parsing.enrich.done", count=len(enriched))
     return enriched
 
 
@@ -355,47 +205,41 @@ def preprocess_corpus(
     documents: list[dict],
     text_field: str = "text",
     clean: bool = True,
-    filter_language: bool = True,
     deduplicate: bool = True,
     enrich: bool = True,
+    boilerplate_patterns: list[str] | None = None,
 ) -> list[dict]:
-    """Run full preprocessing pipeline on corpus.
+    """Run full preprocessing pipeline on a document corpus.
+
+    Language-agnostic: no language filtering is applied.  Pass
+    ``boilerplate_patterns`` to strip domain-specific noise.
 
     Args:
-        documents: Raw documents
-        text_field: Field name containing text
-        clean: Whether to clean text
-        filter_language: Whether to filter non-German
-        deduplicate: Whether to remove duplicates
-        enrich: Whether to add metadata
+        documents: Raw document dicts.
+        text_field: Key containing raw text.
+        clean: Whether to normalize whitespace and strip noise.
+        deduplicate: Whether to remove exact duplicates.
+        enrich: Whether to attach word/char count metadata.
+        boilerplate_patterns: Optional list of regex patterns to strip.
 
     Returns:
-        Preprocessed documents
-
+        Preprocessed document list.
     """
-    logger.info(f"Starting preprocessing of {len(documents)} documents")
-
+    logger.info("parsing.preprocess.start", n_docs=len(documents))
     result = documents
 
-    # Clean text
     if clean:
         for doc in result:
-            text = doc.get(text_field) or doc.get("Text") or doc.get("content", "")
+            text = doc.get(text_field) or doc.get("content", "")
             cleaned = clean_text(text)
-            cleaned = remove_boilerplate(cleaned)
+            cleaned = remove_boilerplate(cleaned, boilerplate_patterns)
             doc[text_field] = cleaned
 
-    # Filter non-German
-    if filter_language:
-        result = filter_non_german(result, text_field)
-
-    # Deduplicate
     if deduplicate:
         result = deduplicate_exact(result, text_field)
 
-    # Enrich with metadata
     if enrich:
         result = enrich_documents(result, text_field)
 
-    logger.info(f"Preprocessing complete: {len(documents)} → {len(result)} documents")
+    logger.info("parsing.preprocess.done", n_in=len(documents), n_out=len(result))
     return result

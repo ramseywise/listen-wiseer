@@ -5,6 +5,7 @@ Components:
 - Query expansion (music synonyms)
 - Entity extraction (mood, time period, context)
 - Query decomposition (multi-hop)
+- Retrieval mode selection (dense | hybrid | snippet)
 """
 
 from __future__ import annotations
@@ -28,12 +29,12 @@ class QueryAnalysis:
     """Result of query analysis."""
 
     original_query: str
-    intent: str  # artist_info, genre_info, recommendation, history, chit_chat
-    complexity: str  # simple, moderate, complex
+    intent: str  # artist_info | genre_info | recommendation | history | chit_chat
+    complexity: str  # simple | moderate | complex
     expanded_query: str
-    entities: dict[str, list[str]]  # entity_type -> values
-    metadata_filters: dict[str, Any]
-    sub_queries: list[str]  # for multi-hop
+    entities: dict[str, list[str]]
+    sub_queries: list[str]
+    retrieval_mode: str  # dense | hybrid | snippet
     confidence: float
 
 
@@ -41,120 +42,94 @@ class QueryAnalysis:
 # INTENT CLASSIFICATION
 # =============================================================================
 
-INTENT_PATTERNS: dict[str, dict[str, list[str]]] = {
-    "artist_info": {
-        "keywords": [
-            "who is",
-            "tell me about",
-            "what do you know about",
-            "biography",
-            "history of",
-            "background on",
-            "artist info",
-            "about the band",
-            "when did",
-            "where is",
-            "discography",
-            "influences",
-            "style of",
-        ],
-    },
-    "genre_info": {
-        "keywords": [
-            "what is",
-            "explain",
-            "describe",
-            "genre",
-            "subgenre",
-            "music style",
-            "what does",
-            "characteristics of",
-            "origins of",
-        ],
-    },
-    "recommendation": {
-        "keywords": [
-            "recommend",
-            "suggest",
-            "find me",
-            "similar to",
-            "sounds like",
-            "more of",
-            "playlist",
-            "tracks like",
-            "what should i listen to",
-            "based on",
-            "fans of",
-            "if i like",
-            "like",
-        ],
-    },
-    "history": {
-        "keywords": [
-            "recently played",
-            "what have i been",
-            "my listening",
-            "my history",
-            "i've been listening",
-            "last week",
-            "my taste",
-            "my playlists",
-            "what did i listen",
-            "my spotify",
-        ],
-    },
-    "chit_chat": {
-        "keywords": [
-            "hello",
-            "hi",
-            "hey",
-            "thanks",
-            "thank you",
-            "bye",
-            "how are you",
-            "what's up",
-            "good morning",
-            "good night",
-        ],
-    },
+INTENT_PATTERNS: dict[str, list[str]] = {
+    "artist_info": [
+        "who is",
+        "tell me about",
+        "what do you know about",
+        "biography",
+        "history of",
+        "background on",
+        "artist info",
+        "about the band",
+        "when did",
+        "where is",
+        "discography",
+        "influences",
+        "style of",
+    ],
+    "genre_info": [
+        "what is",
+        "explain",
+        "describe",
+        "genre",
+        "subgenre",
+        "music style",
+        "what does",
+        "characteristics of",
+        "origins of",
+    ],
+    "recommendation": [
+        "recommend",
+        "suggest",
+        "find me",
+        "similar to",
+        "sounds like",
+        "more of",
+        "playlist",
+        "tracks like",
+        "what should i listen to",
+        "based on",
+        "fans of",
+        "if i like",
+        "like",
+    ],
+    "history": [
+        "recently played",
+        "what have i been",
+        "my listening",
+        "my history",
+        "i've been listening",
+        "last week",
+        "my taste",
+        "my playlists",
+        "what did i listen",
+        "my spotify",
+    ],
+    "chit_chat": [
+        "hello",
+        "hi",
+        "hey",
+        "thanks",
+        "thank you",
+        "bye",
+        "how are you",
+        "what's up",
+        "good morning",
+        "good night",
+    ],
 }
 
 
 def classify_intent(query: str) -> dict[str, Any]:
     """Classify query intent using keyword matching.
 
-    Args:
-        query: User query
-
-    Returns:
-        Intent classification with confidence and matched keywords.
+    Returns dict with ``intent``, ``confidence``, ``matches``.
+    Defaults to ``artist_info`` when no keyword fires.
     """
     query_lower = query.lower()
     scores: dict[str, dict[str, Any]] = {}
 
-    for intent, patterns in INTENT_PATTERNS.items():
-        score = 0
-        matches = []
+    for intent, keywords in INTENT_PATTERNS.items():
+        matched = [kw for kw in keywords if kw in query_lower]
+        scores[intent] = {"score": len(matched), "matches": matched}
 
-        for keyword in patterns["keywords"]:
-            if keyword in query_lower:
-                score += 1
-                matches.append(keyword)
-
-        scores[intent] = {"score": score, "matches": matches}
-
-    # Default to artist_info if no strong signal
     if not any(s["score"] > 0 for s in scores.values()):
         return {"intent": "artist_info", "confidence": 0.3, "matches": []}
 
-    best_intent = max(scores.keys(), key=lambda k: scores[k]["score"])
-    confidence = min(1.0, scores[best_intent]["score"] / 3)
-
-    return {
-        "intent": best_intent,
-        "confidence": confidence,
-        "matches": scores[best_intent]["matches"],
-    }
+    best = max(scores.keys(), key=lambda k: scores[k]["score"])
+    confidence = min(1.0, scores[best]["score"] / 3)
+    return {"intent": best, "confidence": confidence, "matches": scores[best]["matches"]}
 
 
 # =============================================================================
@@ -169,36 +144,18 @@ MUSIC_SYNONYMS: dict[str, list[str]] = {
 }
 
 
-def expand_query(query: str) -> dict[str, Any]:
-    """Expand query with music-domain synonyms.
-
-    Args:
-        query: Original query
-
-    Returns:
-        Expanded query and expansion info.
-    """
+def expand_query(query: str) -> str:
+    """Append up to 2 synonyms per matched term; return expanded query string."""
     query_lower = query.lower()
-    expansions_applied = []
-    expanded_terms = []
+    added: list[str] = []
 
     for term, synonyms in MUSIC_SYNONYMS.items():
         if term in query_lower:
-            expansions_applied.append(term)
-            expanded_terms.extend(synonyms[:2])  # Add top 2 synonyms
+            added.extend(synonyms[:2])
 
-    if expanded_terms:
-        expansion_text = " " + " ".join(set(expanded_terms))
-        expanded_query = query + expansion_text
-    else:
-        expanded_query = query
-
-    return {
-        "original": query,
-        "expanded": expanded_query,
-        "terms_expanded": expansions_applied,
-        "added_terms": list(set(expanded_terms)),
-    }
+    if added:
+        return query + " " + " ".join(set(added))
+    return query
 
 
 # =============================================================================
@@ -207,111 +164,74 @@ def expand_query(query: str) -> dict[str, Any]:
 
 ENTITY_PATTERNS: dict[str, list[str]] = {
     "mood": [
-        "happy", "sad", "energetic", "chill", "melancholic", "upbeat",
-        "dark", "romantic", "mellow", "intense", "dreamy",
+        "happy",
+        "sad",
+        "energetic",
+        "chill",
+        "melancholic",
+        "upbeat",
+        "dark",
+        "romantic",
+        "mellow",
+        "intense",
+        "dreamy",
     ],
     "time_period": [
-        "70s", "80s", "90s", "2000s", "2010s", "recent",
-        "classic", "vintage", "new", "modern",
+        "70s",
+        "80s",
+        "90s",
+        "2000s",
+        "2010s",
+        "recent",
+        "classic",
+        "vintage",
+        "new",
+        "modern",
     ],
     "context": [
-        "workout", "study", "party", "sleep", "focus", "driving",
-        "dinner", "cooking", "running", "relaxing",
+        "workout",
+        "study",
+        "party",
+        "sleep",
+        "focus",
+        "driving",
+        "dinner",
+        "cooking",
+        "running",
+        "relaxing",
     ],
 }
 
 
 def extract_entities(query: str) -> dict[str, list[str]]:
-    """Extract music-domain entities for metadata filtering.
-
-    Args:
-        query: User query
-
-    Returns:
-        Dictionary of entity_type -> extracted values.
-    """
+    """Extract music-domain entity types from query."""
     query_lower = query.lower()
-    entities: dict[str, list[str]] = {}
-
-    for entity_type, patterns in ENTITY_PATTERNS.items():
-        matched = [p for p in patterns if p in query_lower]
-        if matched:
-            entities[entity_type] = matched
-
-    return entities
+    return {
+        etype: [p for p in patterns if p in query_lower]
+        for etype, patterns in ENTITY_PATTERNS.items()
+        if any(p in query_lower for p in patterns)
+    }
 
 
 # =============================================================================
-# METADATA FILTER GENERATION
-# =============================================================================
-
-
-def generate_metadata_filters(
-    intent: str,
-    entities: dict[str, list[str]],
-    query: str,
-) -> dict[str, Any]:
-    """Generate metadata filters for retrieval.
-
-    Args:
-        intent: Classified intent
-        entities: Extracted entities
-        query: Original query
-
-    Returns:
-        Metadata filters for retriever.
-    """
-    filters: dict[str, Any] = {}
-
-    if intent == "artist_info":
-        filters["source_types"] = ["wikipedia", "biography"]
-    elif intent == "genre_info":
-        filters["source_types"] = ["wikipedia", "genre_guide"]
-    elif intent == "recommendation":
-        filters["source_types"] = ["corpus", "playlist"]
-
-    if "mood" in entities:
-        filters["mood"] = entities["mood"]
-    if "time_period" in entities:
-        filters["time_period"] = entities["time_period"]
-
-    return filters
-
-
-# =============================================================================
-# QUERY DECOMPOSITION (Multi-hop)
+# QUERY DECOMPOSITION
 # =============================================================================
 
 
 def decompose_query(query: str) -> list[str]:
-    """Decompose complex query into sub-queries.
-
-    Args:
-        query: Complex user query
-
-    Returns:
-        List of sub-queries for multi-hop retrieval.
-    """
+    """Split complex multi-part queries into sub-queries (max 3)."""
     sub_queries: list[str] = []
     query_lower = query.lower()
 
-    # Split on "and" with question-like patterns
-    if " and " in query_lower and any(
-        k in query_lower for k in ("who", "what", "recommend")
-    ):
+    if " and " in query_lower and any(k in query_lower for k in ("who", "what", "recommend")):
         parts = re.split(r"\s+and\s+", query, flags=re.IGNORECASE)
-        if len(parts) > 1:
-            sub_queries.extend([p.strip() for p in parts if len(p.strip()) > 10])
+        sub_queries.extend(p.strip() for p in parts if len(p.strip()) > 10)
 
-    # Multiple question marks
     if query.count("?") > 1:
         parts = query.split("?")
-        sub_queries.extend([p.strip() + "?" for p in parts if len(p.strip()) > 10])
+        sub_queries.extend(p.strip() + "?" for p in parts if len(p.strip()) > 10)
 
-    if not sub_queries:
-        return [query]
-
-    return sub_queries[:3]  # Max 3 sub-queries
+    return sub_queries[:3] if sub_queries else [query]
 
 
 # =============================================================================
@@ -330,38 +250,49 @@ COMPLEX_TERMS = [
 
 
 def score_complexity(query: str, entities: dict, sub_queries: list[str]) -> str:
-    """Score query complexity for routing.
-
-    Args:
-        query: User query
-        entities: Extracted entities
-        sub_queries: Decomposed sub-queries
-
-    Returns:
-        Complexity level: simple, moderate, complex.
-    """
+    """Score query complexity → ``'simple'`` | ``'moderate'`` | ``'complex'``."""
     score = 0
-
     if len(query) > 200:
         score += 2
     elif len(query) > 100:
         score += 1
-
     if len(sub_queries) > 1:
         score += 2
-
     if len(entities) > 2:
         score += 1
-
     if any(term in query.lower() for term in COMPLEX_TERMS):
         score += 2
 
     if score >= 4:
         return "complex"
-    elif score >= 2:
+    if score >= 2:
         return "moderate"
-    else:
-        return "simple"
+    return "simple"
+
+
+# =============================================================================
+# RETRIEVAL MODE SELECTION
+# =============================================================================
+
+_SNIPPET_INTENTS = {"artist_info", "genre_info"}
+_DIRECT_INTENTS = {"chit_chat", "out_of_scope"}
+
+
+def select_retrieval_mode(intent: str, complexity: str) -> str:
+    """Map intent + complexity → retrieval mode.
+
+    Returns:
+        ``'snippet'``  — fast DuckDB FTS bypass (simple factual lookups)
+        ``'hybrid'``   — vector + term-overlap blend (comparisons, recommendations)
+        ``'dense'``    — pure vector search (exploratory / complex)
+    """
+    if intent in _DIRECT_INTENTS:
+        return "dense"  # won't be used (direct path skips retrieval)
+    if intent in _SNIPPET_INTENTS and complexity == "simple":
+        return "snippet"
+    if intent == "recommendation" or complexity == "moderate":
+        return "hybrid"
+    return "dense"
 
 
 # =============================================================================
@@ -370,65 +301,43 @@ def score_complexity(query: str, entities: dict, sub_queries: list[str]) -> str:
 
 
 class QueryAnalyzer:
-    """Main query analysis component."""
+    """Main query analysis component — rule-based, no LLM calls."""
 
     def __init__(
         self,
         expand_terms: bool = True,
         extract_entities_flag: bool = True,
         decompose: bool = True,
-    ):
-        """Initialize query analyzer.
-
-        Args:
-            expand_terms: Whether to expand domain terminology
-            extract_entities_flag: Whether to extract entities
-            decompose: Whether to decompose multi-hop queries
-        """
+    ) -> None:
         self.expand_terms = expand_terms
         self.extract_entities_flag = extract_entities_flag
         self.decompose = decompose
 
     def analyze(self, query: str) -> QueryAnalysis:
-        """Perform full query analysis.
-
-        Args:
-            query: User query
-
-        Returns:
-            Complete query analysis.
-        """
+        """Perform full query analysis and return a QueryAnalysis dataclass."""
         intent_result = classify_intent(query)
+        intent = intent_result["intent"]
 
-        if self.expand_terms:
-            expansion = expand_query(query)
-            expanded_query = expansion["expanded"]
-        else:
-            expanded_query = query
-
-        if self.extract_entities_flag:
-            entities = extract_entities(query)
-        else:
-            entities = {}
-
-        metadata_filters = generate_metadata_filters(
-            intent_result["intent"], entities, query
-        )
-
-        if self.decompose:
-            sub_queries = decompose_query(query)
-        else:
-            sub_queries = [query]
-
+        expanded_query = expand_query(query) if self.expand_terms else query
+        entities = extract_entities(query) if self.extract_entities_flag else {}
+        sub_queries = decompose_query(query) if self.decompose else [query]
         complexity = score_complexity(query, entities, sub_queries)
+        retrieval_mode = select_retrieval_mode(intent, complexity)
 
+        log.debug(
+            "query_analyzer.done",
+            intent=intent,
+            complexity=complexity,
+            retrieval_mode=retrieval_mode,
+            n_sub_queries=len(sub_queries),
+        )
         return QueryAnalysis(
             original_query=query,
-            intent=intent_result["intent"],
+            intent=intent,
             complexity=complexity,
             expanded_query=expanded_query,
             entities=entities,
-            metadata_filters=metadata_filters,
             sub_queries=sub_queries,
+            retrieval_mode=retrieval_mode,
             confidence=intent_result["confidence"],
         )
