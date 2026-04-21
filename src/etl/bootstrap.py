@@ -348,6 +348,28 @@ def load_playlist_tracks(conn) -> None:
         log.info("bootstrap.artist_names.done", n=len(an))
 
 
+def _train_if_needed() -> None:
+    """Run model training when no classifier .pkl files exist in models/."""
+    import subprocess
+    import sys
+
+    from paths import MODELS_DIR
+
+    if list(MODELS_DIR.glob("*.pkl")):
+        log.info("bootstrap.train.skip", reason="models already present")
+        return
+
+    log.info("bootstrap.train.start", models_dir=str(MODELS_DIR))
+    result = subprocess.run(  # noqa: S603
+        [sys.executable, "-m", "recommend.train"],
+        check=False,
+    )
+    if result.returncode != 0:
+        log.error("bootstrap.train.failed", returncode=result.returncode)
+    else:
+        log.info("bootstrap.train.done")
+
+
 def main() -> None:
     conn = get_connection()
     init_schema(conn)
@@ -360,17 +382,21 @@ def main() -> None:
     load_faves(conn)
     load_playlist_tracks(conn)
 
-    # Quick sanity check
     n_tracks = conn.execute("SELECT COUNT(*) FROM tracks").fetchone()[0]
     n_genres = conn.execute("SELECT COUNT(*) FROM genre_map").fetchone()[0]
     n_profile = conn.execute("SELECT COUNT(*) FROM track_profile").fetchone()[0]
-    print(
-        f"\nDB ready: {n_tracks} tracks, {n_genres} genre mappings, {n_profile} enriched profiles"
-    )
     from etl.db import DB_PATH
 
-    print(f"Location: {DB_PATH}")
+    log.info(
+        "bootstrap.db.ready",
+        n_tracks=n_tracks,
+        n_genres=n_genres,
+        n_profile=n_profile,
+        db_path=str(DB_PATH),
+    )
     conn.close()
+
+    _train_if_needed()
 
 
 if __name__ == "__main__":

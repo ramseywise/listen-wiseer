@@ -109,20 +109,21 @@ Add `AgentResponse` output schema (message, suggestions, track_list, sources) an
 
 ---
 
-## Phase 3 — Docker Chat (planned)
+## Phase 3 — Docker Chat (done)
 
 **Goal:** `docker compose up` → working chat, no manual steps.
 
-- Remove chromadb (done in Phase 0)
-- Promote postgres from optional profile to always-on (LangGraph checkpointer)
-- Add `db-init` one-shot service: bootstraps DuckDB schema + runs model training if models/ empty
-- Wire `POSTGRES_URL` into `get_checkpointer()` (replaces InMemoryStore in container env)
-- Update Dockerfiles to copy `infrastructure/db/` schema SQL
+- Remove chromadb (done in Phase 0) ✓
+- Promote postgres from optional profile to always-on (LangGraph checkpointer) ✓
+- Add `db-init` one-shot service: bootstraps DuckDB schema + runs model training if models/ empty ✓
+- Wire `POSTGRES_URL` into `get_checkpointer()` (replaces InMemoryStore in container env) ✓
+- Makefile: `infra-build`, `infra-ps`; fixed `train-cat --model-type catboost`; synced `.PHONY` ✓
 
 ---
 
-## Phase 4 — Prompts & RAG Enrichment (planned)
+## Phase 4 — Prompts & RAG Enrichment (done)
 
-- Re-evaluate `rag_core/` as enrichment on top of Tavily results
-- Refine system prompt via langmem trajectory optimization (optimizer.py already scaffolded)
-- Phase 5c eval harness completion (golden dataset, LangFuse graders)
+- `rag_core/` wired as optional enrichment on top of Tavily in `web_search.py` ✓
+- System prompt: added proactive `search_taste_memory` guidance + chit-chat no-tool rule ✓
+- Eval harness: Tier 2 wired to live graph via `evaluate_trajectory`; Tier 3 runs tool correctness + RAGAS faithfulness on `final_response` ✓
+- `TrajectoryResult.final_response` field added to thread answer text through to Tier 3 graders ✓

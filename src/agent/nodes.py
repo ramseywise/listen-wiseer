@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 import uuid
-from typing import Optional
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, trim_messages
@@ -74,13 +73,17 @@ If the user gives you an artist/track *name* instead of a Spotify ID, use
 ## Memory
 
 You have access to memory tools that persist across sessions:
-- Use **manage_taste_memory** to record important user preferences (e.g. "prefers zouk over kizomba", "dislikes electronic BPM > 140").
-- Use **search_taste_memory** when a user asks something that their past preferences might inform.
+- **Always** call **search_taste_memory** before making any recommendation — it returns stored preferences (genres, moods, dislikes) that should shape your picks.
+- Use **manage_taste_memory** to record important user preferences whenever the user expresses a strong like, dislike, or preference (e.g. "prefers zouk over kizomba", "dislikes electronic BPM > 140").
 - Past recommendation sessions are automatically recalled as examples when relevant.
+
+## Chit-chat
+
+If the user's message is conversational (greetings, follow-ups, thanks, yes/no confirmations), respond directly without calling any tools. Do not force a tool call for small talk.
 
 ## Response style
 
-- Present recommendations as a numbered list with brief notes
+- Present recommendations as a numbered list with brief notes (why this track fits)
 - Be concise — 3-5 sentences unless the user asks for detail
 - If a tool returns no results, explain why and suggest alternatives
 """
@@ -347,7 +350,7 @@ async def agent_node(
     state: AgentState,
     config: RunnableConfig,
     *,
-    store: Optional[BaseStore] = None,
+    store: BaseStore | None = None,
 ) -> AgentState:
     """Core agent node — call the LLM with tools bound.
 

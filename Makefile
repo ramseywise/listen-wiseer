@@ -1,6 +1,6 @@
 COMPOSE = docker compose -f infrastructure/containers/docker-compose.yml
 
-.PHONY: help infra-up infra-down infra-logs app mcp-server auth lint format test test-unit test-fast test-integration test-data notebook init-db data-sync train eval-unit eval-trajectory eval-e2e
+.PHONY: help infra-up infra-down infra-build infra-ps infra-logs infra-smoke app mcp-server auth lint format test test-unit test-fast test-integration test-data notebook init-db data-sync train train-cat train-compare eval-unit eval-trajectory eval-e2e
 
 help:
 	@echo "listen-wiseer targets:"
@@ -21,6 +21,9 @@ help:
 	@echo "  format       ruff fix + format"
 	@echo "  infra-up     Docker stack"
 	@echo "  infra-down   Docker stack teardown"
+	@echo "  infra-build  Rebuild Docker images"
+	@echo "  infra-ps     Show container status"
+	@echo "  infra-smoke  Smoke-test running stack (postgres + app)"
 	@echo "  notebook     Jupyter Lab"
 
 infra-up:
@@ -29,8 +32,26 @@ infra-up:
 infra-down:
 	$(COMPOSE) down --volumes --remove-orphans
 
+infra-build:
+	$(COMPOSE) build
+
+infra-ps:
+	$(COMPOSE) ps
+
 infra-logs:
 	$(COMPOSE) logs -f
+
+infra-smoke:
+	@echo "=== Container status ==="
+	@$(COMPOSE) ps
+	@echo ""
+	@echo "=== Postgres ==="
+	@$(COMPOSE) exec -T postgres pg_isready -U postgres -d listenwise \
+		&& echo "✓ postgres ready" || echo "✗ postgres not ready"
+	@echo ""
+	@echo "=== App (port 8501) ==="
+	@curl -sf --max-time 5 http://localhost:8501 > /dev/null \
+		&& echo "✓ app responding" || echo "✗ app not responding (may still be starting)"
 
 app:
 	PYTHONPATH=src uv run chainlit run src/app/main.py
@@ -42,7 +63,7 @@ auth:
 	PYTHONPATH=src uv run python -c "from spotify.auth import SpotifyAuth; SpotifyAuth().authenticate(); print('Auth complete — .spotify_cache written.')"
 
 lint:
-	uv run ruff check src/
+	uv run ruff check src/ --unsafe-fixes
 	uv run ruff format --check src/
 
 format:
@@ -81,7 +102,7 @@ train:
 
 # Train with CatBoost instead
 train-cat:
-	PYTHONPATH=src uv run python -m recommend.train
+	PYTHONPATH=src uv run python -m recommend.train --model-type catboost
 
 # Head-to-head comparison (informational, no models saved)
 train-compare:

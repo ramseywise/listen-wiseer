@@ -9,8 +9,8 @@ RUN apt-get update && apt-get install -y \
 
 RUN pip install --no-cache-dir uv
 
-COPY pyproject.toml README.md ./
-RUN uv pip install --system --no-cache-dir -e .
+COPY pyproject.toml uv.lock README.md ./
+RUN uv sync --frozen --no-dev
 
 COPY src/ ./src/
 
@@ -18,7 +18,7 @@ RUN mkdir -p /app/data
 
 EXPOSE 8765
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
-    CMD curl -f http://localhost:8765/health || exit 1
+# MCP server uses stdio transport — no HTTP health endpoint
+HEALTHCHECK NONE
 
-CMD ["uv", "run", "python", "src/mcp_server/server.py"]
+CMD ["uv", "run", "--no-sync", "python", "src/mcp_server/server.py"]

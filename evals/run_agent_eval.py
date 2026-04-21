@@ -103,30 +103,120 @@ def run_tier1(samples: list[AgentGoldenSample]) -> bool:
 
 
 def run_tier2(samples: list[AgentGoldenSample]) -> bool:
-    """Tier 2: trajectory eval. Requires CONFIRM_EXPENSIVE_OPS=true."""
+    """Tier 2: trajectory eval against live graph. Requires CONFIRM_EXPENSIVE_OPS=true."""
+    import asyncio
+
     from evals.agent.cost_gate import CONFIRM_EXPENSIVE_OPS
+    from evals.agent.trajectory_eval import TrajectoryResult, evaluate_trajectory
 
     if not CONFIRM_EXPENSIVE_OPS:
         log.error("eval.tier2.cost_gate", msg="Set CONFIRM_EXPENSIVE_OPS=true")
         print("ERROR: Tier 2 requires CONFIRM_EXPENSIVE_OPS=true (LLM calls).")
         return False
 
+    from agent.graph import build_graph
+    from langgraph.checkpoint.memory import MemorySaver
+
+    graph = build_graph(checkpointer=MemorySaver())
+
     log.info("eval.tier2.start", n_samples=len(samples))
-    print("\nTier 2 — Trajectory eval: not yet wired to live graph (Phase 6).")
+    results: list[TrajectoryResult] = asyncio.run(
+        evaluate_trajectory(samples, graph, enable_tracing=True)
+    )
+
+    n = len(results)
+    n_intent = sum(1 for r in results if r.intent_match)
+    n_tool = sum(1 for r in results if r.tool_match)
+
+    print(f"\n{'=' * 60}")
+    print("  Tier 2 — Trajectory Eval")
+    print(f"{'=' * 60}")
+    print(f"  Samples:         {n}")
+    print(f"  Intent accuracy: {n_intent / n:.3f}")
+    print(f"  Tool accuracy:   {n_tool / n:.3f}")
+    print(f"\n  Per-sample breakdown:")
+    for r in results:
+        intent_ok = "✓" if r.intent_match else "✗"
+        tool_ok = "✓" if r.tool_match else "✗"
+        print(f"    [{intent_ok} intent] [{tool_ok} tools]  {r.sample_id}: {r.query[:60]}")
+    print(f"{'=' * 60}\n")
+
+    log.info(
+        "eval.tier2.complete",
+        n_samples=n,
+        intent_accuracy=n_intent / n,
+        tool_accuracy=n_tool / n,
+    )
     return True
 
 
 def run_tier3(samples: list[AgentGoldenSample]) -> bool:
-    """Tier 3: RAGAS + DeepEval e2e graders. Requires CONFIRM_EXPENSIVE_OPS=true."""
+    """Tier 3: RAGAS faithfulness + tool correctness against live graph. Requires CONFIRM_EXPENSIVE_OPS=true."""
+    import asyncio
+
     from evals.agent.cost_gate import CONFIRM_EXPENSIVE_OPS
+    from evals.agent.graders import grade_faithfulness, grade_tool_correctness
+    from evals.agent.trajectory_eval import evaluate_trajectory
 
     if not CONFIRM_EXPENSIVE_OPS:
         log.error("eval.tier3.cost_gate", msg="Set CONFIRM_EXPENSIVE_OPS=true")
         print("ERROR: Tier 3 requires CONFIRM_EXPENSIVE_OPS=true (LLM calls).")
         return False
 
+    from agent.graph import build_graph
+    from langgraph.checkpoint.memory import MemorySaver
+
+    graph = build_graph(checkpointer=MemorySaver())
+
     log.info("eval.tier3.start", n_samples=len(samples))
-    print("\nTier 3 — RAGAS + DeepEval e2e graders: not yet wired to live graph (Phase 6).")
+    traj_results = asyncio.run(evaluate_trajectory(samples, graph, enable_tracing=True))
+
+    # Build a map for quick lookup of trajectory results
+    traj_map = {r.sample_id: r for r in traj_results}
+    sample_map = {s.sample_id: s for s in samples}
+
+    faithfulness_scores: list[float] = []
+    tool_scores: list[float] = []
+
+    print(f"\n{'=' * 60}")
+    print("  Tier 3 — RAGAS + Tool Correctness")
+    print(f"{'=' * 60}")
+
+    for r in traj_results:
+        sample = sample_map[r.sample_id]
+
+        # Tool correctness is deterministic — always run
+        tool_score = grade_tool_correctness(r.query, sample.expected_tools, r.tools_called)
+        tool_scores.append(tool_score)
+
+        # RAGAS faithfulness — only meaningful when the agent produced a response
+        # and called tools (tool names used as minimal context proxy)
+        faith_score = 0.0
+        if r.final_response and r.tools_called:
+            faith_score = grade_faithfulness(
+                question=r.query,
+                answer=r.final_response,
+                contexts=r.tools_called,
+            )
+        faithfulness_scores.append(faith_score)
+
+        print(
+            f"    {r.sample_id}: tool={tool_score:.2f}  faith={faith_score:.2f}  {r.query[:50]}"
+        )
+
+    avg_tool = sum(tool_scores) / len(tool_scores) if tool_scores else 0.0
+    avg_faith = sum(faithfulness_scores) / len(faithfulness_scores) if faithfulness_scores else 0.0
+
+    print(f"\n  Avg tool correctness: {avg_tool:.3f}")
+    print(f"  Avg faithfulness:     {avg_faith:.3f}")
+    print(f"{'=' * 60}\n")
+
+    log.info(
+        "eval.tier3.complete",
+        n_samples=len(traj_results),
+        avg_tool_correctness=avg_tool,
+        avg_faithfulness=avg_faith,
+    )
     return True
 
 

@@ -65,11 +65,9 @@ class Registry:
 # ---------------------------------------------------------------------------
 
 from generation.generator import call_llm  # noqa: E402
-from retrieval.chroma_client import ChromaRetriever  # noqa: E402
 from retrieval.duckdb_client import DuckDBVectorClient  # noqa: E402
 from retrieval.embedder import MiniLMEmbedder  # noqa: E402
 
-Registry.register("client", "chroma")(ChromaRetriever)
 Registry.register("client", "duckdb")(DuckDBVectorClient)
 Registry.register("embedder", "minilm")(MiniLMEmbedder)
 

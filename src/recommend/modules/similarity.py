@@ -24,7 +24,7 @@ SIMILARITY_FEATURES: list[str] = [
     "year_normalized",
 ]
 
-DEFAULT_WEIGHTS: dict[str, float] = {f: 1.0 for f in SIMILARITY_FEATURES}
+DEFAULT_WEIGHTS: dict[str, float] = dict.fromkeys(SIMILARITY_FEATURES, 1.0)
 
 # Camelot wheel: key_mode string -> position 0-23
 CAMELOT: dict[str, int] = {

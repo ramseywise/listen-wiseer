@@ -182,7 +182,7 @@ def filter_corpus_by_cluster(
     cluster_probs_max = corpus_probs[np.arange(len(corpus_probs)), cluster_ids]
 
     # Relevant clusters: those where query has >= min_prob
-    relevant_clusters = set(int(c) for c in np.where(query_probs >= min_prob)[0])
+    relevant_clusters = {int(c) for c in np.where(query_probs >= min_prob)[0]}
 
     # Build mask: include corpus tracks whose dominant cluster is relevant
     mask = np.array([int(cid) in relevant_clusters for cid in cluster_ids])

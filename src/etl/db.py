@@ -265,7 +265,17 @@ LEFT JOIN faves f USING (track_id);
 def get_connection(read_only: bool = False) -> duckdb.DuckDBPyConnection:
     """Return a connection to the project DuckDB file."""
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = duckdb.connect(str(DB_PATH), read_only=read_only)
+    try:
+        conn = duckdb.connect(str(DB_PATH), read_only=read_only)
+    except duckdb.IOException:
+        # File exists but is not a valid DuckDB database (e.g. a Git LFS pointer).
+        # Delete it and create a fresh database.
+        if DB_PATH.exists() and DB_PATH.read_bytes()[:8] != b"DUCK\x00\x00\x00\x00":
+            log.warning("db.invalid_file.replaced", path=str(DB_PATH))
+            DB_PATH.unlink()
+            conn = duckdb.connect(str(DB_PATH), read_only=read_only)
+        else:
+            raise
     log.debug("db.connected", path=str(DB_PATH), read_only=read_only)
     return conn
 

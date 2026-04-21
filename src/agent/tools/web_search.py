@@ -2,9 +2,34 @@ from __future__ import annotations
 
 from langchain_core.tools import StructuredTool
 
+from utils.logging import get_logger
+
+log = get_logger(__name__)
+
+
+def _query_rag_chunks(subject: str) -> str | None:
+    """Return local rag_chunks text for subject, or None if the table is empty."""
+    try:
+        from etl.db import get_connection
+
+        conn = get_connection(read_only=True)
+        rows = conn.execute(
+            "SELECT text FROM rag_chunks WHERE subject = ? ORDER BY created_at DESC LIMIT 3",
+            [subject],
+        ).fetchall()
+        conn.close()
+        if rows:
+            log.debug("web_search.rag_chunks.hit", subject=subject, n=len(rows))
+            return "\n\n".join(row[0] for row in rows)
+    except Exception as exc:
+        log.debug("web_search.rag_chunks.skip", subject=subject, reason=str(exc))
+    return None
+
 
 def _get_artist_context(subject: str) -> str:
     from utils.config import settings
+
+    web_result: str | None = None
 
     if settings.tavily_api_key:
         from tavily import TavilyClient
@@ -18,26 +43,35 @@ def _get_artist_context(subject: str) -> str:
         )
         answer = response.get("answer")
         if answer:
-            return answer
-        results = response.get("results", [])
-        if results:
-            return "\n\n".join(r["content"][:600] for r in results[:3])
+            web_result = answer
+        else:
+            results = response.get("results", [])
+            if results:
+                web_result = "\n\n".join(r["content"][:600] for r in results[:3])
 
-    try:
-        import wikipedia
-
-        page = wikipedia.page(subject, auto_suggest=True)
-        return page.summary[:1500]
-    except wikipedia.exceptions.DisambiguationError as exc:
+    if web_result is None:
         try:
-            page = wikipedia.page(exc.options[0], auto_suggest=False)
-            return page.summary[:1500]
-        except Exception:
-            pass
-    except Exception:
-        pass
+            import wikipedia
 
-    return f"No information found for '{subject}'."
+            page = wikipedia.page(subject, auto_suggest=True)
+            web_result = page.summary[:1500]
+        except wikipedia.exceptions.DisambiguationError as exc:
+            try:
+                page = wikipedia.page(exc.options[0], auto_suggest=False)
+                web_result = page.summary[:1500]
+            except Exception as inner_exc:
+                log.debug("web_search.wikipedia.disambiguation_fallback_failed", subject=subject, reason=str(inner_exc))
+        except Exception as exc:
+            log.debug("web_search.wikipedia.skip", subject=subject, reason=str(exc))
+
+    if web_result is None:
+        return f"No information found for '{subject}'."
+
+    rag_context = _query_rag_chunks(subject)
+    if rag_context:
+        return f"{web_result}\n\n## Additional context\n{rag_context}"
+
+    return web_result
 
 
 get_artist_context_tool = StructuredTool.from_function(

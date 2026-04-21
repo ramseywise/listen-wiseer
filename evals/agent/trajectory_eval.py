@@ -32,6 +32,7 @@ class TrajectoryResult:
     expected_tools: list[str]
     tool_match: bool
     intent_match: bool
+    final_response: str = ""
     node_sequence: list[str] = field(default_factory=list)
 
 
@@ -92,6 +93,10 @@ async def evaluate_trajectory(
             messages = result_state.get("messages", [])
             tools_called = extract_tools_from_messages(messages)
             actual_intent = result_state.get("intent", "unknown")
+            last_ai = next(
+                (m for m in reversed(messages) if isinstance(m, AIMessage)), None
+            )
+            final_response = str(last_ai.content) if last_ai else ""
         except Exception as exc:
             log.error(
                 "eval.trajectory.sample_error",
@@ -100,6 +105,7 @@ async def evaluate_trajectory(
             )
             tools_called = []
             actual_intent = "error"
+            final_response = ""
 
         tool_match = check_tool_match(sample.expected_tools, tools_called)
         intent_match = actual_intent == sample.expected_intent
@@ -114,6 +120,7 @@ async def evaluate_trajectory(
                 expected_tools=sample.expected_tools,
                 tool_match=tool_match,
                 intent_match=intent_match,
+                final_response=final_response,
             )
         )
         log.debug(

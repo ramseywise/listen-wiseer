@@ -8,9 +8,9 @@ the shared listen_wiseer.db file.
 from __future__ import annotations
 
 import duckdb
-
 from schemas.chunks import Chunk, ChunkMetadata
 from schemas.retrieval import RetrievalResult
+
 from utils.logging import get_logger
 
 log = get_logger(__name__)

@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parents[2] / "src"))
-sys.path.insert(0, str(Path(__file__).parents[2]))
+sys.path.insert(0, str(Path(__file__).parents[3] / "src" / "rag_core"))
+sys.path.insert(0, str(Path(__file__).parents[3] / "src"))
 
 from preprocessing.chunker import ChunkerConfig, HtmlAwareChunker, _approx_tokens
 
