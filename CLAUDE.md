@@ -6,7 +6,7 @@
 - LLM: Claude Haiku (`claude-haiku-4-5-20251001`) · LangGraph · Chainlit · FastMCP
 - Data: Polars · DuckDB · Parquet cache
 - ML: GMM clustering + LightGBM reranker · scikit-learn pipelines
-- RAG: ChromaDB + sentence-transformers + Wikipedia
+- Context: Tavily web search for artist/genre history (rag_core/ suspended — see Phase 6 plan)
 - Auth: custom OAuth via httpx · token at `.spotify_cache`
 
 ## Commands
@@ -39,28 +39,31 @@ models/         — serialized artifacts (gitignored)
 | 3a–3d — ETL hardening, feature engineering, EDA | ✓ DONE |
 | 4a — LangGraph agent + Chainlit | ✓ DONE |
 | 4b — episodic, taste, procedural memory | ✓ DONE |
-| 5a — RAG core (DuckDB vector, MiniLM, Wikipedia/Tavily, 93 tests) | ✓ DONE |
+| 5a — RAG core (DuckDB vector, MiniLM, Wikipedia, 93 tests) | ✓ DONE |
 | 5b — Intent routing (5 intents, clarify node, 10 tools, 97 tests) | ✓ DONE |
-| **5c — Eval harness (LangFuse, golden dataset, intent/tool metrics)** | **UP NEXT** |
-| 6a — Playwright UI smoke tests | PLANNED |
-| 6b — Observability dashboard | PLANNED |
+| **6 — Refactor: Tavily web search, clean deps, Docker chat** | **ACTIVE** |
+| 6 Phase 2 — Domain tool modules, AgentResponse schema, HITL playlist write | PLANNED |
+| 6 Phase 3 — `docker compose up` fully working (postgres checkpointer, db-init) | PLANNED |
+| 6 Phase 4 — Prompts, RAG enrichment on top of web search, eval harness | PLANNED |
 
-Active plan: `.claude/docs/plans/phase5c_eval.md` · Research: `.claude/docs/research/eval-harness.md`
+Active plan: `.claude/docs/plans/phase6_refactor.md`
 
 ## Active gotchas
 
-- `listen_wiseer.db` via Git LFS — other environments can't pull. Decision deferred.
+- `listen_wiseer.db` via Git LFS — other environments can't pull; run `make init-db && make train` on first clone
 - `models/` and `data/cache/` gitignored — regenerate after pull (`make train`)
-- `audio-features` Spotify endpoint dead (403, deprecated 2025) — Last.fm is the replacement path
+- `audio-features` Spotify endpoint dead (403, deprecated 2025) — ENOA genre embeddings in use; Last.fm activation pending
 - Last.fm error 10 = pending manual activation (not wrong key) — just wait
 - 32 test failures are `duckdb.IOError` (missing LFS DB) — not regressions; use `tests/unit/` targeted runs
-- `REDIS_URL` needed for cross-session memory; `InMemoryStore` for dev
+- `rag_core/` suspended as agent tool — replaced by Tavily web search (`get_artist_context_tool`); set `TAVILY_API_KEY`
+- `InMemoryStore` used for cross-session memory in dev; Redis/Postgres for prod (Phase 6 Phase 3)
 
 ## Environment
 
-`.env.example` → `.env`:
+Copy `.env.example` → `.env` and fill in:
 - `SPOTIFY_CLIENT_ID/SECRET/REDIRECT_URI/USER_ID`
 - `ANTHROPIC_API_KEY`
+- `TAVILY_API_KEY` — required for artist/genre context tool
 
 ---
 

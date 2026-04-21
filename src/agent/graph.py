@@ -23,6 +23,7 @@ from agent.nodes import (
     agent_node,
     clarify_or_proceed,
     classify_intent_node,
+    format_response,
     rewrite_query,
     route_after_agent,
     route_after_classify,
@@ -57,6 +58,7 @@ def build_graph(
     builder.add_node("agent", agent_node)
     builder.add_node("call_tools", ToolNode(ALL_TOOLS))
     builder.add_node("validate_tool_output", validate_tool_output)
+    builder.add_node("format_response", format_response)
 
     builder.add_edge(START, "trim_history")
     builder.add_edge("trim_history", "classify_intent")
@@ -70,10 +72,11 @@ def build_graph(
     builder.add_conditional_edges(
         "agent",
         route_after_agent,
-        {"call_tools": "call_tools", "__end__": END},
+        {"call_tools": "call_tools", "format_response": "format_response"},
     )
     builder.add_edge("call_tools", "validate_tool_output")
     builder.add_edge("validate_tool_output", "agent")  # loop back
+    builder.add_edge("format_response", END)
 
     if checkpointer is None:
         checkpointer = MemorySaver()

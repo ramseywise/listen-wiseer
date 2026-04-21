@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from typing import Optional
 
@@ -63,6 +64,7 @@ through content-based recommendations, and learn about artists.
 - **search_tracks** — find a specific track or artist on Spotify (returns track IDs you can feed into other tools)
 - **get_related_artists** — "who sounds like X?", "artists similar to X" (needs a Spotify artist ID)
 - **get_artist_context** — "who is X?", "tell me about X", artist trivia, history, influences, genre info
+- **create_playlist** — save recommendations as a new Spotify playlist (asks user to confirm before writing)
 - **manage_taste_memory** — store a fact about the user's musical taste for future sessions
 - **search_taste_memory** — recall stored facts about the user's taste preferences
 
@@ -524,8 +526,41 @@ async def validate_tool_output(state: AgentState) -> dict:
 
 
 def route_after_agent(state: AgentState) -> str:
-    """Route after the agent node: tools if tool_calls present, else END."""
+    """Route after the agent node: tools if tool_calls present, else format_response."""
     last = state["messages"][-1]
     if hasattr(last, "tool_calls") and last.tool_calls:
         return "call_tools"
-    return "__end__"
+    return "format_response"
+
+
+# ---------------------------------------------------------------------------
+# Structured response extraction
+# ---------------------------------------------------------------------------
+
+_TRACK_LINE_RE = re.compile(
+    r"^\d+\.\s+(.+?)(?:\s+\[(?:spotify:track:)?[A-Za-z0-9]+\])?$",
+    re.MULTILINE,
+)
+
+
+def format_response(state: AgentState) -> dict:
+    """Extract structured data from the final AI message.
+
+    Populates ``agent_response`` with:
+    - ``message``: full text of the AI reply
+    - ``track_list``: numbered track names parsed from the response (if any)
+    """
+    messages = state.get("messages", [])
+    last = next((m for m in reversed(messages) if isinstance(m, AIMessage)), None)
+    if not last:
+        return {}
+
+    content = str(last.content)
+    track_list = [m.group(1).strip() for m in _TRACK_LINE_RE.finditer(content)]
+
+    return {
+        "agent_response": {
+            "message": content,
+            "track_list": track_list[:20],
+        }
+    }

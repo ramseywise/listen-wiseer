@@ -16,9 +16,6 @@ class Settings(BaseSettings):
     # Embeddings (local sentence-transformers)
     embedding_model: str = "all-MiniLM-L6-v2"
 
-    # Vector store
-    chroma_persist_directory: str = "./data/vectorstore"
-
     # App
     log_level: str = "INFO"
     enable_tracing: bool = False
@@ -42,10 +39,7 @@ class Settings(BaseSettings):
     last_fm_api_key: str = ""
     last_fm_id: str = ""
 
-    # RAG
-    rag_top_k: int = 3
-    wikipedia_language: str = "en"
-    enable_rag: bool = True
+    # Web search (artist/genre context)
     tavily_api_key: str = ""
 
     # Agent
@@ -57,7 +51,8 @@ class Settings(BaseSettings):
     intent_confidence_threshold: float = 0.4
     max_tool_validation_retries: int = 1
 
-    # Memory / persistence
+    # Memory / persistence (priority: postgres > redis > in-memory)
+    postgres_url: str = ""
     redis_url: str = ""
     redis_ttl_minutes: int = 1440
 

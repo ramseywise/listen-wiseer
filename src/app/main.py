@@ -10,6 +10,7 @@ import uuid
 
 import chainlit as cl
 from langchain_core.messages import HumanMessage
+from langgraph.types import Command
 
 from agent.dependencies import get_checkpointer
 from agent.graph import RECURSION_LIMIT, build_graph
@@ -40,14 +41,16 @@ async def _get_graph():
 async def start() -> None:
     thread_id = str(uuid.uuid4())
     cl.user_session.set("thread_id", thread_id)
+    cl.user_session.set("awaiting_confirm", None)
     log.info("app.session_start", thread_id=thread_id)
     await cl.Message(
         content=(
             "Welcome to **listen-wiseer**! \U0001f3b5\n\n"
             "I can help you:\n"
-            '- **Get recommendations** \u2014 *"find me tracks like bossa nova"*\n'
-            '- **Explore your history** \u2014 *"what have I been listening to?"*\n'
-            '- **Search Spotify** \u2014 *"search for Radiohead"*\n\n'
+            '- **Get recommendations** — *"find me tracks like bossa nova"*\n'
+            '- **Explore your history** — *"what have I been listening to?"*\n'
+            '- **Search Spotify** — *"search for Radiohead"*\n'
+            '- **Save a playlist** — *"create a playlist from those tracks"*\n\n'
             "What would you like to do?"
         ),
     ).send()
@@ -64,17 +67,39 @@ async def on_message(message: cl.Message) -> None:
         },
         "recursion_limit": RECURSION_LIMIT,
     }
-    state = {"messages": [HumanMessage(content=message.content)]}
+
+    # Resume from playlist confirmation interrupt if pending
+    awaiting = cl.user_session.get("awaiting_confirm")
+    if awaiting:
+        cl.user_session.set("awaiting_confirm", None)
+        confirmed = message.content.strip().lower() in {"yes", "y", "confirm", "ok", "sure", "yep"}
+        state_input: dict | Command = Command(resume=confirmed)
+    else:
+        state_input = {"messages": [HumanMessage(content=message.content)]}
 
     try:
         g = await _get_graph()
-        result = await g.ainvoke(state, config=config)
-        reply = result["messages"][-1].content
+        result = await g.ainvoke(state_input, config=config)
 
-        # Background: optimize procedural prompt from conversation trajectory
-        schedule_optimization(user_id, result["messages"], get_store())
+        # Check for HITL interrupt (playlist write confirmation)
+        interrupts = result.get("__interrupt__")
+        if interrupts:
+            interrupt_val = interrupts[0].value if hasattr(interrupts[0], "value") else interrupts[0]
+            cl.user_session.set("awaiting_confirm", interrupt_val)
+            if isinstance(interrupt_val, dict) and interrupt_val.get("type") == "confirm_playlist_create":
+                name = interrupt_val["name"]
+                count = interrupt_val["track_count"]
+                reply = (
+                    f"Ready to create playlist **{name}** with **{count} tracks**.\n\n"
+                    "Confirm? Reply **yes** to save or **no** to cancel."
+                )
+            else:
+                reply = "Awaiting your confirmation. Reply **yes** to proceed or **no** to cancel."
+        else:
+            reply = result["messages"][-1].content
+            schedule_optimization(user_id, result["messages"], get_store())
     except Exception as exc:
         log.error("app.on_message.failed", error=str(exc), thread_id=thread_id)
-        reply = "Something went wrong \u2014 please try again."
+        reply = "Something went wrong — please try again."
 
     await cl.Message(content=reply).send()
