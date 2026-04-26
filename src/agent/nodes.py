@@ -451,7 +451,18 @@ _TOOL_INTENT_MAP: dict[str, set[str]] = {
         "get_related_artists",
         "search_tracks",
     },
-    "history": {"get_recently_played"},
+    "history": {"get_recently_played", "get_top_tracks", "get_top_artists"},
+    "explore_my_taste": {
+        "get_top_artists",
+        "get_top_tracks",
+        "search_taste_memory",
+        "manage_taste_memory",
+    },
+    "discover": {
+        "get_spotify_recommendations",
+        "get_related_artists",
+        "get_top_artists",
+    },
 }
 
 _ERROR_SIGNALS = [

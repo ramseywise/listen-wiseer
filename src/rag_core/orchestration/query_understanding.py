@@ -29,7 +29,7 @@ class QueryAnalysis:
     """Result of query analysis."""
 
     original_query: str
-    intent: str  # artist_info | genre_info | recommendation | history | chit_chat
+    intent: str  # artist_info | genre_info | recommendation | history | explore_my_taste | discover | chit_chat
     complexity: str  # simple | moderate | complex
     expanded_query: str
     entities: dict[str, list[str]]
@@ -95,6 +95,28 @@ INTENT_PATTERNS: dict[str, list[str]] = {
         "my playlists",
         "what did i listen",
         "my spotify",
+    ],
+    "explore_my_taste": [
+        "my top",
+        "top tracks",
+        "top artists",
+        "what do i like",
+        "what kind of music",
+        "my music profile",
+        "what genres",
+        "music taste",
+        "my vibe",
+    ],
+    "discover": [
+        "discover",
+        "surprise me",
+        "something new",
+        "new music",
+        "what should i try",
+        "find me something",
+        "outside my bubble",
+        "underrated",
+        "hidden gem",
     ],
     "chit_chat": [
         "hello",

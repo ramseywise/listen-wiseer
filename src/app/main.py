@@ -96,10 +96,24 @@ async def on_message(message: cl.Message) -> None:
             else:
                 reply = "Awaiting your confirmation. Reply **yes** to proceed or **no** to cancel."
         else:
-            reply = result["messages"][-1].content
+            agent_resp = result.get("agent_response", {})
+            reply = agent_resp.get("message") or result["messages"][-1].content
+            suggestions = agent_resp.get("suggestions", [])
+            actions = [
+                cl.Action(name="suggestion", label=s, payload={"query": s})
+                for s in suggestions[:3]
+            ]
             schedule_optimization(user_id, result["messages"], get_store())
     except Exception as exc:
         log.error("app.on_message.failed", error=str(exc), thread_id=thread_id)
         reply = "Something went wrong — please try again."
+        actions = []
 
-    await cl.Message(content=reply).send()
+    await cl.Message(content=reply, actions=actions or None).send()
+
+
+@cl.action_callback("suggestion")
+async def on_suggestion_action(action: cl.Action) -> None:
+    query = action.payload.get("query", "")
+    if query:
+        await on_message(cl.Message(content=query))

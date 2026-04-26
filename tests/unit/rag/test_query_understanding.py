@@ -62,6 +62,34 @@ class TestClassifyIntent:
         result = classify_intent("thanks, that was great")
         assert result["intent"] == "chit_chat"
 
+    def test_classify_explore_my_taste_top_artists(self) -> None:
+        result = classify_intent("show me my top artists")
+        assert result["intent"] == "explore_my_taste"
+
+    def test_classify_explore_my_taste_top_tracks(self) -> None:
+        result = classify_intent("what are my top tracks right now?")
+        assert result["intent"] == "explore_my_taste"
+
+    def test_classify_explore_my_taste_profile(self) -> None:
+        result = classify_intent("what kind of music am I actually into?")
+        assert result["intent"] == "explore_my_taste"
+
+    def test_classify_discover_new_music(self) -> None:
+        result = classify_intent("find me something new I haven't heard")
+        assert result["intent"] == "discover"
+
+    def test_classify_discover_surprise(self) -> None:
+        result = classify_intent("surprise me with some music")
+        assert result["intent"] == "discover"
+
+    def test_classify_discover_expand_taste(self) -> None:
+        result = classify_intent("I want to discover something new and underrated")
+        assert result["intent"] == "discover"
+
+    def test_history_not_reclassified_as_explore(self) -> None:
+        result = classify_intent("show me my recently played tracks")
+        assert result["intent"] == "history"
+
     def test_classify_default_fallback(self) -> None:
         """Unrecognized query falls back to artist_info with low confidence."""
         result = classify_intent("asdfghjkl zxcvbnm")
@@ -108,18 +136,18 @@ class TestExtractEntities:
 
 class TestExpandQuery:
     def test_expand_adds_synonyms(self) -> None:
-        result = expand_query("find me songs similar to Radiohead")
-        assert result["expanded"] != result["original"]
-        assert len(result["terms_expanded"]) > 0
+        original = "find me songs similar to Radiohead"
+        result = expand_query(original)
+        assert len(result) > len(original)
 
     def test_expand_no_match_passthrough(self) -> None:
-        result = expand_query("who is Aphex Twin?")
-        assert result["expanded"] == result["original"]
-        assert result["terms_expanded"] == []
+        original = "who is Aphex Twin?"
+        result = expand_query(original)
+        assert result == original
 
     def test_expand_track_synonym(self) -> None:
         result = expand_query("find me a good track")
-        assert "track" in result["terms_expanded"]
+        assert any(syn in result for syn in ["song", "tune", "record"])
 
 
 # =============================================================================
