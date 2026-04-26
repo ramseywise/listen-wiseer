@@ -26,10 +26,25 @@ log = get_logger(__name__)
 _query_analyzer = QueryAnalyzer()
 
 _INTENT_TOOL_HINTS: dict[str, str] = {
-    "artist_info": "Use get_artist_context to answer questions about this artist.",
-    "genre_info": "Use get_artist_context with the genre name to get genre info.",
+    "artist_info": (
+        "Use get_artist_info for metadata, get_artist_context for narrative bio/history, "
+        "get_related_artists for similar artists, get_artist_top_tracks for their best songs, "
+        "get_artist_albums for discography."
+    ),
+    "genre_info": "Use get_artist_context with the genre name to get genre history and context.",
     "recommendation": "Use recommend_* tools based on the type of recommendation requested.",
-    "history": "Use get_recently_played to fetch the user's listening history.",
+    "history": (
+        "Use get_recently_played for recent listening. "
+        "Use get_top_tracks or get_top_artists for affinity-ranked taste analysis."
+    ),
+    "explore_my_taste": (
+        "Use get_top_artists and get_top_tracks to surface the user's listening patterns. "
+        "Search taste_memory for stored preferences too."
+    ),
+    "discover": (
+        "Use get_spotify_recommendations seeded from top artists or a track the user mentioned. "
+        "Use get_related_artists to surface adjacent artists they may not know."
+    ),
     "chit_chat": "Respond directly without using tools.",
 }
 
@@ -50,25 +65,41 @@ _llm_with_tools = _llm.bind_tools(ALL_TOOLS)
 SYSTEM_PROMPT = """\
 You are listen-wiseer, a personal music assistant.
 
-You help users explore their Spotify listening history, discover new music
-through content-based recommendations, and learn about artists.
+You help users explore their Spotify listening history, discover new music,
+dive deep into artists and genres, and get personalised recommendations.
 
 ## Tool usage
 
+### Recommendations (ENOA corpus — personalised to your taste map)
 - **recommend_similar_tracks** — "find tracks like X" (needs a Spotify track ID)
 - **recommend_for_artist** — "recommend tracks by/like artist X" (needs a Spotify artist ID)
-- **recommend_by_genre** — genre-based requests, e.g. "zouk", "bossa nova", "house" (pass the genre name)
+- **recommend_by_genre** — genre-based requests, e.g. "zouk", "bossa nova", "house"
 - **recommend_for_playlist** — playlist-based recommendations (needs a Spotify playlist ID)
-- **get_recently_played** — see what the user has been listening to
-- **search_tracks** — find a specific track or artist on Spotify (returns track IDs you can feed into other tools)
+
+### Discovery (Spotify-native — good for new/unknown artists)
+- **get_spotify_recommendations** — seed-based discovery; use when the artist/track isn't in the local corpus or when the user wants to explore outside their bubble
 - **get_related_artists** — "who sounds like X?", "artists similar to X" (needs a Spotify artist ID)
-- **get_artist_context** — "who is X?", "tell me about X", artist trivia, history, influences, genre info
-- **create_playlist** — save recommendations as a new Spotify playlist (asks user to confirm before writing)
-- **manage_taste_memory** — store a fact about the user's musical taste for future sessions
-- **search_taste_memory** — recall stored facts about the user's taste preferences
+
+### Taste analysis (user's own listening data)
+- **get_top_tracks** — "my top tracks this month / all time" (time_range: short_term, medium_term, long_term)
+- **get_top_artists** — "my top artists", "what genres am I into lately"
+- **get_recently_played** — "what have I been listening to recently"
+- **get_user_playlists** — list the user's playlists (use to look up a playlist ID)
+
+### Artist deep dives
+- **search_tracks** — resolve an artist/track name to a Spotify ID (always do this first)
+- **get_artist_info** — genres, popularity, follower count for an artist
+- **get_artist_top_tracks** — artist's top 10 tracks (good for seeding recommendations)
+- **get_artist_albums** — full discography (albums and singles)
+- **get_artist_context** — narrative bio, history, influences, genre context (Tavily web search)
+
+### Memory & playlist
+- **manage_taste_memory** — store a taste preference for future sessions
+- **search_taste_memory** — recall stored preferences (always call before making recommendations)
+- **create_playlist** — save recommendations as a new Spotify playlist (asks user to confirm)
 
 If the user gives you an artist/track *name* instead of a Spotify ID, use
-**search_tracks** first to resolve the ID, then call the appropriate recommend tool.
+**search_tracks** first to resolve the ID, then call the appropriate tool.
 
 ## Memory
 
@@ -546,12 +577,40 @@ _TRACK_LINE_RE = re.compile(
 )
 
 
+_SUGGESTION_TEMPLATES: dict[str, list[str]] = {
+    "recommendation": [
+        "Want me to save these as a Spotify playlist?",
+        "Should I find more tracks like one of these?",
+        "Want to explore the artist behind any of these?",
+    ],
+    "history": [
+        "Want recommendations based on your top tracks?",
+        "Should I find artists similar to your top ones?",
+        "Want to see how your taste has changed over time?",
+    ],
+    "explore_my_taste": [
+        "Want recommendations based on these artists?",
+        "Should I find artists you might not know yet?",
+    ],
+    "artist_info": [
+        "Want to hear their top tracks?",
+        "Should I find artists similar to them?",
+        "Want recommendations in this style?",
+    ],
+    "discover": [
+        "Want to save any of these to a playlist?",
+        "Should I dig deeper into any of these artists?",
+    ],
+}
+
+
 def format_response(state: AgentState) -> dict:
     """Extract structured data from the final AI message.
 
     Populates ``agent_response`` with:
     - ``message``: full text of the AI reply
     - ``track_list``: numbered track names parsed from the response (if any)
+    - ``suggestions``: contextual follow-up prompts based on intent
     """
     messages = state.get("messages", [])
     last = next((m for m in reversed(messages) if isinstance(m, AIMessage)), None)
@@ -560,10 +619,13 @@ def format_response(state: AgentState) -> dict:
 
     content = str(last.content)
     track_list = [m.group(1).strip() for m in _TRACK_LINE_RE.finditer(content)]
+    intent = state.get("intent", "")
+    suggestions = _SUGGESTION_TEMPLATES.get(intent, [])
 
     return {
         "agent_response": {
             "message": content,
             "track_list": track_list[:20],
+            "suggestions": suggestions,
         }
     }

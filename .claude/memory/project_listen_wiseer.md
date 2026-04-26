@@ -4,25 +4,25 @@ description: listen-wiseer project — phase status, key design decisions, corpu
 type: project
 ---
 
-Spotify music recommendation agent. LangGraph + Chainlit + FastMCP + LightGBM + ChromaDB.
+Spotify music recommendation + exploration agent. LangGraph + Chainlit + FastMCP + LightGBM.
 
 **Why:** Personal music assistant personalised to the user's own ENOA taste map — not a generic Spotify wrapper.
 
-## Phase status (as of 2026-04-06)
+## Phase status (as of 2026-04-26)
 
 | Phase | Status |
 |-------|--------|
-| 1 — structlog, Pydantic v2, Polars loader | ✓ DONE |
-| 1.5 — Spotify OAuth (httpx), exception hierarchy | ✓ DONE |
-| 2 — GMM + LightGBM; 4 pipelines; 8 MCP tools; 222 tests | ✓ DONE |
-| 3a–3d — ETL hardening, feature engineering, EDA notebooks | ✓ DONE |
-| 4a — LangGraph agent + Chainlit | ✓ DONE |
-| 4b — episodic, taste, procedural memory (MemorySaver) | ✓ DONE |
-| 5a — RAG core: DuckDB vector store, MiniLM, Wikipedia/Tavily, 93 tests | ✓ DONE |
-| 5b — Intent routing: 6 steps, 5 intents, clarification node, 10 tools, 97 tests | ✓ DONE |
-| 5c — Eval harness (LangFuse tracing, golden dataset, intent/tool metrics) | **UP NEXT** |
-| 6a — Playwright UI smoke tests, visual regression | PLANNED |
-| 6b — Observability dashboard | PLANNED |
+| 1–5b — full stack, OAuth, ML, agent, memory, RAG, intent routing | ✓ DONE |
+| 6 — Refactor: Tavily web search, Docker chat, eval harness, clean deps | ✓ DONE |
+| **7 — Music exploration rework** | **PLANNING** |
+
+## Phase 7 direction
+
+Reworking toward a conversational music explorer (recommendations + genre/artist exploration + personalization). Key decisions made:
+- Keep LangGraph (not migrating to ADK) — state management needed for ML pipeline
+- Extract Spotify client as FastMCP server (composable, Claude-native)
+- Single graph with multi-node intent routing (not separate subagents yet)
+- Skip music wiki for now — Tavily covers exploration well enough for prototype
 
 ## Graph topology (post-5b)
 
@@ -39,8 +39,8 @@ START → trim_history → classify_intent → [route_after_classify]
 - 595k-row corpus. Brute-force cosine ~200ms — acceptable; FAISS deferred.
 - ENOA (top/left) coordinates are the differentiator: encode user's own curation patterns, not just audio similarity.
 - StructuredTool wrapping (direct Python calls) over langchain-mcp-adapters — simpler, no process management.
-- Single `"artist_info"` ChromaDB collection with artist metadata filter (not per-artist collections).
-- Lazy ChromaDB ingestion: fetch Wikipedia/Tavily on first query, upsert, cache.
+- ChromaDB removed (Phase 6 cleanup) — Tavily replaces RAG for artist context.
+- `rag_core/` left in place but suspended; wired as optional Tavily enrichment layer.
 - `MemorySaver` for in-session multi-turn only — cross-session persistence deferred.
 - LLM: single `_llm` (Haiku) reused for both agent and rewrite — no separate `_haiku` instance.
 - `langchain-anthropic` (`ChatAnthropic`) used over raw SDK for LangFuse span visibility.
@@ -66,4 +66,4 @@ START → trim_history → classify_intent → [route_after_classify]
 
 ## How to apply
 
-Next session: start Phase 5c eval harness. See `.claude/docs/SESSION.md` for next session prompt.
+Next session: write Phase 7 research doc (`research/music-agent/exploration-architecture.md`) covering Spotify MCP server design, graph refactor plan, and exploration UX. Then plan and execute.

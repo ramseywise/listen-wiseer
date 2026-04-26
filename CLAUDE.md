@@ -41,12 +41,10 @@ models/         — serialized artifacts (gitignored)
 | 4b — episodic, taste, procedural memory | ✓ DONE |
 | 5a — RAG core (DuckDB vector, MiniLM, Wikipedia, 93 tests) | ✓ DONE |
 | 5b — Intent routing (5 intents, clarify node, 10 tools, 97 tests) | ✓ DONE |
-| **6 — Refactor: Tavily web search, clean deps, Docker chat** | **ACTIVE** |
-| 6 Phase 2 — Domain tool modules, AgentResponse schema, HITL playlist write | PLANNED |
-| 6 Phase 3 — `docker compose up` fully working (postgres checkpointer, db-init) | PLANNED |
-| 6 Phase 4 — Prompts, RAG enrichment on top of web search, eval harness | PLANNED |
+| 6 — Refactor: Tavily web search, clean deps, Docker chat, eval harness | ✓ DONE |
+| **7 — Music exploration rework: Spotify MCP server, graph cleanup, exploration UX** | **PLANNING** |
 
-Active plan: `.claude/docs/plans/phase6_refactor.md`
+Active plan: none — Phase 7 research pending. See `.claude/docs/README.md` for doc structure.
 
 ## Active gotchas
 
