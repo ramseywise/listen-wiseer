@@ -27,7 +27,13 @@ Decision support docs. Start here before planning new work.
 
 ## plans/
 
-Active and upcoming implementation plans. Empty until a new phase kicks off.
+Active and upcoming implementation plans.
+
+| Plan | Status | What it covers |
+|---|---|---|
+| [phase7a-exploration-tools.md](plans/phase7a-exploration-tools.md) | ✓ DONE | 6 new fetch functions, 7 new agent tools, MCP parity, 22 tests |
+| [phase7b-intent-refactor-ux.md](plans/phase7b-intent-refactor-ux.md) | PLANNED | Add `explore_my_taste` + `discover` to classifier; wire suggestions → Chainlit chips |
+| [phase7c-memory-genre-polish.md](plans/phase7c-memory-genre-polish.md) | PLANNED | Genre lineage tool, taste drift analysis, swap InMemoryStore → Postgres |
 
 ---
 

@@ -42,9 +42,11 @@ models/         — serialized artifacts (gitignored)
 | 5a — RAG core (DuckDB vector, MiniLM, Wikipedia, 93 tests) | ✓ DONE |
 | 5b — Intent routing (5 intents, clarify node, 10 tools, 97 tests) | ✓ DONE |
 | 6 — Refactor: Tavily web search, clean deps, Docker chat, eval harness | ✓ DONE |
-| **7 — Music exploration rework: Spotify MCP server, graph cleanup, exploration UX** | **PLANNING** |
+| 7a — Exploration tools: 6 fetch functions, 7 new tools, MCP parity | ✓ DONE |
+| **7b — Intent taxonomy (explore_my_taste + discover), Chainlit suggestion chips** | **PLANNED** |
+| **7c — Genre lineage tool, taste drift analysis, Postgres memory store** | **PLANNED** |
 
-Active plan: none — Phase 7 research pending. See `.claude/docs/README.md` for doc structure.
+Active plan: Phase 7b — `.claude/docs/plans/phase7b-intent-refactor-ux.md`
 
 ## Active gotchas
 
