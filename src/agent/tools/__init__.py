@@ -14,13 +14,14 @@ from agent.tools.spotify_read import (
     get_recently_played_tool,
     get_related_artists_tool,
     get_spotify_recommendations_tool,
+    get_taste_analysis_tool,
     get_top_artists_tool,
     get_top_tracks_tool,
     get_user_playlists_tool,
     search_tracks_tool,
 )
 from agent.tools.spotify_write import create_playlist_tool
-from agent.tools.web_search import get_artist_context_tool
+from agent.tools.web_search import get_artist_context_tool, get_genre_context_tool
 
 ALL_TOOLS = [
     # Recommendations (ENOA corpus)
@@ -42,6 +43,8 @@ ALL_TOOLS = [
     get_artist_albums_tool,
     # Context & memory
     get_artist_context_tool,
+    get_genre_context_tool,
+    get_taste_analysis_tool,
     manage_taste_memory,
     search_taste_memory,
     # Spotify write (HITL)
@@ -65,6 +68,8 @@ __all__ = [
     "get_artist_top_tracks_tool",
     "get_artist_albums_tool",
     "get_artist_context_tool",
+    "get_genre_context_tool",
+    "get_taste_analysis_tool",
     "create_playlist_tool",
     "manage_taste_memory",
     "search_taste_memory",

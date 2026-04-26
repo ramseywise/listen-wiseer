@@ -31,7 +31,7 @@ async def _get_graph():
     global _graph  # noqa: PLW0603
     if _graph is None:
         checkpointer = await get_checkpointer()
-        store = get_store()
+        store = await get_store()
         _graph = build_graph(checkpointer=checkpointer, store=store)
         log.info("app.graph_built")
     return _graph
@@ -49,6 +49,8 @@ async def start() -> None:
             "I can help you:\n"
             '- **Get recommendations** — *"find me tracks like bossa nova"*\n'
             '- **Explore your history** — *"what have I been listening to?"*\n'
+            '- **Explore your taste** — *"how has my music taste changed over time?"*\n'
+            '- **Genre deep dives** — *"tell me about the origins of bossa nova"*\n'
             '- **Search Spotify** — *"search for Radiohead"*\n'
             '- **Save a playlist** — *"create a playlist from those tracks"*\n\n'
             "What would you like to do?"

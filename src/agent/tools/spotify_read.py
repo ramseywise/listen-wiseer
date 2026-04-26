@@ -264,6 +264,41 @@ get_user_playlists_tool = StructuredTool.from_function(
 )
 
 
+def _get_taste_analysis() -> str:
+    """Compare short-term vs long-term top artists to surface taste drift."""
+    try:
+        short = fetch_top_artists(_get_client(), time_range="short_term", limit=10)
+        long_ = fetch_top_artists(_get_client(), time_range="long_term", limit=10)
+        short_names = {a["name"] for a in short}
+        long_names = {a["name"] for a in long_}
+        new_artists = short_names - long_names
+        stable_artists = short_names & long_names
+        fading_artists = long_names - short_names
+
+        lines = ["Your music taste analysis (past 4 weeks vs all time):"]
+        if new_artists:
+            lines.append(f"\nNew obsessions: {', '.join(sorted(new_artists))}")
+        if stable_artists:
+            lines.append(f"Consistent staples: {', '.join(sorted(stable_artists))}")
+        if fading_artists:
+            lines.append(f"Fading interests: {', '.join(sorted(fading_artists))}")
+        return "\n".join(lines)
+    except Exception as exc:
+        log.error("agent.tools.taste_analysis.failed", error=str(exc))
+        return f"Failed to fetch taste analysis: {exc}"
+
+
+get_taste_analysis_tool = StructuredTool.from_function(
+    _get_taste_analysis,
+    name="get_taste_analysis",
+    description=(
+        "Compare the user's short-term (past 4 weeks) vs long-term (all time) top artists "
+        "to surface new obsessions, consistent staples, and fading interests. "
+        "Use for 'how has my taste changed?', 'what am I into lately vs before?', drift analysis."
+    ),
+)
+
+
 def _get_spotify_recommendations(
     seed_track_ids: list[str] | None = None,
     seed_artist_ids: list[str] | None = None,

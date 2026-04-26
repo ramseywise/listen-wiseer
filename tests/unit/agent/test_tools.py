@@ -40,7 +40,7 @@ class TestAllTools:
     def test_all_tools_count(self) -> None:
         from agent.tools import ALL_TOOLS
 
-        assert len(ALL_TOOLS) == 18
+        assert len(ALL_TOOLS) == 20
 
     def test_create_playlist_in_all_tools(self) -> None:
         from agent.tools import ALL_TOOLS

@@ -55,6 +55,7 @@ class Settings(BaseSettings):
     postgres_url: str = ""
     redis_url: str = ""
     redis_ttl_minutes: int = 1440
+    memory_store_url: str | None = None  # Postgres URL for persistent cross-session memory
 
     # LangFuse
     langfuse_public_key: str = ""

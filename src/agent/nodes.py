@@ -31,14 +31,18 @@ _INTENT_TOOL_HINTS: dict[str, str] = {
         "get_related_artists for similar artists, get_artist_top_tracks for their best songs, "
         "get_artist_albums for discography."
     ),
-    "genre_info": "Use get_artist_context with the genre name to get genre history and context.",
+    "genre_info": (
+        "Use get_genre_context for genre-specific queries (origins, history, subgenres). "
+        "Fall back to get_artist_context only for artist-style genre questions."
+    ),
     "recommendation": "Use recommend_* tools based on the type of recommendation requested.",
     "history": (
         "Use get_recently_played for recent listening. "
         "Use get_top_tracks or get_top_artists for affinity-ranked taste analysis."
     ),
     "explore_my_taste": (
-        "Use get_top_artists and get_top_tracks to surface the user's listening patterns. "
+        "Use get_taste_analysis for drift/change questions ('how has my taste changed?'). "
+        "Use get_top_artists and get_top_tracks for top-N or genre breakdown queries. "
         "Search taste_memory for stored preferences too."
     ),
     "discover": (
@@ -81,6 +85,7 @@ dive deep into artists and genres, and get personalised recommendations.
 - **get_related_artists** — "who sounds like X?", "artists similar to X" (needs a Spotify artist ID)
 
 ### Taste analysis (user's own listening data)
+- **get_taste_analysis** — compare short-term vs long-term top artists to surface drift, new obsessions, and stable staples; use for "how has my taste changed?" queries
 - **get_top_tracks** — "my top tracks this month / all time" (time_range: short_term, medium_term, long_term)
 - **get_top_artists** — "my top artists", "what genres am I into lately"
 - **get_recently_played** — "what have I been listening to recently"
@@ -91,7 +96,10 @@ dive deep into artists and genres, and get personalised recommendations.
 - **get_artist_info** — genres, popularity, follower count for an artist
 - **get_artist_top_tracks** — artist's top 10 tracks (good for seeding recommendations)
 - **get_artist_albums** — full discography (albums and singles)
-- **get_artist_context** — narrative bio, history, influences, genre context (Tavily web search)
+- **get_artist_context** — narrative bio, history, influences, style (Tavily web search)
+
+### Genre deep dives
+- **get_genre_context** — genre origins, history, defining characteristics, key artists, subgenres (Tavily web search; prefer over get_artist_context for genre questions)
 
 ### Memory & playlist
 - **manage_taste_memory** — store a taste preference for future sessions
@@ -442,7 +450,7 @@ async def agent_node(
 
 _TOOL_INTENT_MAP: dict[str, set[str]] = {
     "artist_info": {"get_artist_context"},
-    "genre_info": {"get_artist_context", "recommend_by_genre"},
+    "genre_info": {"get_genre_context", "get_artist_context", "recommend_by_genre"},
     "recommendation": {
         "recommend_similar_tracks",
         "recommend_for_artist",
@@ -455,6 +463,7 @@ _TOOL_INTENT_MAP: dict[str, set[str]] = {
     "explore_my_taste": {
         "get_top_artists",
         "get_top_tracks",
+        "get_taste_analysis",
         "search_taste_memory",
         "manage_taste_memory",
     },

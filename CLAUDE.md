@@ -43,10 +43,8 @@ models/         — serialized artifacts (gitignored)
 | 5b — Intent routing (5 intents, clarify node, 10 tools, 97 tests) | ✓ DONE |
 | 6 — Refactor: Tavily web search, clean deps, Docker chat, eval harness | ✓ DONE |
 | 7a — Exploration tools: 6 fetch functions, 7 new tools, MCP parity | ✓ DONE |
-| **7b — Intent taxonomy (explore_my_taste + discover), Chainlit suggestion chips** | **PLANNED** |
-| **7c — Genre lineage tool, taste drift analysis, Postgres memory store** | **PLANNED** |
-
-Active plan: Phase 7b — `.claude/docs/plans/phase7b-intent-refactor-ux.md`
+| 7b — Intent taxonomy (explore_my_taste + discover), Chainlit suggestion chips | ✓ DONE |
+| 7c — Genre lineage tool, taste drift analysis, Postgres memory store | ✓ DONE |
 
 ## Active gotchas
 
