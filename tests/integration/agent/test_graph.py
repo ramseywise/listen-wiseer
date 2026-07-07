@@ -77,7 +77,7 @@ def _config(thread_id: str) -> dict:
 
 
 @patch("agent.tools._engine", _make_engine_mock())
-@patch("agent.nodes._llm_with_tools")
+@patch("agent.graph_nodes._llm_with_tools")
 def test_graph_direct_response(mock_llm: MagicMock) -> None:
     """No tool_calls → straight to END."""
     mock_llm.ainvoke.return_value = AIMessage(content="Hello! How can I help?")
@@ -93,7 +93,7 @@ def test_graph_direct_response(mock_llm: MagicMock) -> None:
 
 
 @patch("agent.tools._engine", _make_engine_mock())
-@patch("agent.nodes._llm_with_tools")
+@patch("agent.graph_nodes._llm_with_tools")
 def test_graph_tool_then_response(mock_llm: MagicMock) -> None:
     """tool_calls → call_tools → agent → END (one loop iteration)."""
     tool_call = {
@@ -119,7 +119,7 @@ def test_graph_tool_then_response(mock_llm: MagicMock) -> None:
 
 @patch("agent.tools._get_client")
 @patch("agent.tools._engine", _make_engine_mock())
-@patch("agent.nodes._llm_with_tools")
+@patch("agent.graph_nodes._llm_with_tools")
 def test_graph_multi_tool_chain(
     mock_llm: MagicMock,
     mock_get_client: MagicMock,
@@ -175,7 +175,7 @@ def test_graph_multi_tool_chain(
 
 
 @patch("agent.tools._engine", _make_engine_mock())
-@patch("agent.nodes._llm_with_tools")
+@patch("agent.graph_nodes._llm_with_tools")
 def test_graph_multiturn_memory(mock_llm: MagicMock) -> None:
     """Two invocations with the same thread_id share message history."""
     mock_llm.ainvoke.side_effect = [
@@ -205,20 +205,20 @@ def test_graph_multiturn_memory(mock_llm: MagicMock) -> None:
 
 
 @patch("agent.tools._engine", MagicMock())
-@patch("agent.nodes._llm_with_tools")
+@patch("agent.graph_nodes._llm_with_tools")
 def test_route_after_agent_no_tool_calls(mock_llm: MagicMock) -> None:
     """route_after_agent returns __end__ when no tool_calls."""
-    from agent.nodes import route_after_agent
+    from agent.graph_nodes import route_after_agent
 
     state: dict = {"messages": [AIMessage(content="done")]}
     assert route_after_agent(state) == "__end__"
 
 
 @patch("agent.tools._engine", MagicMock())
-@patch("agent.nodes._llm_with_tools")
+@patch("agent.graph_nodes._llm_with_tools")
 def test_route_after_agent_with_tool_calls(mock_llm: MagicMock) -> None:
     """route_after_agent returns call_tools when tool_calls present."""
-    from agent.nodes import route_after_agent
+    from agent.graph_nodes import route_after_agent
 
     tc = {"name": "search_tracks", "args": {"query": "x"}, "id": "t1", "type": "tool_call"}
     state: dict = {"messages": [AIMessage(content="", tool_calls=[tc])]}

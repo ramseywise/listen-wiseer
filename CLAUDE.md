@@ -6,7 +6,7 @@
 - LLM: Claude Haiku (`claude-haiku-4-5-20251001`) · LangGraph · Chainlit · FastMCP
 - Data: Polars · DuckDB · Parquet cache
 - ML: GMM clustering + LightGBM reranker · scikit-learn pipelines
-- Context: Tavily web search for artist/genre history (rag_core/ suspended — see Phase 6 plan)
+- Context: agentic Tavily web search for artist/genre history (query decompose/fan-out + confidence gating; see Phase 8 plan)
 - Auth: custom OAuth via httpx · token at `.spotify_cache`
 
 ## Commands
@@ -25,7 +25,8 @@ src/
     modules/: similarity, clustering, classifiers, genre (ENOA)
   mcp_server/   — 4 recommend_* tools + Spotify tools
   agent/        — LangGraph agent + Chainlit app
-    graph.py, nodes.py, state.py, memory/, rag/, intent/
+    graph.py, graph_nodes.py, memory_helpers.py, validation.py, response.py,
+    state.py, memory_store.py, intent.py, tools/
   app/          — Chainlit entry point
 
 models/         — serialized artifacts (gitignored)
@@ -45,6 +46,7 @@ models/         — serialized artifacts (gitignored)
 | 7a — Exploration tools: 6 fetch functions, 7 new tools, MCP parity | ✓ DONE |
 | 7b — Intent taxonomy (explore_my_taste + discover), Chainlit suggestion chips | ✓ DONE |
 | 7c — Genre lineage tool, taste drift analysis, Postgres memory store | ✓ DONE |
+| 8 — RAG right-sizing (deleted `rag_core/`), agentic web search, HITL/eval hardening | IN PROGRESS |
 
 ## Active gotchas
 
@@ -52,8 +54,9 @@ models/         — serialized artifacts (gitignored)
 - `models/` and `data/cache/` gitignored — regenerate after pull (`make train`)
 - `audio-features` Spotify endpoint dead (403, deprecated 2025) — ENOA genre embeddings in use; Last.fm activation pending
 - Last.fm error 10 = pending manual activation (not wrong key) — just wait
-- 32 test failures are `duckdb.IOError` (missing LFS DB) — not regressions; use `tests/unit/` targeted runs
-- `rag_core/` suspended as agent tool — replaced by Tavily web search (`get_artist_context_tool`); set `TAVILY_API_KEY`
+- `pyproject.toml` pins `requires-python = ">=3.11"` with no upper bound — `uv sync` on a newer default interpreter (3.13+) will pick it and fail to build `gensim` (Cython uses removed CPython internals). A committed `.python-version` (3.11) pins this; don't remove it.
+- `deepeval`'s pytest plugin pings telemetry on import — hangs for minutes in restricted-network environments. `make test*` targets export `DEEPEVAL_TELEMETRY_OPT_OUT=YES`; set it yourself if running `pytest` directly.
+- `rag_core/` deleted (Phase 8) — was an unfinished retrofit of a Danish support-bot RAG (OpenSearch/e5-large lineage), never fully adapted to music. Web/artist/genre context is Tavily-only now (`get_artist_context_tool`, `get_genre_context_tool`); set `TAVILY_API_KEY`. Intent classification (`QueryAnalyzer`) moved to `agent/intent.py` — it was the one music-relevant piece.
 - `InMemoryStore` used for cross-session memory in dev; Redis/Postgres for prod (Phase 6 Phase 3)
 
 ## Environment

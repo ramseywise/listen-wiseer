@@ -20,4 +20,4 @@ class AgentState(TypedDict, total=False):
     entities: dict  # {"mood": [...], "time_period": [...]}
     query_variants: list[str]  # expanded/decomposed query variants
     tool_validation_retries: int  # 0 initially, max controlled by config
-    agent_response: dict  # structured output from format_response: {message, track_list}
+    agent_response: dict  # structured output from format_response: {message, track_list, suggestions, sources}

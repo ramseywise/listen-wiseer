@@ -204,18 +204,6 @@ CREATE TABLE IF NOT EXISTS external_tracks (
     y_target         VARCHAR
 );
 
--- RAG chunks for artist/genre context (Phase 5a)
--- Embeddings are 384-dim float arrays from all-MiniLM-L6-v2
-CREATE TABLE IF NOT EXISTS rag_chunks (
-    chunk_id    VARCHAR PRIMARY KEY,
-    subject     VARCHAR NOT NULL,
-    section     VARCHAR DEFAULT 'bio',
-    source_url  VARCHAR DEFAULT '',
-    text        VARCHAR NOT NULL,
-    embedding   FLOAT[384],
-    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
 -- Enriched view used by agent / models
 -- genre columns sourced from track_genre (falls back to genre_map for coverage)
 CREATE OR REPLACE VIEW track_profile AS

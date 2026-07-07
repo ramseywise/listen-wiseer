@@ -1,5 +1,9 @@
 COMPOSE = docker compose -f infrastructure/containers/docker-compose.yml
 
+# deepeval's pytest plugin pings telemetry on import/collection; in sandboxed or
+# restricted-network environments this blocks for 15+ minutes instead of failing fast.
+export DEEPEVAL_TELEMETRY_OPT_OUT := YES
+
 .PHONY: help infra-up infra-down infra-build infra-ps infra-logs infra-smoke app mcp-server auth lint format test test-unit test-fast test-integration test-data notebook init-db data-sync train train-cat train-compare eval-unit eval-trajectory eval-e2e
 
 help:

@@ -58,7 +58,7 @@ def _config(thread_id: str, user_id: str = "test-user") -> dict:
 
 @pytest.mark.integration
 @patch("agent.tools._engine", _make_engine_mock())
-@patch("agent.nodes._llm_with_tools", new_callable=AsyncMock)
+@patch("agent.graph_nodes._llm_with_tools", new_callable=AsyncMock)
 async def test_taste_memory_roundtrip(mock_llm: AsyncMock) -> None:
     """manage_taste_memory stores a fact, search_taste_memory retrieves it."""
     store = InMemoryStore()
@@ -103,7 +103,7 @@ async def test_taste_memory_roundtrip(mock_llm: AsyncMock) -> None:
 
 @pytest.mark.integration
 @patch("agent.tools._engine", _make_engine_mock())
-@patch("agent.nodes._llm_with_tools", new_callable=AsyncMock)
+@patch("agent.graph_nodes._llm_with_tools", new_callable=AsyncMock)
 async def test_episodic_session_stored_after_recommendation(mock_llm: AsyncMock) -> None:
     """After a recommendation, episodic memory stores the session."""
     store = InMemoryStore()
@@ -126,7 +126,7 @@ async def test_episodic_session_stored_after_recommendation(mock_llm: AsyncMock)
 
 @pytest.mark.integration
 @patch("agent.tools._engine", _make_engine_mock())
-@patch("agent.nodes._llm_with_tools", new_callable=AsyncMock)
+@patch("agent.graph_nodes._llm_with_tools", new_callable=AsyncMock)
 async def test_memory_stats_populated(mock_llm: AsyncMock) -> None:
     """When store has data, memory_stats block appears in the system prompt."""
     store = InMemoryStore()

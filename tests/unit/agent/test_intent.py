@@ -6,14 +6,13 @@ decomposition, and confidence scoring.
 
 from __future__ import annotations
 
-from rag_core.orchestration.query_understanding import (
+from agent.intent import (
     QueryAnalyzer,
     classify_intent,
     decompose_query,
     expand_query,
     extract_entities,
 )
-
 
 # =============================================================================
 # Intent classification

@@ -1,15 +1,15 @@
 """Tier 1 — Deterministic intent classification and route evaluation.
 
 No LLM calls. Imports QueryAnalyzer directly to avoid the DuckDB import chain
-that agent.nodes would trigger.
+that agent.graph_nodes would trigger.
 """
 
 from __future__ import annotations
 
 from collections import defaultdict
 
+from agent.intent import QueryAnalyzer
 from evals.tasks.models import AgentGoldenSample, IntentEvalMetrics
-from rag_core.orchestration.query_understanding import QueryAnalyzer
 from utils.config import settings
 from utils.logging import get_logger
 
@@ -89,7 +89,7 @@ def _compute_per_intent_f1(
 
 
 def _route_after_classify(intent: str, confidence: float) -> str:
-    """Replicated from agent.nodes — avoids DuckDB import chain."""
+    """Replicated from agent.graph_nodes — avoids DuckDB import chain."""
     if intent == "chit_chat":
         return "rewrite_query"
     if confidence < settings.intent_confidence_threshold:
@@ -100,7 +100,7 @@ def _route_after_classify(intent: str, confidence: float) -> str:
 def evaluate_routing(samples: list[AgentGoldenSample]) -> dict[str, float | int]:
     """Check route matches expected_route for each sample.
 
-    Uses replicated routing logic (not imported from agent.nodes)
+    Uses replicated routing logic (not imported from agent.graph_nodes)
     to avoid the DuckDB import chain.
     """
     correct = 0

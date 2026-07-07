@@ -1,6 +1,6 @@
 # listen-wiseer
 
-A Spotify copilot — LangGraph agent with Claude, ML recommendation models, and a music-domain RAG pipeline. Chat interface via Chainlit; the agent calls Spotify, web search, and local ML tools directly.
+A Spotify copilot — LangGraph agent with Claude, ML recommendation models, and agentic web search for music context. Chat interface via Chainlit; the agent calls Spotify, web search, and local ML tools directly.
 
 ## The Product
 
@@ -19,7 +19,7 @@ The recent focus areas:
 - **Agentic tooling** — Spotify read/write, recommendation engine, Tavily web search, and long-term taste memory all wired as LangGraph tools with intent routing to the right chain
 - **Eval harness** — three-tier eval: deterministic intent/route (Tier 1, CI-safe), live trajectory against the compiled graph (Tier 2), RAGAS faithfulness + tool correctness (Tier 3)
 - **Persistent agent memory** — taste profile storage via langmem so the agent accumulates preference knowledge across sessions
-- **RAG core** (suspended as active tool) — Wikipedia → sentence-transformers → DuckDB vector search pipeline; replaced by Tavily for freshness, kept as a portfolio artifact and planned enrichment layer
+- **Agentic web search** — artist/genre queries are decomposed and fanned out across parallel Tavily calls when complex, synthesized with citations, and confidence-gated so the agent admits when it can't find grounded info instead of guessing
 
 ## Architecture
 
@@ -39,20 +39,20 @@ The recent focus areas:
 │  Memory: langmem procedural optimizer                │
 └──────────────────────────────────────────────────────┘
         │           │           │            │
-┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────┐
-│ Spotify  │ │ Recommend│ │  Tavily  │ │    Memory    │
-│ Tools    │ │ Engine   │ │ Web      │ │    Tools     │
-│          │ │          │ │ Search   │ │              │
-│ search   │ │ by_track │ │ artist   │ │ taste_memory │
-│ history  │ │ by_genre │ │ context  │ │ search_taste │
-│ playlists│ │ clusters │ │ + RAG    │ │              │
-│ create   │ │ (Polars) │ │ enrichmt │ │              │
-└──────────┘ └──────────┘ └──────────┘ └──────────────┘
+┌──────────┐ ┌──────────┐ ┌──────────────┐ ┌──────────────┐
+│ Spotify  │ │ Recommend│ │ Agentic Web  │ │    Memory    │
+│ Tools    │ │ Engine   │ │ Search       │ │    Tools     │
+│          │ │          │ │              │ │              │
+│ search   │ │ by_track │ │ decompose →  │ │ taste_memory │
+│ history  │ │ by_genre │ │ Tavily fan-  │ │ search_taste │
+│ playlists│ │ clusters │ │ out → synth  │ │              │
+│ create   │ │ (Polars) │ │ + confidence │ │              │
+└──────────┘ └──────────┘ └──────────────┘ └──────────────┘
         │           │                         │
 ┌──────────────────────────────────────────────────────┐
 │         Data Layer — DuckDB + Polars                 │
 │  tracks · genres · playlists · faves                 │
-│  ENOA embeddings · rag_chunks · vectors              │
+│  ENOA embeddings                                     │
 └──────────────────────────────────────────────────────┘
         │                         │
 ┌──────────────┐         ┌──────────────────┐
@@ -72,11 +72,10 @@ The recent focus areas:
 | Agent orchestration | LangGraph (intent routing, persistent memory via langmem) |
 | Chat UI | Chainlit |
 | MCP server | FastMCP (Spotify read tools for Claude Desktop) |
-| Web search | Tavily (artist/genre context; replaces RAG pipeline as primary) |
+| Web search | Tavily — agentic: query decompose/fan-out, multi-source synthesis, confidence gating |
 | Data / analytics | DuckDB + Polars |
 | ML models | GMM clustering + LightGBM reranker (scikit-learn pipelines) |
 | Genre taxonomy | ENOA (6k+ genre spatial map) |
-| RAG core | Wikipedia → sentence-transformers → DuckDB (suspended, enrichment layer planned) |
 | Checkpointer | Postgres (Docker) / MemorySaver (local dev) |
 | Eval harness | 3-tier: intent/route → trajectory → RAGAS faithfulness |
 | ETL | Spotify API + Last.fm API → DuckDB sync |
@@ -90,26 +89,24 @@ listen-wiseer/
 ├── src/
 │   ├── app/              # Chainlit entry point
 │   ├── agent/            # LangGraph workflow
-│   │   ├── graph.py      # compiled state graph + routing
-│   │   ├── nodes.py      # node functions (intent, rewrite, agent, format)
-│   │   ├── state.py      # AgentState schema
-│   │   ├── dependencies.py   # checkpointer factory (Postgres / MemorySaver)
-│   │   ├── memory_store.py   # procedural prompt management
+│   │   ├── graph.py            # compiled state graph + routing
+│   │   ├── graph_nodes.py      # node functions (intent, rewrite, agent)
+│   │   ├── validation.py       # post-tool-output validation + confidence gate
+│   │   ├── response.py         # final response formatting + citations
+│   │   ├── intent.py           # keyword intent classifier, decompose/complexity
+│   │   ├── state.py            # AgentState schema
+│   │   ├── dependencies.py     # checkpointer factory (Postgres / MemorySaver)
+│   │   ├── memory_store.py     # procedural prompt management
+│   │   ├── memory_helpers.py   # episodic recall/store, memory stats
 │   │   └── tools/        # domain tool modules
 │   │       ├── spotify_read.py   # search, history, playlists, related
 │   │       ├── spotify_write.py  # create_playlist, add_tracks
 │   │       ├── recommend.py      # by_track, by_artist, by_genre
 │   │       ├── memory.py         # manage/search taste memory
-│   │       └── web_search.py     # Tavily + RAG enrichment
+│   │       └── web_search.py     # agentic Tavily search (decompose/fan-out/synthesize)
 │   ├── mcp_server/       # FastMCP server — Spotify read tools
 │   ├── recommend/        # ML layer (GMM + LightGBM, Polars-native)
 │   │   └── modules/      # similarity, clustering, classifiers, genre (ENOA)
-│   ├── rag_core/         # Music-domain RAG pipeline (suspended as agent tool)
-│   │   ├── preprocessing/  # Wikipedia fetching, chunking, parsing
-│   │   ├── retrieval/      # DuckDB vector search, embedding, reranking
-│   │   ├── generation/     # LLM-based answer generation
-│   │   ├── orchestration/  # Query understanding, intent routing, RAG graph
-│   │   └── schemas/        # Pydantic models for RAG domain
 │   ├── etl/              # DuckDB bootstrap, Spotify + Last.fm sync
 │   ├── spotify/          # OAuth, httpx client, fetch/write ops
 │   └── utils/            # config, schemas, logging, constants
@@ -232,7 +229,6 @@ make test-fast        # unit tests, no coverage
 | `faves` | Personal track scores (~1500 rows) |
 | `genre_map` | Custom genre taxonomy gen_4/6/8 (291 rows) |
 | `genre_xy` | ENOA genre spatial coordinates (6291 rows) |
-| `rag_chunks` | RAG text chunks (populated by rag_core pipeline) |
 | `track_profile` | VIEW — denormalized join for agent/models |
 
 ## Architectural Choices
@@ -247,7 +243,7 @@ make test-fast        # unit tests, no coverage
 
 **Eval-first for agentic features** — with many possible tool orchestrations, it's hard to know if changes improve things without a feedback loop. Three-tier eval gives signal before shipping agent changes.
 
-**Tavily over RAG for freshness** — the Wikipedia RAG pipeline (`rag_core/`) works well for factual recall but requires a pre-populated vector store and goes stale. Tavily returns grounded, fresh answers in ~1s with zero local state. RAG is kept as a planned enrichment layer.
+**Tavily over a doc-RAG pipeline** — a Wikipedia → sentence-transformers → DuckDB vector-search pipeline (`rag_core/`, inherited from an earlier, unrelated support-bot project and never fully adapted to music) required a pre-populated corpus and went stale. It was deleted rather than kept "for later" — the one piece that was music-domain and load-bearing (keyword intent classification) moved to `agent/intent.py`. Tavily returns grounded, fresh answers in ~1s with zero local state; **agentic web search** (query decomposition, parallel fan-out, confidence-gated synthesis with citations) replaces what a doc-RAG pipeline would otherwise be needed for, without maintaining a corpus.
 
 ## Spotify Scopes
 

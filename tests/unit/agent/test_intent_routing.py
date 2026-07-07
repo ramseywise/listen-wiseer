@@ -2,7 +2,7 @@
 
 Tests classify_intent_node, route_after_classify, clarify_or_proceed,
 and rewrite_query.
-Avoids importing agent.nodes directly (DuckDB dep chain) — replicates
+Avoids importing agent.graph_nodes directly (DuckDB dep chain) — replicates
 node logic inline, matching the pattern in test_nodes.py.
 """
 
@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, patch
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
-from rag_core.orchestration.query_understanding import QueryAnalyzer
+from agent.intent import QueryAnalyzer
 from utils.config import settings
 
 
@@ -38,7 +38,7 @@ _INTENT_TOOL_HINTS: dict[str, str] = {
 
 
 async def _classify_intent_node(state: dict) -> dict:
-    """Replicated from agent.nodes.classify_intent_node."""
+    """Replicated from agent.graph_nodes.classify_intent_node."""
     messages = state.get("messages", [])
     query = ""
     for msg in reversed(messages):
@@ -56,7 +56,7 @@ async def _classify_intent_node(state: dict) -> dict:
 
 
 def _route_after_classify(state: dict) -> str:
-    """Replicated from agent.nodes.route_after_classify."""
+    """Replicated from agent.graph_nodes.route_after_classify."""
     confidence = state.get("intent_confidence", 0.0)
     intent = state.get("intent", "")
 
@@ -69,7 +69,7 @@ def _route_after_classify(state: dict) -> str:
 
 
 async def _clarify_or_proceed(state: dict) -> dict:
-    """Replicated from agent.nodes.clarify_or_proceed."""
+    """Replicated from agent.graph_nodes.clarify_or_proceed."""
     entities = state.get("entities", {})
     query = ""
     for msg in reversed(state.get("messages", [])):
@@ -218,7 +218,7 @@ _COREFERENCE_SIGNALS = [
 
 
 async def _rewrite_query(state: dict, *, llm_invoke: AsyncMock | None = None) -> dict:
-    """Replicated from agent.nodes.rewrite_query.
+    """Replicated from agent.graph_nodes.rewrite_query.
 
     Accepts an optional ``llm_invoke`` callable to avoid real LLM calls.
     """
@@ -337,7 +337,7 @@ _ERROR_SIGNALS = [
 
 
 async def _validate_tool_output(state: dict, *, max_retries: int = 1) -> dict:
-    """Replicated from agent.nodes.validate_tool_output."""
+    """Replicated from agent.validation.validate_tool_output."""
     messages = state.get("messages", [])
     intent = state.get("intent", "")
     entities = state.get("entities", {})
