@@ -169,10 +169,7 @@
       "Edit(.claude/**)",
       "Write(.claude/**)",
       "Bash(uv run *)",
-      "Bash(git *)",
-      "Bash(make *)",
-      "Bash(ls *)",
-      "Bash(mkdir *)"
+      "Bash(make *)"
     ],
     "deny": [
       "Read(.env)",
