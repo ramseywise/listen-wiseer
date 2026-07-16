@@ -4,7 +4,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 import polars as pl
-
 from etl.loader import (
     enrich_categorical_features,
     load_listening_history,

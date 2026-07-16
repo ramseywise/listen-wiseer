@@ -5,7 +5,6 @@ from __future__ import annotations
 import duckdb
 import polars as pl
 import pytest
-
 from recommend.modules.genre import (
     expand_genre_zone,
     filter_by_enoa_proximity,

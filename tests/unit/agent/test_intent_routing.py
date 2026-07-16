@@ -9,11 +9,10 @@ node logic inline, matching the pattern in test_nodes.py.
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, patch
-
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from unittest.mock import AsyncMock
 
 from agent.intent import QueryAnalyzer
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from utils.config import settings
 
 
@@ -71,11 +70,6 @@ def _route_after_classify(state: dict) -> str:
 async def _clarify_or_proceed(state: dict) -> dict:
     """Replicated from agent.graph_nodes.clarify_or_proceed."""
     entities = state.get("entities", {})
-    query = ""
-    for msg in reversed(state.get("messages", [])):
-        if isinstance(msg, HumanMessage):
-            query = str(msg.content)
-            break
 
     if entities:
         entity_hint = f" I can see you're interested in: {entities}."
@@ -85,9 +79,9 @@ async def _clarify_or_proceed(state: dict) -> dict:
     clarification = (
         f"I want to make sure I help you with the right thing.{entity_hint} "
         f"Could you clarify what you're looking for? For example:\n"
-        f"- Info about an artist or genre? (e.g. \"who is Aphex Twin?\")\n"
-        f"- Music recommendations? (e.g. \"recommend tracks like Boards of Canada\")\n"
-        f"- Your listening history? (e.g. \"what have I been playing?\")"
+        f'- Info about an artist or genre? (e.g. "who is Aphex Twin?")\n'
+        f'- Music recommendations? (e.g. "recommend tracks like Boards of Canada")\n'
+        f'- Your listening history? (e.g. "what have I been playing?")'
     )
     return {"messages": [AIMessage(content=clarification)]}
 
@@ -212,8 +206,15 @@ class TestClarifyOrProceed:
 # ---------------------------------------------------------------------------
 
 _COREFERENCE_SIGNALS = [
-    " it ", " they ", " them ", " that ", " this ",
-    "the artist", "the band", "the song", " their ",
+    " it ",
+    " they ",
+    " them ",
+    " that ",
+    " this ",
+    "the artist",
+    "the band",
+    "the song",
+    " their ",
 ]
 
 
@@ -340,7 +341,6 @@ async def _validate_tool_output(state: dict, *, max_retries: int = 1) -> dict:
     """Replicated from agent.validation.validate_tool_output."""
     messages = state.get("messages", [])
     intent = state.get("intent", "")
-    entities = state.get("entities", {})
     retries = state.get("tool_validation_retries", 0)
 
     tool_messages = []
@@ -364,11 +364,7 @@ async def _validate_tool_output(state: dict, *, max_retries: int = 1) -> dict:
 
     expected_tools = _TOOL_INTENT_MAP.get(intent, set())
     if expected_tools:
-        used_tools = {
-            tool_msg.name
-            for tool_msg in tool_messages
-            if hasattr(tool_msg, "name")
-        }
+        used_tools = {tool_msg.name for tool_msg in tool_messages if hasattr(tool_msg, "name")}
         if used_tools and not used_tools & expected_tools:
             issues.append(
                 f"Intent was '{intent}' but tools used were {used_tools}. "
@@ -448,7 +444,10 @@ class TestValidateToolOutput:
         }
         result = _run(_validate_tool_output(state))
         assert "messages" in result
-        assert "failed" in result["messages"][0].content.lower() or "Validation" in result["messages"][0].content
+        assert (
+            "failed" in result["messages"][0].content.lower()
+            or "Validation" in result["messages"][0].content
+        )
 
     def test_catches_intent_misalignment(self) -> None:
         """Intent=recommendation but tool=get_artist_context → flagged."""
@@ -467,7 +466,10 @@ class TestValidateToolOutput:
         }
         result = _run(_validate_tool_output(state))
         assert "messages" in result
-        assert "Intent" in result["messages"][0].content or "intent" in result["messages"][0].content.lower()
+        assert (
+            "Intent" in result["messages"][0].content
+            or "intent" in result["messages"][0].content.lower()
+        )
 
     def test_respects_retry_cap(self) -> None:
         """Retries >= max → passes through even with issues."""

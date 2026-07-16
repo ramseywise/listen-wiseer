@@ -1,16 +1,9 @@
 {
   "hooks": {
-
     "PostToolUse": [
       {
         "matcher": "Write|Edit|MultiEdit",
         "hooks": [
-          {
-            "type": "command",
-            "command": "path=$(echo \"$CLAUDE_TOOL_INPUT\" | jq -r '.file_path // empty'); [ -z \"$path\" ] && exit 0; echo \"$path\" | grep -qE '\\.py$' || exit 0; python3 -m py_compile \"$path\" 2>&1 && uv run ruff format --quiet \"$path\" 2>/dev/null; uv run ruff check --quiet --fix \"$path\" 2>/dev/null; exit 0",
-            "timeout": 15,
-            "statusMessage": "Checking syntax and formatting..."
-          },
           {
             "type": "command",
             "command": "path=$(echo \"$CLAUDE_TOOL_INPUT\" | jq -r '.file_path // empty'); [ -z \"$path\" ] && exit 0; echo \"$path\" | grep -qE '\\.py$' || exit 0; cfg=$(dirname \"$path\"); while [ \"$cfg\" != \"/\" ]; do [ -f \"$cfg/pyrightconfig.json\" ] && break; cfg=$(dirname \"$cfg\"); done; [ -f \"$cfg/pyrightconfig.json\" ] || exit 0; uv run pyright \"$path\" 2>&1 | tail -5; exit 0",
@@ -37,7 +30,7 @@
           },
           {
             "type": "command",
-            "command": "path=$(echo \"$CLAUDE_TOOL_INPUT\" | jq -r '.file_path // empty'); [ -z \"$path\" ] && exit 0; echo \"$path\" | grep -qE '\\.py$' || exit 0; lines=$(wc -l < \"$path\" 2>/dev/null || echo 0); [ \"$lines\" -gt 400 ] && echo \"Warning: $path is $lines lines (>400) — consider splitting\" >&2; exit 0",
+            "command": "path=$(echo \"$CLAUDE_TOOL_INPUT\" | jq -r '.file_path // empty'); [ -z \"$path\" ] && exit 0; echo \"$path\" | grep -qE '\\.py$' || exit 0; lines=$(wc -l < \"$path\" 2>/dev/null || echo 0); [ \"$lines\" -gt 400 ] && echo \"Warning: $path is $lines lines (>400) \u2014 consider splitting\" >&2; exit 0",
             "timeout": 5,
             "statusMessage": "Checking file size..."
           },
@@ -74,39 +67,9 @@
         ]
       }
     ],
-
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "osascript -e 'display notification \"Claude has finished\" with title \"Claude Code\"' 2>/dev/null; exit 0",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
-
-    "PreCompact": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "session_file=$(find . -maxdepth 4 -path '*/.claude/docs/SESSION.md' 2>/dev/null | head -1); [ -z \"$session_file\" ] && exit 0; printf '\\n_compact: %s_\\n' \"$(date '+%Y-%m-%d %H:%M')\" >> \"$session_file\"; exit 0",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
-
     "UserPromptSubmit": [
       {
         "hooks": [
-          {
-            "type": "command",
-            "command": "printf '{\"type\": \"context\", \"content\": \"Today is %s\"}' \"$(date '+%Y-%m-%d')\"",
-            "timeout": 5
-          },
           {
             "type": "command",
             "command": "[ -f \".claude/.phase_complete\" ] && { rm -f .claude/.phase_complete; printf '{\"type\":\"context\",\"content\":\"Phase/step just completed. Run /compact before proceeding. Preserve: current position, test count, active gotchas, next action.\"}'; exit 0; }; exit 0",
@@ -115,7 +78,6 @@
         ]
       }
     ],
-
     "PreToolUse": [
       {
         "matcher": "Write|Edit|MultiEdit",
@@ -125,12 +87,6 @@
             "command": "bash .claude/hooks/review_gate.sh",
             "timeout": 5,
             "statusMessage": "Review gate..."
-          },
-          {
-            "type": "command",
-            "command": "bash .claude/hooks/secrets_scan.sh",
-            "timeout": 5,
-            "statusMessage": "Scanning for secrets..."
           }
         ]
       },
@@ -145,25 +101,14 @@
           },
           {
             "type": "command",
-            "command": "cmd=$(echo \"$CLAUDE_TOOL_INPUT\" | jq -r '.command'); echo \"$cmd\" | grep -qE 'git commit' || exit 0; uv lock --check 2>&1; rc=$?; [ $rc -eq 0 ] && exit 0; echo 'uv.lock is out of sync with pyproject.toml — run: uv lock' >&2; exit 2",
+            "command": "cmd=$(echo \"$CLAUDE_TOOL_INPUT\" | jq -r '.command'); echo \"$cmd\" | grep -qE 'git commit' || exit 0; uv lock --check 2>&1; rc=$?; [ $rc -eq 0 ] && exit 0; echo 'uv.lock is out of sync with pyproject.toml \u2014 run: uv lock' >&2; exit 2",
             "timeout": 15,
             "statusMessage": "Checking lockfile sync..."
-          },
-          {
-            "type": "command",
-            "command": "cmd=$(echo \"$CLAUDE_TOOL_INPUT\" | jq -r '.command'); echo \"$cmd\" | grep -qE '^pip install|^pip3 install' && { echo 'Use uv, not pip. Run: uv add <package>' >&2; exit 2; } || exit 0",
-            "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "cmd=$(echo \"$CLAUDE_TOOL_INPUT\" | jq -r '.command'); echo \"$cmd\" | grep -qE 'rm -rf /|rm -rf ~|DROP TABLE|TRUNCATE TABLE' && { echo 'Blocked: destructive command.' >&2; exit 2; } || exit 0",
-            "timeout": 5
           }
         ]
       }
     ]
   },
-
   "permissions": {
     "allow": [
       "Edit(.claude/**)",
@@ -182,7 +127,6 @@
       "Write(production.*)"
     ]
   },
-
   "env": {
     "BASH_DEFAULT_TIMEOUT_MS": "60000"
   }

@@ -67,5 +67,3 @@ class TestGetRelatedArtists:
         assert "rock, indie" in result
         assert "Artist B" in result
         assert "unknown genre" in result
-
-

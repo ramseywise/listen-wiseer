@@ -10,7 +10,6 @@ from evals.agent.graders import (
     grade_tool_correctness,
 )
 
-
 # --- grade_tool_correctness (deterministic, no LLM) ---
 
 
@@ -35,16 +34,12 @@ def test_tool_correctness_no_expected_but_actual() -> None:
 
 def test_tool_correctness_superset_actual() -> None:
     """Extra tools beyond expected still counts as full match."""
-    score = grade_tool_correctness(
-        "q", ["search_tracks"], ["search_tracks", "get_artist_info"]
-    )
+    score = grade_tool_correctness("q", ["search_tracks"], ["search_tracks", "get_artist_info"])
     assert score == 1.0
 
 
 def test_tool_correctness_no_overlap() -> None:
-    score = grade_tool_correctness(
-        "q", ["search_tracks"], ["get_artist_info"]
-    )
+    score = grade_tool_correctness("q", ["search_tracks"], ["get_artist_info"])
     assert score == 0.0
 
 

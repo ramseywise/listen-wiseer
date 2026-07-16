@@ -2,22 +2,16 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import MagicMock
 
 import numpy as np
 import polars as pl
 import pytest
-from sklearn.mixture import GaussianMixture
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import MinMaxScaler
-
 from recommend.modules.classifiers import (
     ALL_DECADES,
     ALL_GEN4,
     CATEGORICAL_FEATURES,
     CLASSIFIER_FEATURES,
-    ModelType,
     _compute_cluster_probs_for_corpus,
     _compute_similarity_scores_for_corpus,
     _create_estimator,
@@ -28,8 +22,10 @@ from recommend.modules.classifiers import (
     rerank_candidates,
     train_playlist_classifier,
 )
+from sklearn.mixture import GaussianMixture
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import MinMaxScaler
 from utils.const import all_decades, all_key_modes
-
 
 # ---------------------------------------------------------------------------
 # Fixture helpers
@@ -428,7 +424,6 @@ class TestTrainPlaylistClassifier:
         """Trained pipeline must support predict_proba for reranking."""
         gmm, gmm_scaler = gmm_and_scaler
         playlist_ids = set(train_corpus["id"].head(25).to_list())
-        from sklearn.pipeline import Pipeline as SkPipeline
 
         pipeline, _ = train_playlist_classifier(
             corpus=train_corpus,

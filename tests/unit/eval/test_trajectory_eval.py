@@ -45,14 +45,10 @@ class TestCheckToolMatch:
         assert check_tool_match(["search_tracks"], ["search_tracks"]) is True
 
     def test_superset_match(self) -> None:
-        assert check_tool_match(
-            ["search_tracks"], ["search_tracks", "get_artist_context"]
-        ) is True
+        assert check_tool_match(["search_tracks"], ["search_tracks", "get_artist_context"]) is True
 
     def test_partial_mismatch(self) -> None:
-        assert check_tool_match(
-            ["search_tracks", "get_artist_context"], ["search_tracks"]
-        ) is False
+        assert check_tool_match(["search_tracks", "get_artist_context"], ["search_tracks"]) is False
 
     def test_empty_expected_empty_actual(self) -> None:
         assert check_tool_match([], []) is True
@@ -86,6 +82,4 @@ class TestEvaluateTrajectory:
             with pytest.raises(RuntimeError, match="CONFIRM_EXPENSIVE_OPS"):
                 import asyncio
 
-                asyncio.get_event_loop().run_until_complete(
-                    evaluate_trajectory([], None)
-                )
+                asyncio.get_event_loop().run_until_complete(evaluate_trajectory([], None))

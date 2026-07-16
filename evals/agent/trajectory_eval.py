@@ -11,11 +11,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from langchain_core.messages import AIMessage, HumanMessage
+from utils.langfuse_tracing import get_langfuse_handler
+from utils.logging import get_logger
 
 from evals.agent.cost_gate import CONFIRM_EXPENSIVE_OPS
 from evals.tasks.models import AgentGoldenSample
-from utils.langfuse_tracing import get_langfuse_handler
-from utils.logging import get_logger
 
 log = get_logger(__name__)
 
@@ -70,9 +70,7 @@ async def evaluate_trajectory(
         List of TrajectoryResult, one per sample.
     """
     if not CONFIRM_EXPENSIVE_OPS:
-        raise RuntimeError(
-            "Set CONFIRM_EXPENSIVE_OPS=true env var for trajectory eval."
-        )
+        raise RuntimeError("Set CONFIRM_EXPENSIVE_OPS=true env var for trajectory eval.")
 
     results: list[TrajectoryResult] = []
 
@@ -93,9 +91,7 @@ async def evaluate_trajectory(
             messages = result_state.get("messages", [])
             tools_called = extract_tools_from_messages(messages)
             actual_intent = result_state.get("intent", "unknown")
-            last_ai = next(
-                (m for m in reversed(messages) if isinstance(m, AIMessage)), None
-            )
+            last_ai = next((m for m in reversed(messages) if isinstance(m, AIMessage)), None)
             final_response = str(last_ai.content) if last_ai else ""
         except Exception as exc:
             log.error(

@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
-
 from agent.response import format_response
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 
 def _tool_message(
@@ -103,7 +102,9 @@ class TestFormatResponse:
         }
         result = format_response(state)
         # Walk is newest-first, so the later tool message's title wins the dedup.
-        assert result["agent_response"]["sources"] == [{"title": "A dup", "url": "https://x.test/1"}]
+        assert result["agent_response"]["sources"] == [
+            {"title": "A dup", "url": "https://x.test/1"}
+        ]
 
     def test_ignores_non_dict_artifact(self) -> None:
         """Non-web-search tools return plain strings with no artifact — must not crash."""

@@ -1,6 +1,5 @@
 """Tests for data/schemas.py — Pydantic v2 models."""
 
-
 from utils.schemas import (
     ArtistFeatures,
     AudioFeatures,

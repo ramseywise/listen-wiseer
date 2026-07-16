@@ -6,7 +6,6 @@ from pathlib import Path
 import duckdb
 import polars as pl
 import pytest
-
 from etl.db import init_schema
 
 

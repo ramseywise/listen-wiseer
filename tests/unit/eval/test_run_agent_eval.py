@@ -59,8 +59,6 @@ def test_main_tier1_returns_zero() -> None:
 def test_main_tier2_without_cost_gate_returns_one() -> None:
     """CLI --tier 2 fails without cost gate."""
     with patch.dict("os.environ", {}, clear=False):
-        import importlib
-
         import evals.agent.cost_gate as cg
 
         # Ensure cost gate is False

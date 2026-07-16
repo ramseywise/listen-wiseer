@@ -9,9 +9,10 @@ from __future__ import annotations
 from collections import defaultdict
 
 from agent.intent import QueryAnalyzer
-from evals.tasks.models import AgentGoldenSample, IntentEvalMetrics
 from utils.config import settings
 from utils.logging import get_logger
+
+from evals.tasks.models import AgentGoldenSample, IntentEvalMetrics
 
 log = get_logger(__name__)
 
@@ -64,17 +65,11 @@ def _compute_per_intent_f1(
         tp = confusion.get(intent, {}).get(intent, 0)
 
         # FP: predicted as this intent but expected something else
-        fp = sum(
-            confusion.get(other, {}).get(intent, 0)
-            for other in intents
-            if other != intent
-        )
+        fp = sum(confusion.get(other, {}).get(intent, 0) for other in intents if other != intent)
 
         # FN: expected this intent but predicted something else
         fn = sum(
-            count
-            for predicted, count in confusion.get(intent, {}).items()
-            if predicted != intent
+            count for predicted, count in confusion.get(intent, {}).items() if predicted != intent
         )
 
         precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0

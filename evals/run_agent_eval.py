@@ -23,9 +23,10 @@ import json
 import sys
 from pathlib import Path
 
+from utils.logging import configure_logging, get_logger
+
 from evals.agent.intent_eval import evaluate_intent, evaluate_routing
 from evals.tasks.models import AgentGoldenSample
-from utils.logging import configure_logging, get_logger
 
 log = get_logger(__name__)
 
@@ -78,11 +79,11 @@ def run_tier1(samples: list[AgentGoldenSample]) -> bool:
     print(f"  Samples:    {intent_metrics.n_samples}")
     print(f"  Accuracy:   {intent_metrics.accuracy:.3f}")
     print(f"  Threshold:  {intent_metrics.confidence_threshold}")
-    print(f"\n  Per-intent F1:")
+    print("\n  Per-intent F1:")
     for intent, f1 in sorted(intent_metrics.per_intent_f1.items()):
         print(f"    {intent:<20} {f1:.3f}")
 
-    print(f"\n  Confusion matrix:")
+    print("\n  Confusion matrix:")
     all_intents = sorted(intent_metrics.per_intent_f1.keys())
     header = "  " + " " * 22 + "  ".join(f"{i[:6]:>6}" for i in all_intents)
     print(header)
@@ -134,7 +135,7 @@ def run_tier2(samples: list[AgentGoldenSample]) -> bool:
     print(f"  Samples:         {n}")
     print(f"  Intent accuracy: {n_intent / n:.3f}")
     print(f"  Tool accuracy:   {n_tool / n:.3f}")
-    print(f"\n  Per-sample breakdown:")
+    print("\n  Per-sample breakdown:")
     for r in results:
         intent_ok = "✓" if r.intent_match else "✗"
         tool_ok = "✓" if r.tool_match else "✗"
@@ -171,8 +172,6 @@ def run_tier3(samples: list[AgentGoldenSample]) -> bool:
     log.info("eval.tier3.start", n_samples=len(samples))
     traj_results = asyncio.run(evaluate_trajectory(samples, graph, enable_tracing=True))
 
-    # Build a map for quick lookup of trajectory results
-    traj_map = {r.sample_id: r for r in traj_results}
     sample_map = {s.sample_id: s for s in samples}
 
     faithfulness_scores: list[float] = []
@@ -200,9 +199,7 @@ def run_tier3(samples: list[AgentGoldenSample]) -> bool:
             )
         faithfulness_scores.append(faith_score)
 
-        print(
-            f"    {r.sample_id}: tool={tool_score:.2f}  faith={faith_score:.2f}  {r.query[:50]}"
-        )
+        print(f"    {r.sample_id}: tool={tool_score:.2f}  faith={faith_score:.2f}  {r.query[:50]}")
 
     avg_tool = sum(tool_scores) / len(tool_scores) if tool_scores else 0.0
     avg_faith = sum(faithfulness_scores) / len(faithfulness_scores) if faithfulness_scores else 0.0

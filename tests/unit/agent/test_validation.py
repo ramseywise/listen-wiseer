@@ -8,9 +8,8 @@ from __future__ import annotations
 
 import asyncio
 
-from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
-
 from agent.validation import validate_tool_output
+from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 
 
 def _run(coro):

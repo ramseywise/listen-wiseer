@@ -6,23 +6,21 @@ import duckdb
 import numpy as np
 import polars as pl
 import pytest
-
 from recommend.preprocessing import (
     IMPUTABLE_AUDIO_FEATURES,
     add_collaborative_features,
     add_temporal_features,
+    build_feature_matrix,
     compute_artist_enoa_centroid,
     compute_artist_medians,
     compute_genre_medians,
     compute_track2vec,
     impute_missing_features,
     load_corpus_from_db,
+    load_track2vec,
     propagate_playlist_profiles,
     store_track2vec,
-    load_track2vec,
-    build_feature_matrix,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures — in-memory DuckDB with synthetic data
@@ -208,7 +206,7 @@ class TestTrack2Vec:
         embeddings = compute_track2vec(mem_conn, dim=16, window=3, seed=42)
         # 4 unique tracks across 2 playlists
         assert len(embeddings) >= 3  # at least tracks in playlists
-        for tid, emb in embeddings.items():
+        for _tid, emb in embeddings.items():
             assert emb.shape == (16,)
             assert emb.dtype == np.float64
 

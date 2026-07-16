@@ -8,12 +8,11 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from agent.memory_store import get_procedural_prompt
+from agent.optimizer import optimize_prompt
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.store.memory import InMemoryStore
 from langmem import Prompt
-
-from agent.memory_store import get_procedural_prompt
-from agent.optimizer import optimize_prompt
 
 
 def _run(coro):

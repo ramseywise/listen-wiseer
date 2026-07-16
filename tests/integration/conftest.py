@@ -19,7 +19,6 @@ def _duckdb_available() -> bool:
     """Check whether the LFS-tracked DuckDB file is readable."""
     try:
         import duckdb
-
         from paths import DB_PATH
 
         if not Path(DB_PATH).exists():
@@ -52,11 +51,7 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 
         # Agent/MCP tests need the DuckDB file for engine import
         if not _DUCKDB_OK:
-            item.add_marker(
-                pytest.mark.skip(reason="DuckDB file not available (git-lfs)")
-            )
+            item.add_marker(pytest.mark.skip(reason="DuckDB file not available (git-lfs)"))
         # Spotify tests also need credentials
         if not _SPOTIFY_OK and "spotify" in path_str.lower():
-            item.add_marker(
-                pytest.mark.skip(reason="SPOTIFY_CLIENT_ID not set")
-            )
+            item.add_marker(pytest.mark.skip(reason="SPOTIFY_CLIENT_ID not set"))

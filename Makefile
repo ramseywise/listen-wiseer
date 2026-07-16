@@ -122,3 +122,7 @@ eval-trajectory:
 
 eval-e2e:
 	CONFIRM_EXPENSIVE_OPS=true PYTHONPATH=src uv run python -m evals.run_agent_eval --tier 3
+
+.PHONY: precommit
+precommit:  ## run all pre-commit hooks (ruff, format, gitleaks, eslint where wired) on all files
+	pre-commit run --all-files

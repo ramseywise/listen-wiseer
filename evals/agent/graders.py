@@ -15,10 +15,10 @@ Usage:
 from __future__ import annotations
 
 from langchain_anthropic import ChatAnthropic
-
-from evals.agent.cost_gate import CONFIRM_EXPENSIVE_OPS
 from utils.config import settings
 from utils.logging import get_logger
+
+from evals.agent.cost_gate import CONFIRM_EXPENSIVE_OPS
 
 log = get_logger(__name__)
 
@@ -43,9 +43,7 @@ def grade_faithfulness(
     Cost-gated. Returns float 0.0–1.0.
     """
     if not CONFIRM_EXPENSIVE_OPS:
-        raise RuntimeError(
-            "Set CONFIRM_EXPENSIVE_OPS=true env var for RAGAS faithfulness eval."
-        )
+        raise RuntimeError("Set CONFIRM_EXPENSIVE_OPS=true env var for RAGAS faithfulness eval.")
 
     from ragas import EvaluationDataset, SingleTurnSample, evaluate
     from ragas.llms import LangchainLLMWrapper

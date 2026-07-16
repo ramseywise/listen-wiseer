@@ -5,10 +5,7 @@ from __future__ import annotations
 import numpy as np
 import polars as pl
 import pytest
-from sklearn.mixture import GaussianMixture
-from sklearn.preprocessing import MinMaxScaler
-
-from recommend.modules.clustering import build_cluster_features, fit_gmm
+from recommend.modules.clustering import fit_gmm
 from recommend.modules.similarity import SIMILARITY_FEATURES
 from recommend.pipelines import (
     ArtistPipeline,
@@ -18,7 +15,8 @@ from recommend.pipelines import (
     _mmr_select,
 )
 from recommend.schemas import RecommendRequest, RecommendResult
-
+from sklearn.mixture import GaussianMixture
+from sklearn.preprocessing import MinMaxScaler
 
 # ---------------------------------------------------------------------------
 # Fixture helpers
@@ -194,7 +192,7 @@ class TestTrackPipeline:
         pipeline = TrackPipeline()
         req = RecommendRequest(request_type="track", seed_id="track_000", k=5)
         result = pipeline.run(req, query_features, corpus, gmm, scaler)
-        for uri, tid in zip(result.track_uris, result.track_ids):
+        for uri, tid in zip(result.track_uris, result.track_ids, strict=False):
             assert uri == f"spotify:track:{tid}"
 
     def test_scores_length_matches_uris(self, corpus, gmm, scaler, query_features):

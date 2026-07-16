@@ -9,12 +9,11 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from langgraph.store.memory import InMemoryStore
-
 from agent.memory_store import (
     get_procedural_prompt,
     update_procedural_prompt,
 )
+from langgraph.store.memory import InMemoryStore
 
 # ---------------------------------------------------------------------------
 # Fixtures

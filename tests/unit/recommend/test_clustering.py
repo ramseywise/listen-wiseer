@@ -3,9 +3,6 @@
 import numpy as np
 import polars as pl
 import pytest
-from sklearn.preprocessing import MinMaxScaler
-
-from utils.const import all_decades, all_key_modes
 from recommend.modules.clustering import (
     CLUSTER_AUDIO_FEATURES,
     N_CLUSTER_FEATURES,
@@ -14,7 +11,8 @@ from recommend.modules.clustering import (
     fit_gmm,
     predict_cluster_probs,
 )
-
+from sklearn.preprocessing import MinMaxScaler
+from utils.const import all_decades, all_key_modes
 
 # ---------------------------------------------------------------------------
 # Fixture: 20-row DataFrame with all required columns
@@ -118,9 +116,7 @@ class TestBuildClusterFeatures:
     def test_one_hot_columns_are_binary(self, corpus):
         """One-hot encoded columns must be 0 or 1."""
         scaler = MinMaxScaler()
-        result, _ = build_cluster_features(corpus, scaler, fit_scaler=True)
-        ohe_portion = result[:, len(CLUSTER_AUDIO_FEATURES) :]
-        unique_vals = np.unique(ohe_portion)
+        build_cluster_features(corpus, scaler, fit_scaler=True)
         # After MinMaxScaling, OHE columns that are all-zero stay 0;
         # columns with at least one 1 get scaled. The key check is all binary pre-scale.
         # We verify the raw OHE sum per row is exactly 2 (one key_mode + one decade).

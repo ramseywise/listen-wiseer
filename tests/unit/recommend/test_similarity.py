@@ -5,8 +5,6 @@ from __future__ import annotations
 import numpy as np
 import polars as pl
 import pytest
-from sklearn.metrics.pairwise import cosine_similarity
-
 from recommend.modules.similarity import (
     SIMILARITY_FEATURES,
     camelot_distance,
@@ -15,7 +13,7 @@ from recommend.modules.similarity import (
     playlist_centroid,
     tempo_compatible,
 )
-
+from sklearn.metrics.pairwise import cosine_similarity
 
 # ---------------------------------------------------------------------------
 # camelot_distance
@@ -227,7 +225,7 @@ def test_find_similar_custom_weights() -> None:
     """Custom weights dict is accepted without error."""
     corpus = _make_corpus(20)
     query = np.random.default_rng(13).random(len(SIMILARITY_FEATURES))
-    weights = {f: 2.0 for f in SIMILARITY_FEATURES}
+    weights = dict.fromkeys(SIMILARITY_FEATURES, 2.0)
     result = find_similar(corpus, query, k=5, weights=weights)
     assert len(result) == 5
     assert "similarity_score" in result.columns

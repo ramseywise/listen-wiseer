@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 
 @patch("utils.langfuse_tracing.settings")
 def test_handler_none_when_disabled(mock_settings: MagicMock) -> None:
@@ -25,9 +23,7 @@ def test_handler_none_when_no_public_key(mock_settings: MagicMock) -> None:
 
 @patch("utils.langfuse_tracing.CallbackHandler")
 @patch("utils.langfuse_tracing.settings")
-def test_handler_created_when_enabled(
-    mock_settings: MagicMock, mock_cb: MagicMock
-) -> None:
+def test_handler_created_when_enabled(mock_settings: MagicMock, mock_cb: MagicMock) -> None:
     mock_settings.enable_langfuse = True
     mock_settings.langfuse_public_key = "pk-lf-test"
     mock_settings.langfuse_secret_key = "sk-lf-test"

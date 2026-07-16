@@ -5,10 +5,9 @@ All tests use synthetic fixtures — no network calls, no real Spotify credentia
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
-
 from spotify.fetch import (
     fetch_artist_albums,
     fetch_artist_info,
@@ -17,7 +16,6 @@ from spotify.fetch import (
     fetch_top_artists,
     fetch_top_tracks,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -73,7 +73,6 @@ dev = [
 
     # Code quality
     "ruff>=0.3.0",
-    "black>=24.0.0",
     "mypy>=1.8.0",
     "pre-commit>=3.7.0",
 
@@ -103,7 +102,6 @@ dev = [
     "pytest-cov>=4.1.0",
     "pytest-mock>=3.12.0",
     "ruff>=0.3.0",
-    "black>=24.0.0",
     "mypy>=1.8.0",
     "pre-commit>=3.7.0",
     "jupyter>=1.0.0",
@@ -130,7 +128,7 @@ select = [
     "S",   # bandit security
 ]
 ignore = [
-    "E501",  # line too long (handled by black)
+    "E501",  # line too long (handled by ruff-format)
     "B008",  # do not perform function calls in argument defaults
     "C901",  # too complex
 ]
@@ -141,11 +139,6 @@ ignore = [
 "notebooks/**" = ["ALL"]
 "*.ipynb" = ["ALL"]
 "src/**/storage/*.py" = ["S608"]  # SQL templates use only literal column names, no user input interpolated
-
-[tool.black]
-line-length = 100
-target-version = ['py311']
-include = '\.pyi?$'
 
 [tool.mypy]
 python_version = "3.11"

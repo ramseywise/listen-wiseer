@@ -217,9 +217,7 @@ class TestQueryAnalyzer:
         assert result.complexity in ("moderate", "complex")
 
     def test_analyzer_disabled_features(self) -> None:
-        analyzer = QueryAnalyzer(
-            expand_terms=False, extract_entities_flag=False, decompose=False
-        )
+        analyzer = QueryAnalyzer(expand_terms=False, extract_entities_flag=False, decompose=False)
         result = analyzer.analyze("suggest some chill 80s tracks for workout")
         assert result.expanded_query == result.original_query
         assert result.entities == {}
