@@ -1,5 +1,5 @@
 """
-MCP server exposing Spotify READ operations as tools for LLM agents.
+MCP server exposing Spotify tools for LLM agents.
 Run with: uv run python src/mcp_server/server.py
 """
 
@@ -23,6 +23,9 @@ from spotify.fetch import (
     fetch_top_artists,
     fetch_top_tracks,
 )
+from spotify.playback import get_playback_state, play_tracks, queue_track as queue_track_fn
+from spotify.write import SpotifyActions
+from utils.exceptions import SpotifyAuthError
 from utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -238,6 +241,103 @@ def get_spotify_recommendations(
     lines = ["Spotify recommendations:"]
     lines.extend(f"{i}. {t.name} — {', '.join(t.artist_names)} [{t.id}]" for i, t in enumerate(tracks, 1))
     return "\n".join(lines)
+
+
+# --- Write tools ---
+
+
+@mcp.tool()
+def create_playlist(name: str, description: str = "") -> str:
+    """Create a new private Spotify playlist. Returns the playlist ID and URL."""
+    try:
+        sp = SpotifyClient()
+        actions = SpotifyActions(sp)
+        playlist_id = actions.create_playlist(name, description)
+    except SpotifyAuthError:
+        return "Auth expired — run `make auth` to re-authenticate."
+    return f"Created playlist '{name}': https://open.spotify.com/playlist/{playlist_id}"
+
+
+@mcp.tool()
+def add_tracks_to_playlist(playlist_id: str, track_ids: list[str]) -> str:
+    """Add tracks to an existing Spotify playlist. Accepts a list of track IDs."""
+    if not track_ids:
+        return "No track IDs provided."
+    try:
+        sp = SpotifyClient()
+        actions = SpotifyActions(sp)
+        actions.add_tracks(playlist_id, track_ids)
+    except SpotifyAuthError:
+        return "Auth expired — run `make auth` to re-authenticate."
+    return f"Added {len(track_ids)} tracks to playlist {playlist_id}."
+
+
+@mcp.tool()
+def create_playlist_with_tracks(
+    name: str, track_ids: list[str], description: str = ""
+) -> str:
+    """Create a new Spotify playlist and populate it with tracks in one step."""
+    if not track_ids:
+        return "No track IDs provided."
+    try:
+        sp = SpotifyClient()
+        actions = SpotifyActions(sp)
+        playlist_id = actions.create_playlist_with_tracks(name, track_ids, description)
+    except SpotifyAuthError:
+        return "Auth expired — run `make auth` to re-authenticate."
+    return (
+        f"Created playlist '{name}' with {len(track_ids)} tracks: "
+        f"https://open.spotify.com/playlist/{playlist_id}"
+    )
+
+
+# --- Playback tools ---
+
+
+@mcp.tool()
+def play_track(track_id: str) -> str:
+    """Start playback of a specific track on the user's active Spotify device."""
+    try:
+        sp = SpotifyClient()
+        play_tracks(sp, [track_id])
+    except SpotifyAuthError:
+        return "Auth expired — run `make auth` to re-authenticate."
+    return f"Playing track {track_id}."
+
+
+@mcp.tool()
+def queue_track(track_id: str) -> str:
+    """Add a track to the user's Spotify playback queue."""
+    try:
+        sp = SpotifyClient()
+        queue_track_fn(sp, track_id)
+    except SpotifyAuthError:
+        return "Auth expired — run `make auth` to re-authenticate."
+    return f"Queued track {track_id}."
+
+
+@mcp.tool()
+def get_current_playback() -> str:
+    """Get the user's current Spotify playback state (track, device, progress)."""
+    try:
+        sp = SpotifyClient()
+        state = get_playback_state(sp)
+    except SpotifyAuthError:
+        return "Auth expired — run `make auth` to re-authenticate."
+    if state is None:
+        return "No active playback session. Open Spotify on a device first."
+    track = state.get("item", {})
+    device = state.get("device", {})
+    progress_ms = state.get("progress_ms", 0)
+    duration_ms = track.get("duration_ms", 1)
+    pct = int(progress_ms / duration_ms * 100) if duration_ms else 0
+    artists = ", ".join(a["name"] for a in track.get("artists", []))
+    return (
+        f"Now playing: {track.get('name', '?')} — {artists}\n"
+        f"Album: {track.get('album', {}).get('name', '?')}\n"
+        f"Device: {device.get('name', '?')} ({device.get('type', '?')})\n"
+        f"Progress: {pct}% | {'Playing' if state.get('is_playing') else 'Paused'}"
+    )
 
 
 if __name__ == "__main__":

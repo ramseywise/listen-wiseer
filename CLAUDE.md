@@ -30,6 +30,7 @@ src/
   app/          — Chainlit entry point
 
 models/         — serialized artifacts (gitignored)
+.mcp.json       — Claude Code MCP server registration
 ```
 
 ## Phase status
@@ -58,6 +59,7 @@ models/         — serialized artifacts (gitignored)
 - `deepeval`'s pytest plugin pings telemetry on import — hangs for minutes in restricted-network environments. `make test*` targets export `DEEPEVAL_TELEMETRY_OPT_OUT=YES`; set it yourself if running `pytest` directly.
 - `rag_core/` deleted (Phase 8) — was an unfinished retrofit of a Danish support-bot RAG (OpenSearch/e5-large lineage), never fully adapted to music. Web/artist/genre context is Tavily-only now (`get_artist_context_tool`, `get_genre_context_tool`); set `TAVILY_API_KEY`. Intent classification (`QueryAnalyzer`) moved to `agent/intent.py` — it was the one music-relevant piece.
 - `InMemoryStore` used for cross-session memory in dev; Redis/Postgres for prod (Phase 6 Phase 3)
+- Playback scopes (`user-read-playback-state`, `user-modify-playback-state`, `user-read-currently-playing`) added — existing `.spotify_cache` must be deleted and re-authed (`rm .spotify_cache && make auth`) to pick up new scopes
 
 ## Environment
 

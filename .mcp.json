@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "listen-wiseer": {
+      "command": "uv",
+      "args": ["run", "--directory", ".", "python", "src/mcp_server/server.py"],
+      "env": {
+        "PYTHONPATH": "src"
+      }
+    }
+  }
+}

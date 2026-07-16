@@ -29,6 +29,9 @@ SCOPES = [
     "user-read-recently-played",
     "user-top-read",
     "user-read-private",
+    "user-read-playback-state",
+    "user-modify-playback-state",
+    "user-read-currently-playing",
 ]
 # Resolve relative to repo root (src/spotify/auth.py → ../../) so it works
 # regardless of cwd — notebook, terminal, Docker, and UI all hit the same file.

@@ -91,6 +91,14 @@ class SpotifyClient:
             )
         )
 
+    def put(self, endpoint: str, json: dict | None = None) -> dict:
+        url = f"{BASE_URL}/{endpoint.lstrip('/')}"
+        return self._with_auth_retry(
+            lambda: (lambda r: r.json() if r.content else {})(
+                _request("put", url, headers=self._headers(), json=json)
+            )
+        )
+
     def get_paginated(self, endpoint: str, **params) -> list[dict]:
         """Follow Spotify pagination and return all items."""
         results = []
