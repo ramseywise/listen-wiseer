@@ -9,6 +9,10 @@
 - Context: agentic Tavily web search for artist/genre history (query decompose/fan-out + confidence gating; see Phase 8 plan)
 - Auth: custom OAuth via httpx · token at `.spotify_cache`
 
+## Refs (read before writing code here)
+
+- `~/.claude/refs/python.md`, `logging.md`, `ml.md`, `langgraph.md`
+
 ## Commands
 
 Run `make help` for the full list.
@@ -109,13 +113,13 @@ Non-trivial tasks follow phases:
 
 | Phase | Command | Artifact |
 |-------|---------|----------|
-| 1. Research | `/research <name>` | `.claude/docs/research/<name>.md` |
-| 2. Plan | `/plan <name>` | `.claude/docs/plans/<name>.md` |
-| 2.5. Plan Review | `/plan-review` | active plan (iterated) |
+| 1. Research | `/research <slug>` | `## Research` in `.claude/docs/plans/YYYY-MM-DD-<slug>.md` |
+| 2. Plan | `/plan <slug>` | `## Plan` in the same doc |
+| 2.5. Plan Review | `/plan review` | plan section (iterated) |
 | 3. Execute | `/execute` | `.claude/docs/CHANGELOG.md` |
-| 4. Review | `/review <name>` | `.claude/docs/reviews/<name>.md` + PR |
+| 4. Review | `/code-review <slug>` | `## Review` in the same doc + PR |
 
-All phase artifacts live in `.claude/docs/` subdirectories (gitignored). Only `CLAUDE.md` lives at the project root.
+One doc per work item in `.claude/docs/plans/` (gitignored), with a `Status:` line — no SESSION.md. Only `CLAUDE.md` lives at the project root.
 
 ### Tooling
 
