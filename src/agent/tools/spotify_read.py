@@ -34,8 +34,7 @@ def _get_recently_played(limit: int = 20) -> str:
         if not tracks:
             return "No recently played tracks found."
         return "\n".join(
-            f"{i}. {t.name} — {', '.join(t.artist_names)} [{t.id}]"
-            for i, t in enumerate(tracks, 1)
+            f"{i}. {t.name} — {', '.join(t.artist_names)} [{t.id}]" for i, t in enumerate(tracks, 1)
         )
     except Exception as exc:
         log.error("agent.tools.recently_played.failed", error=str(exc))
@@ -81,8 +80,7 @@ def _get_related_artists(artist_id: str) -> str:
         if not artists:
             return f"No related artists found for {artist_id}"
         return "\n".join(
-            f"- {a['name']} ({', '.join(a['genres']) or 'unknown genre'})"
-            for a in artists
+            f"- {a['name']} ({', '.join(a['genres']) or 'unknown genre'})" for a in artists
         )
     except SpotifyClientError as exc:
         log.warning("tool.get_related_artists.failed", error=str(exc))
@@ -114,8 +112,7 @@ def _get_top_tracks(time_range: str = "medium_term", limit: int = 20) -> str:
         label = _TIME_RANGE_LABELS.get(time_range, time_range)
         lines = [f"Your top tracks ({label}):"]
         lines.extend(
-            f"{i}. {t.name} — {', '.join(t.artist_names)} [{t.id}]"
-            for i, t in enumerate(tracks, 1)
+            f"{i}. {t.name} — {', '.join(t.artist_names)} [{t.id}]" for i, t in enumerate(tracks, 1)
         )
         return "\n".join(lines)
     except Exception as exc:
@@ -195,9 +192,7 @@ def _get_artist_top_tracks(artist_id: str) -> str:
         tracks = fetch_artist_top_tracks(_get_client(), artist_id)
         if not tracks:
             return f"No top tracks found for artist {artist_id}."
-        return "\n".join(
-            f"{i}. {t.name} [{t.id}]" for i, t in enumerate(tracks, 1)
-        )
+        return "\n".join(f"{i}. {t.name} [{t.id}]" for i, t in enumerate(tracks, 1))
     except Exception as exc:
         log.error("agent.tools.artist_top_tracks.failed", error=str(exc))
         return f"Failed to fetch artist top tracks: {exc}"
@@ -317,8 +312,7 @@ def _get_spotify_recommendations(
             return "No recommendations found."
         lines = ["Spotify recommendations:"]
         lines.extend(
-            f"{i}. {t.name} — {', '.join(t.artist_names)} [{t.id}]"
-            for i, t in enumerate(tracks, 1)
+            f"{i}. {t.name} — {', '.join(t.artist_names)} [{t.id}]" for i, t in enumerate(tracks, 1)
         )
         return "\n".join(lines)
     except Exception as exc:

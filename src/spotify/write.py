@@ -23,10 +23,7 @@ class SpotifyActions:
 
     def add_tracks(self, playlist_id: str, track_ids: list[str]) -> None:
         """Add tracks in batches of 100 (Spotify API limit)."""
-        uris = [
-            f"spotify:track:{t}" if not t.startswith("spotify:") else t
-            for t in track_ids
-        ]
+        uris = [f"spotify:track:{t}" if not t.startswith("spotify:") else t for t in track_ids]
         for i in range(0, len(uris), 100):
             self.client.post(
                 f"playlists/{playlist_id}/tracks",

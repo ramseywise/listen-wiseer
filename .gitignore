@@ -60,5 +60,4 @@ logs/
 
 /.deepeval
 /models
-/notebooks
 .env

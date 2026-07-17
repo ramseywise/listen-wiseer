@@ -23,7 +23,8 @@ from spotify.fetch import (
     fetch_top_artists,
     fetch_top_tracks,
 )
-from spotify.playback import get_playback_state, play_tracks, queue_track as queue_track_fn
+from spotify.playback import get_playback_state, play_tracks
+from spotify.playback import queue_track as queue_track_fn
 from spotify.write import SpotifyActions
 from utils.exceptions import SpotifyAuthError
 from utils.logging import get_logger
@@ -137,7 +138,9 @@ def get_top_tracks(time_range: str = "medium_term", limit: int = 20) -> str:
     if not tracks:
         return "No top tracks found."
     lines = [f"Top tracks ({label}):"]
-    lines.extend(f"{i}. {t.name} — {', '.join(t.artist_names)} [{t.id}]" for i, t in enumerate(tracks, 1))
+    lines.extend(
+        f"{i}. {t.name} — {', '.join(t.artist_names)} [{t.id}]" for i, t in enumerate(tracks, 1)
+    )
     return "\n".join(lines)
 
 
@@ -202,8 +205,7 @@ def get_related_artists(artist_id: str) -> str:
     if not artists:
         return f"No related artists found for {artist_id}."
     return "\n".join(
-        f"- {a['name']} ({', '.join(a['genres']) or 'unknown genre'}) [{a['id']}]"
-        for a in artists
+        f"- {a['name']} ({', '.join(a['genres']) or 'unknown genre'}) [{a['id']}]" for a in artists
     )
 
 
@@ -239,7 +241,9 @@ def get_spotify_recommendations(
     if not tracks:
         return "No recommendations found."
     lines = ["Spotify recommendations:"]
-    lines.extend(f"{i}. {t.name} — {', '.join(t.artist_names)} [{t.id}]" for i, t in enumerate(tracks, 1))
+    lines.extend(
+        f"{i}. {t.name} — {', '.join(t.artist_names)} [{t.id}]" for i, t in enumerate(tracks, 1)
+    )
     return "\n".join(lines)
 
 
@@ -273,9 +277,7 @@ def add_tracks_to_playlist(playlist_id: str, track_ids: list[str]) -> str:
 
 
 @mcp.tool()
-def create_playlist_with_tracks(
-    name: str, track_ids: list[str], description: str = ""
-) -> str:
+def create_playlist_with_tracks(name: str, track_ids: list[str], description: str = "") -> str:
     """Create a new Spotify playlist and populate it with tracks in one step."""
     if not track_ids:
         return "No track IDs provided."

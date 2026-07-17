@@ -86,9 +86,14 @@ async def on_message(message: cl.Message) -> None:
         # Check for HITL interrupt (playlist write confirmation)
         interrupts = result.get("__interrupt__")
         if interrupts:
-            interrupt_val = interrupts[0].value if hasattr(interrupts[0], "value") else interrupts[0]
+            interrupt_val = (
+                interrupts[0].value if hasattr(interrupts[0], "value") else interrupts[0]
+            )
             cl.user_session.set("awaiting_confirm", interrupt_val)
-            if isinstance(interrupt_val, dict) and interrupt_val.get("type") == "confirm_playlist_create":
+            if (
+                isinstance(interrupt_val, dict)
+                and interrupt_val.get("type") == "confirm_playlist_create"
+            ):
                 name = interrupt_val["name"]
                 count = interrupt_val["track_count"]
                 reply = (
@@ -102,8 +107,7 @@ async def on_message(message: cl.Message) -> None:
             reply = agent_resp.get("message") or result["messages"][-1].content
             suggestions = agent_resp.get("suggestions", [])
             actions = [
-                cl.Action(name="suggestion", label=s, payload={"query": s})
-                for s in suggestions[:3]
+                cl.Action(name="suggestion", label=s, payload={"query": s}) for s in suggestions[:3]
             ]
             schedule_optimization(user_id, result["messages"], get_store())
     except Exception as exc:

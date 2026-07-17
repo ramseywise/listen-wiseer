@@ -34,9 +34,7 @@ async def get_checkpointer() -> BaseCheckpointSaver:
         # psycopg doesn't accept the SQLAlchemy dialect prefix; strip it.
         conn_str = settings.postgres_url.replace("postgresql+psycopg://", "postgresql://")
         _exit_stack = AsyncExitStack()
-        saver = await _exit_stack.enter_async_context(
-            AsyncPostgresSaver.from_conn_string(conn_str)
-        )
+        saver = await _exit_stack.enter_async_context(AsyncPostgresSaver.from_conn_string(conn_str))
         await saver.setup()
         _checkpointer = saver
         log.info("agent.checkpointer.postgres")

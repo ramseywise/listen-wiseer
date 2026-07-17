@@ -104,10 +104,7 @@ def fetch_related_artists(client: SpotifyClient, artist_id: str) -> list[dict]:
     response = client.get(f"artists/{artist_id}/related-artists")
     artists = response.get("artists", [])
     log.info("spotify.fetch_related_artists", artist_id=artist_id, n=len(artists))
-    return [
-        {"id": a["id"], "name": a["name"], "genres": a.get("genres", [])[:3]}
-        for a in artists
-    ]
+    return [{"id": a["id"], "name": a["name"], "genres": a.get("genres", [])[:3]} for a in artists]
 
 
 def fetch_top_tracks(

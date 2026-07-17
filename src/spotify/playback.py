@@ -7,10 +7,7 @@ from spotify.client import SpotifyClient
 
 def play_tracks(client: SpotifyClient, track_ids: list[str]) -> None:
     """Start playback of specific tracks on the user's active device."""
-    uris = [
-        f"spotify:track:{t}" if not t.startswith("spotify:") else t
-        for t in track_ids
-    ]
+    uris = [f"spotify:track:{t}" if not t.startswith("spotify:") else t for t in track_ids]
     client.put("me/player/play", json={"uris": uris})
 
 

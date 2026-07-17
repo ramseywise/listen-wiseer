@@ -170,15 +170,9 @@ def enrich_categorical_features(df: pl.DataFrame) -> pl.DataFrame:
     """
     # Decade from release_date
     df = df.with_columns(
-        pl.col("release_date")
-        .str.slice(0, 4)
-        .cast(pl.Int32, strict=False)
-        .alias("year")
+        pl.col("release_date").str.slice(0, 4).cast(pl.Int32, strict=False).alias("year")
     ).with_columns(
-        (pl.col("year") // 10 * 10)
-        .cast(pl.Utf8)
-        .str.replace(r"(\d+)", "${1}s")
-        .alias("decade")
+        (pl.col("year") // 10 * 10).cast(pl.Utf8).str.replace(r"(\d+)", "${1}s").alias("decade")
     )
 
     # Key label

@@ -28,7 +28,7 @@ num_features = [
 ]
 cat_features = [
     "decade",
-    "key_mode"
+    "key_mode",
     # "genre",
 ]
 
