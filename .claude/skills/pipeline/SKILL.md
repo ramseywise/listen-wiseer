@@ -17,9 +17,9 @@ description: "Map the full phased workflow; start from a chosen phase with human
 
 One doc per work item: `.claude/docs/plans/YYYY-MM-DD-<slug>.md` with a `Status:` line (PLANNED / IN PROGRESS / EXECUTED). No SESSION.md — `grep -l 'Status: IN PROGRESS' .claude/docs/plans/*.md` finds the active doc.
 
-**Plan updates anytime:** `/plan-review` re-runs the review and patches the active plan.
+**Plan updates anytime:** `/plan review` re-runs the review and patches the active plan.
 
-Ad-hoc (skip pipeline): `/debug`, `/code_review`, `/refactor`.
+Ad-hoc (skip pipeline): `/code-debug`, `/code-review`, `/plan-refactor`.
 
 ## On invoke
 

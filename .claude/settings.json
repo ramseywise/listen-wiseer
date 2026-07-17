@@ -42,11 +42,11 @@
         ]
       },
       {
-        "matcher": "TodoWrite",
+        "matcher": "TaskCreate|TaskUpdate",
         "hooks": [
           {
             "type": "command",
-            "command": "mkdir -p .claude && echo \"$CLAUDE_TOOL_RESPONSE\" | jq -c \"{ts: (now | todate), todos: .newTodos}\" >> .claude/todo-log.jsonl 2>/dev/null; exit 0",
+            "command": "mkdir -p .claude && echo \"$CLAUDE_TOOL_INPUT\" | jq -c '{ts: (now | todate), task: .}' >> .claude/todo-log.jsonl 2>/dev/null; exit 0",
             "timeout": 5
           }
         ]

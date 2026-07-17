@@ -43,3 +43,10 @@ No contract (no SANYI.md at repo root) — skipped.
 
 [x] Approved with minor fixes — diff itself is correct and consistent; findings are
 pre-existing staleness the diff exposed, all in machine-consumed files.
+
+## Resolution — 2026-07-17 (Ramsey-approved)
+
+All 3 non-blocking findings fixed same session: pipeline command names, Phase 8 row,
+`TodoWrite` → `TaskCreate|TaskUpdate` matcher (hook now logs tool input; old
+`.newTodos` response field was dead). Nits left as-is (harmless glob, historical plan
+reference). settings.json jq-validated.

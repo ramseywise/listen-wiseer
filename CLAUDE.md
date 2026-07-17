@@ -51,7 +51,7 @@ models/         — serialized artifacts (gitignored)
 | 7a — Exploration tools: 6 fetch functions, 7 new tools, MCP parity | ✓ DONE |
 | 7b — Intent taxonomy (explore_my_taste + discover), Chainlit suggestion chips | ✓ DONE |
 | 7c — Genre lineage tool, taste drift analysis, Postgres memory store | ✓ DONE |
-| 8 — RAG right-sizing (deleted `rag_core/`), agentic web search, HITL/eval hardening | IN PROGRESS |
+| 8 — RAG right-sizing (deleted `rag_core/`), agentic web search, HITL/eval hardening | ✓ DONE |
 
 ## Active gotchas
 
