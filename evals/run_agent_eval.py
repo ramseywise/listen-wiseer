@@ -9,7 +9,7 @@ Usage:
     # Tier 2 — trajectory eval with LangFuse (costs money):
     CONFIRM_EXPENSIVE_OPS=true PYTHONPATH=src uv run python -m evals.run_agent_eval --tier 2
 
-    # Tier 3 — e2e with RAGAS + DeepEval graders (costs money):
+    # Tier 3 — e2e with RAGAS + tool-correctness graders (costs money):
     CONFIRM_EXPENSIVE_OPS=true PYTHONPATH=src uv run python -m evals.run_agent_eval --tier 3
 
     # All tiers:
@@ -23,10 +23,9 @@ import json
 import sys
 from pathlib import Path
 
-from utils.logging import configure_logging, get_logger
-
 from evals.agent.intent_eval import evaluate_intent, evaluate_routing
 from evals.tasks.models import AgentGoldenSample
+from utils.logging import configure_logging, get_logger
 
 log = get_logger(__name__)
 
@@ -115,8 +114,9 @@ def run_tier2(samples: list[AgentGoldenSample]) -> bool:
         print("ERROR: Tier 2 requires CONFIRM_EXPENSIVE_OPS=true (LLM calls).")
         return False
 
-    from agent.graph import build_graph
     from langgraph.checkpoint.memory import MemorySaver
+
+    from agent.graph import build_graph
 
     graph = build_graph(checkpointer=MemorySaver())
 
@@ -164,8 +164,9 @@ def run_tier3(samples: list[AgentGoldenSample]) -> bool:
         print("ERROR: Tier 3 requires CONFIRM_EXPENSIVE_OPS=true (LLM calls).")
         return False
 
-    from agent.graph import build_graph
     from langgraph.checkpoint.memory import MemorySaver
+
+    from agent.graph import build_graph
 
     graph = build_graph(checkpointer=MemorySaver())
 

@@ -60,7 +60,6 @@ dependencies = [
     # Eval & observability
     "langfuse>=4.14.0",
     "ragas>=0.2.0",
-    "deepeval>=1.0.0",
 ]
 
 [project.optional-dependencies]
