@@ -7,58 +7,58 @@ requires-python = ">=3.11"
 
 dependencies = [
     # Core data processing
-    "polars>=0.20.0",
+    "polars>=1.42.1",
     "pyarrow>=15.0.0",
     # LangGraph and LangChain ecosystem
-    "langgraph>=0.2.0",
+    "langgraph>=1.2.9",
     "langchain>=0.2.0",
     "langchain-core>=0.2.0",
-    "langchain-community>=0.2.0",
-    "langchain-anthropic>=0.1.0",
+    "langchain-community>=0.4.2",
+    "langchain-anthropic>=1.4.8",
     # LLM providers
     "anthropic>=0.25.0",
     # Wikipedia and RAG (rag_core/ suspended in Phase 6 — replaced by web search)
     "wikipedia>=1.4.0",
-    "sentence-transformers>=2.7.0",
+    "sentence-transformers>=5.6.0",
     # Web search
-    "tavily-python>=0.5.0",
+    "tavily-python>=0.7.26",
     # ML and similarity
-    "scikit-learn>=1.4.0",
-    "numpy>=1.26.0",
+    "scikit-learn>=1.9.0",
+    "numpy>=2.4.6",
     "scipy>=1.12.0",
     "yellowbrick>=1.5.0",
     # MCP server
-    "mcp>=1.0.0",
+    "mcp>=1.28.1",
     # Web interface
-    "chainlit>=1.0.0",
+    "chainlit>=2.11.1",
     # Data validation
-    "pydantic>=2.0.0",
-    "pydantic-settings>=2.0.0",
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.14.2",
     # Observability and logging
     "structlog>=24.0.0",
-    "opentelemetry-api>=1.22.0",
+    "opentelemetry-api>=1.44.0",
     "opentelemetry-sdk>=1.22.0",
     # Jaeger now receives traces via OTLP — exporter-jaeger was deprecated at 1.21.0
     "opentelemetry-exporter-otlp>=1.22.0",
     "opentelemetry-instrumentation>=0.44.0",
     # HTTP and async
     "httpx>=0.26.0",
-    "aiohttp>=3.9.0",
+    "aiohttp>=3.14.1",
     # Utilities
     "rich>=13.0.0",
-    "click>=8.1.0",
+    "click>=8.4.2",
     "pyyaml>=6.0.0",
-    "duckdb>=1.5.0",
+    "duckdb>=1.5.4",
     "lightgbm>=4.3.0",
     "gensim>=4.4.0",
     "catboost>=1.2.10",
-    "imbalanced-learn>=0.14.1",
-    "langgraph-checkpoint-postgres>=2.0.0",
-    "langgraph-checkpoint-redis>=0.4.0",
+    "imbalanced-learn>=0.14.2",
+    "langgraph-checkpoint-postgres>=3.1.0",
+    "langgraph-checkpoint-redis>=0.5.1",
     "psycopg[binary]>=3.3.4",
     "langmem>=0.0.30",
     # Eval & observability
-    "langfuse>=2.0.0",
+    "langfuse>=4.14.0",
     "ragas>=0.2.0",
     "deepeval>=1.0.0",
 ]
@@ -66,23 +66,23 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     # Testing
-    "pytest>=8.0.0",
-    "pytest-asyncio>=0.23.0",
-    "pytest-cov>=4.1.0",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0",
     "pytest-mock>=3.12.0",
 
     # Code quality
-    "ruff>=0.3.0",
+    "ruff>=0.15.22",
     "mypy>=1.8.0",
-    "pre-commit>=3.7.0",
+    "pre-commit>=4.6.0",
 
     # Type stubs
     "types-pyyaml>=6.0.12.20260518",
 
     # Jupyter for exploration
     "jupyter>=1.0.0",
-    "ipykernel>=6.29.0",
-    "matplotlib>=3.8.0",
+    "ipykernel>=7.3.0",
+    "matplotlib>=3.11.0",
     "seaborn>=0.13.0",
 ]
 
@@ -97,18 +97,18 @@ packages = ["src"]
 
 [dependency-groups]
 dev = [
-    "pytest>=8.0.0",
-    "pytest-asyncio>=0.23.0",
-    "pytest-cov>=4.1.0",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0",
     "pytest-mock>=3.12.0",
-    "ruff>=0.3.0",
+    "ruff>=0.15.22",
     "mypy>=1.8.0",
-    "pre-commit>=3.7.0",
+    "pre-commit>=4.6.0",
     "jupyter>=1.0.0",
-    "ipykernel>=6.29.0",
-    "matplotlib>=3.8.0",
+    "ipykernel>=7.3.0",
+    "matplotlib>=3.11.0",
     "seaborn>=0.13.0",
-    "pyright>=1.1.408",
+    "pyright>=1.1.411",
     "pytest-timeout>=2.4.0",
 ]
 
