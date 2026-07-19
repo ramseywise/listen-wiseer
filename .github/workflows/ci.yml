@@ -12,4 +12,12 @@ jobs:
       # Matches Makefile `lint:` (src/ only). The Makefile passes --unsafe-fixes,
       # which is a mutating flag and is deliberately dropped for the CI check.
       lint-paths: "src"
+      # `ruff check src/` is clean as of 2026-07-19, so lint gates from day one.
       test-command: "uv run pytest tests/unit -q"
+      # Non-blocking: pytest cannot COLLECT here — deepeval's gpt_model imports
+      # `langchain.schema`, removed in the installed langchain, so every run
+      # dies at import (verified 2026-07-19, and not the telemetry hang noted in
+      # CLAUDE.md — it reproduces with DEEPEVAL_TELEMETRY_OPT_OUT=YES). This is a
+      # dependency break, not a test failure; nothing here can pass until it is
+      # resolved. Drop this line once collection succeeds.
+      tests-blocking: false
