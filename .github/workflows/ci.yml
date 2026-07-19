@@ -1,0 +1,15 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  ci:
+    uses: ramseywise/ai-project-template/.github/workflows/python-ci.yml@main
+    with:
+      # Matches Makefile `lint:` (src/ only). The Makefile passes --unsafe-fixes,
+      # which is a mutating flag and is deliberately dropped for the CI check.
+      lint-paths: "src"
+      test-command: "uv run pytest tests/unit -q"
