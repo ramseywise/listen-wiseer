@@ -76,3 +76,30 @@ async def test_shutdown_store_clears_singleton():
 
     assert ms._store is None
     assert ms._store_exit_stack is None
+
+
+async def test_shutdown_store_closes_exit_stack():
+    """shutdown_store calls aclose on the exit stack when one exists."""
+    import agent.memory_store as ms
+
+    mock_stack = AsyncMock()
+    ms._store = MagicMock(spec=AsyncPostgresStore)
+    ms._store_exit_stack = mock_stack
+
+    await ms.shutdown_store()
+
+    mock_stack.aclose.assert_awaited_once()
+    assert ms._store is None
+    assert ms._store_exit_stack is None
+
+
+async def test_get_store_singleton_not_recreated():
+    """Calling get_store twice without reset returns the same object."""
+    import agent.memory_store as ms
+
+    with patch.object(ms.settings, "memory_store_url", None):
+        with patch.object(ms, "SentenceTransformerEmbeddings", return_value=MagicMock()):
+            first = await ms.get_store()
+            second = await ms.get_store()
+
+    assert first is second

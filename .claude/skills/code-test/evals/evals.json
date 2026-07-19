@@ -1,0 +1,9 @@
+[
+  {"input": "write tests for the retrieval module using this project's pytest conventions", "expected": true},
+  {"input": "what should I test vs not test in the embedding pipeline here?", "expected": true},
+  {"input": "add test coverage for the new chunking strategy — synthetic fixtures only", "expected": true},
+  {"input": "the execute agent needs test writing conventions for this stack", "expected": true},
+  {"input": "refactor the ingestion module for quality", "expected": false},
+  {"input": "debug why the pipeline crashes on empty inputs", "expected": false},
+  {"input": "research whether BM25 or dense retrieval works better for this domain", "expected": false}
+]

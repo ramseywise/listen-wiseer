@@ -1,0 +1,9 @@
+[
+  {"input": "refactor the ingestion module — there are clear smells in how it handles errors", "expected": true},
+  {"input": "identify improvement opportunities in retrieval.py before making changes", "expected": true},
+  {"input": "read the rag pipeline code and propose changes for quality", "expected": true},
+  {"input": "the refactor agent needs to clean up the chunker class", "expected": true},
+  {"input": "write unit tests for the embedding module", "expected": false},
+  {"input": "fix the bug in the pipeline where it crashes on empty documents", "expected": false},
+  {"input": "run the full pipeline on the test corpus", "expected": false}
+]

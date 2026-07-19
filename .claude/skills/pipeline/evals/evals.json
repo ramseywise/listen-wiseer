@@ -1,0 +1,9 @@
+[
+  {"input": "map out the full phased workflow for this project", "expected": true},
+  {"input": "start the pipeline from the ingest phase with a human gate before eval", "expected": true},
+  {"input": "walk me through the full pipeline phases and where the gates are", "expected": true},
+  {"input": "pick up the pipeline from phase 2 — ingest is already done", "expected": true},
+  {"input": "refactor the chunking module before the next pipeline run", "expected": false},
+  {"input": "write tests for the retrieval layer", "expected": false},
+  {"input": "research reranking options for this RAG design", "expected": false}
+]

@@ -67,3 +67,74 @@ class TestGetRelatedArtists:
         assert "rock, indie" in result
         assert "Artist B" in result
         assert "unknown genre" in result
+
+
+class TestGetTasteAnalysis:
+    def test_new_obsessions_stable_fading(self) -> None:
+        short_artists = [{"name": "New Artist"}, {"name": "Stable Artist"}]
+        long_artists = [{"name": "Stable Artist"}, {"name": "Fading Artist"}]
+        with (
+            patch(
+                "agent.tools.spotify_read.fetch_top_artists",
+                side_effect=[short_artists, long_artists],
+            ),
+            patch("agent.tools.spotify_read._get_client", return_value=MagicMock()),
+        ):
+            from agent.tools.spotify_read import _get_taste_analysis
+
+            result = _get_taste_analysis()
+
+        assert "New Artist" in result
+        assert "Stable Artist" in result
+        assert "Fading Artist" in result
+        assert "New obsessions" in result
+        assert "Consistent staples" in result
+        assert "Fading interests" in result
+
+    def test_empty_short_term(self) -> None:
+        with (
+            patch(
+                "agent.tools.spotify_read.fetch_top_artists",
+                side_effect=[[], [{"name": "Old Fave"}]],
+            ),
+            patch("agent.tools.spotify_read._get_client", return_value=MagicMock()),
+        ):
+            from agent.tools.spotify_read import _get_taste_analysis
+
+            result = _get_taste_analysis()
+
+        assert "Old Fave" in result
+
+    def test_get_taste_analysis_in_all_tools(self) -> None:
+        from agent.tools import ALL_TOOLS
+
+        tool_names = [t.name for t in ALL_TOOLS]
+        assert "get_taste_analysis" in tool_names
+
+
+class TestGetGenreContext:
+    def test_get_genre_context_in_all_tools(self) -> None:
+        from agent.tools import ALL_TOOLS
+
+        tool_names = [t.name for t in ALL_TOOLS]
+        assert "get_genre_context" in tool_names
+
+    def test_genre_context_query_structure(self) -> None:
+        """Genre context uses genre-specific query template, not generic artist bio."""
+        captured: list[str] = []
+
+        def fake_agentic_search(subject: str, query: str, wiki_query: str | None = None) -> tuple:
+            captured.append(query)
+            return ("result text", {"sources": [], "confidence": "high"})
+
+        with patch("agent.tools.web_search._agentic_search", side_effect=fake_agentic_search):
+            from agent.tools.web_search import _get_genre_context
+
+            _get_genre_context("bossa nova")
+
+        assert captured, "agentic_search was not called"
+        assert "origins" in captured[0]
+        assert "key artists" in captured[0]
+        assert "subgenres" in captured[0]
+        # Must NOT use the artist biography template
+        assert "biography" not in captured[0]

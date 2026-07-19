@@ -1,0 +1,10 @@
+[
+  {"input": "research chunking strategies before I commit to an approach for this pipeline", "expected": true},
+  {"input": "give me a structured trade-off analysis of embedding models for this domain", "expected": true},
+  {"input": "I need to decide between reranking options — what does the research say?", "expected": true},
+  {"input": "design a RAG evaluation framework for the listen-wiseer use case", "expected": true},
+  {"input": "we're extending the RAG pipeline — analyze the multi-agent architecture options first", "expected": true},
+  {"input": "refactor the retrieval module based on these patterns", "expected": false},
+  {"input": "write pytest fixtures for the embedding pipeline", "expected": false},
+  {"input": "run the full pipeline from ingest through eval", "expected": false}
+]

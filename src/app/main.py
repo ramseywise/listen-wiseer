@@ -106,9 +106,13 @@ async def on_message(message: cl.Message) -> None:
             agent_resp = result.get("agent_response", {})
             reply = agent_resp.get("message") or result["messages"][-1].content
             suggestions = agent_resp.get("suggestions", [])
+            track_list = agent_resp.get("track_list", [])
             actions = [
                 cl.Action(name="suggestion", label=s, payload={"query": s}) for s in suggestions[:3]
             ]
+            if track_list:
+                formatted = "\n".join(f"• {t}" for t in track_list)
+                reply = f"{reply}\n\n**Tracks:**\n{formatted}"
             schedule_optimization(user_id, result["messages"], get_store())
     except Exception as exc:
         log.error("app.on_message.failed", error=str(exc), thread_id=thread_id)
