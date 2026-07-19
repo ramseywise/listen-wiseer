@@ -8,7 +8,7 @@ requires-python = ">=3.11"
 dependencies = [
     # Core data processing
     "polars>=1.42.1",
-    "pyarrow>=15.0.0",
+    "pyarrow>=25.0.0",
     # LangGraph and LangChain ecosystem
     "langgraph>=1.2.9",
     "langchain>=0.2.0",
