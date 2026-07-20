@@ -1,5 +1,5 @@
 ---
-name: code_test
+name: code-test
 description: "Test writing conventions for this stack. Synthetic fixtures only, pytest patterns, what to test vs. not. Used by execute and review agents."
 ---
 

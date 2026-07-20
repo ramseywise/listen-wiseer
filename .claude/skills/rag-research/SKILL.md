@@ -1,5 +1,5 @@
 ---
-name: rag_research
+name: rag-research
 description: "Research a RAG system design decision. Covers retrieval strategies, chunking, embedding models, reranking options, evaluation frameworks, observability, and multi-agent architecture patterns. Use when designing or extending a RAG pipeline and needing a structured trade-off analysis before committing to an approach."
 ---
 
