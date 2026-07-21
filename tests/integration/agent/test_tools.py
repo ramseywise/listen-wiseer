@@ -45,9 +45,9 @@ EMPTY_RESULT = RecommendResult(
 # ---------------------------------------------------------------------------
 
 
-@patch("agent.tools._engine", MagicMock())
+@patch("agent.tools.recommend._engine", MagicMock())
 def test_format_result_with_tracks() -> None:
-    from agent.tools import _format_result
+    from agent.tools.recommend import _format_result
 
     result = _make_result(n=2, explanation="Here are 2 tracks")
     formatted = _format_result(result)
@@ -57,9 +57,9 @@ def test_format_result_with_tracks() -> None:
     assert "spotify:track:id0" in formatted
 
 
-@patch("agent.tools._engine", MagicMock())
+@patch("agent.tools.recommend._engine", MagicMock())
 def test_format_result_empty() -> None:
-    from agent.tools import _format_result
+    from agent.tools.recommend import _format_result
 
     formatted = _format_result(EMPTY_RESULT)
     assert formatted == "Track not in corpus"
@@ -70,10 +70,10 @@ def test_format_result_empty() -> None:
 # ---------------------------------------------------------------------------
 
 
-@patch("agent.tools._engine")
+@patch("agent.tools.recommend._engine")
 def test_recommend_similar_tracks_returns_formatted(mock_engine: MagicMock) -> None:
     mock_engine.recommend.return_value = _make_result(n=3, explanation="Found 3")
-    from agent.tools import _recommend_similar_tracks
+    from agent.tools.recommend import _recommend_similar_tracks
 
     result = _recommend_similar_tracks("some_id", k=3)
     assert "Found 3" in result
@@ -82,52 +82,52 @@ def test_recommend_similar_tracks_returns_formatted(mock_engine: MagicMock) -> N
     mock_engine.recommend.assert_called_once()
 
 
-@patch("agent.tools._engine")
+@patch("agent.tools.recommend._engine")
 def test_recommend_similar_tracks_empty(mock_engine: MagicMock) -> None:
     mock_engine.recommend.return_value = EMPTY_RESULT
-    from agent.tools import _recommend_similar_tracks
+    from agent.tools.recommend import _recommend_similar_tracks
 
     result = _recommend_similar_tracks("nonexistent")
     assert result == "Track not in corpus"
 
 
-@patch("agent.tools._engine", None)
+@patch("agent.tools.recommend._engine", None)
 def test_recommend_engine_unavailable() -> None:
-    from agent.tools import _recommend_similar_tracks
+    from agent.tools.recommend import _recommend_similar_tracks
 
     result = _recommend_similar_tracks("any_id")
     assert "not available" in result.lower() or "not trained" in result.lower()
 
 
-@patch("agent.tools._engine")
+@patch("agent.tools.recommend._engine")
 def test_recommend_for_artist(mock_engine: MagicMock) -> None:
     mock_engine.recommend.return_value = _make_result(
         n=2, pipeline="artist", explanation="Artist matches"
     )
-    from agent.tools import _recommend_for_artist
+    from agent.tools.recommend import _recommend_for_artist
 
     result = _recommend_for_artist("artist_123", k=2)
     assert "Artist matches" in result
 
 
-@patch("agent.tools._engine")
+@patch("agent.tools.recommend._engine")
 def test_recommend_by_genre(mock_engine: MagicMock) -> None:
     mock_engine.recommend.return_value = _make_result(
         n=5, pipeline="genre", explanation="Genre zone"
     )
-    from agent.tools import _recommend_by_genre
+    from agent.tools.recommend import _recommend_by_genre
 
     result = _recommend_by_genre("zouk", k=5)
     assert "Genre zone" in result
     assert "Track 4" in result
 
 
-@patch("agent.tools._engine")
+@patch("agent.tools.recommend._engine")
 def test_recommend_for_playlist(mock_engine: MagicMock) -> None:
     mock_engine.recommend.return_value = _make_result(
         n=1, pipeline="playlist", explanation="Playlist fit"
     )
-    from agent.tools import _recommend_for_playlist
+    from agent.tools.recommend import _recommend_for_playlist
 
     result = _recommend_for_playlist("playlist_abc", k=1)
     assert "Playlist fit" in result
@@ -138,9 +138,9 @@ def test_recommend_for_playlist(mock_engine: MagicMock) -> None:
 # ---------------------------------------------------------------------------
 
 
-@patch("agent.tools._engine", MagicMock())
-@patch("agent.tools.fetch_recently_played")
-@patch("agent.tools._get_client")
+@patch("agent.tools.recommend._engine", MagicMock())
+@patch("agent.tools.spotify_read.fetch_recently_played")
+@patch("agent.tools.spotify_read._get_client")
 def test_get_recently_played_formats(
     mock_get_client: MagicMock,
     mock_fetch: MagicMock,
@@ -165,7 +165,7 @@ def test_get_recently_played_formats(
             artist_names=["Artist B"],
         ),
     ]
-    from agent.tools import _get_recently_played
+    from agent.tools.spotify_read import _get_recently_played
 
     result = _get_recently_played(limit=2)
     assert "Song A" in result
@@ -174,35 +174,35 @@ def test_get_recently_played_formats(
     assert "[t1]" in result
 
 
-@patch("agent.tools._engine", MagicMock())
-@patch("agent.tools.fetch_recently_played")
-@patch("agent.tools._get_client")
+@patch("agent.tools.recommend._engine", MagicMock())
+@patch("agent.tools.spotify_read.fetch_recently_played")
+@patch("agent.tools.spotify_read._get_client")
 def test_get_recently_played_empty(
     mock_get_client: MagicMock,
     mock_fetch: MagicMock,
 ) -> None:
     mock_fetch.return_value = []
-    from agent.tools import _get_recently_played
+    from agent.tools.spotify_read import _get_recently_played
 
     result = _get_recently_played()
     assert "No recently played" in result
 
 
-@patch("agent.tools._engine", MagicMock())
-@patch("agent.tools.fetch_recently_played", side_effect=Exception("Auth error"))
-@patch("agent.tools._get_client")
+@patch("agent.tools.recommend._engine", MagicMock())
+@patch("agent.tools.spotify_read.fetch_recently_played", side_effect=Exception("Auth error"))
+@patch("agent.tools.spotify_read._get_client")
 def test_get_recently_played_error(
     mock_get_client: MagicMock,
     mock_fetch: MagicMock,
 ) -> None:
-    from agent.tools import _get_recently_played
+    from agent.tools.spotify_read import _get_recently_played
 
     result = _get_recently_played()
     assert "Failed to fetch" in result
 
 
-@patch("agent.tools._engine", MagicMock())
-@patch("agent.tools._get_client")
+@patch("agent.tools.recommend._engine", MagicMock())
+@patch("agent.tools.spotify_read._get_client")
 def test_search_tracks_formats(mock_get_client: MagicMock) -> None:
     mock_client = MagicMock()
     mock_client.search.return_value = {
@@ -217,7 +217,7 @@ def test_search_tracks_formats(mock_get_client: MagicMock) -> None:
         },
     }
     mock_get_client.return_value = mock_client
-    from agent.tools import _search_tracks
+    from agent.tools.spotify_read import _search_tracks
 
     result = _search_tracks("bossa nova", limit=1)
     assert "Bossa Nova Baby" in result
@@ -225,13 +225,13 @@ def test_search_tracks_formats(mock_get_client: MagicMock) -> None:
     assert "[elvis123]" in result
 
 
-@patch("agent.tools._engine", MagicMock())
-@patch("agent.tools._get_client")
+@patch("agent.tools.recommend._engine", MagicMock())
+@patch("agent.tools.spotify_read._get_client")
 def test_search_tracks_no_results(mock_get_client: MagicMock) -> None:
     mock_client = MagicMock()
     mock_client.search.return_value = {"tracks": {"items": []}}
     mock_get_client.return_value = mock_client
-    from agent.tools import _search_tracks
+    from agent.tools.spotify_read import _search_tracks
 
     result = _search_tracks("xyznonexistent")
     assert "No tracks found" in result
@@ -242,14 +242,14 @@ def test_search_tracks_no_results(mock_get_client: MagicMock) -> None:
 # ---------------------------------------------------------------------------
 
 
-@patch("agent.tools._engine", MagicMock())
+@patch("agent.tools.recommend._engine", MagicMock())
 def test_all_tools_count() -> None:
     from agent.tools import ALL_TOOLS
 
-    assert len(ALL_TOOLS) == 8
+    assert len(ALL_TOOLS) == 20
 
 
-@patch("agent.tools._engine", MagicMock())
+@patch("agent.tools.recommend._engine", MagicMock())
 def test_all_tools_names() -> None:
     from agent.tools import ALL_TOOLS
 
@@ -259,9 +259,21 @@ def test_all_tools_names() -> None:
         "recommend_for_artist",
         "recommend_by_genre",
         "recommend_for_playlist",
+        "get_spotify_recommendations",
+        "get_top_tracks",
+        "get_top_artists",
         "get_recently_played",
+        "get_user_playlists",
         "search_tracks",
+        "get_artist_info",
+        "get_related_artists",
+        "get_artist_top_tracks",
+        "get_artist_albums",
+        "get_artist_context",
+        "get_genre_context",
+        "get_taste_analysis",
         "manage_taste_memory",
         "search_taste_memory",
+        "create_playlist",
     }
     assert names == expected

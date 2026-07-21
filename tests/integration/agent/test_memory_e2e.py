@@ -11,6 +11,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.store.memory import InMemoryStore
+
+from agent.intent import QueryAnalysis
 from recommend.schemas import RecommendResult
 
 # ---------------------------------------------------------------------------
@@ -31,6 +33,27 @@ def _make_engine_mock() -> MagicMock:
     engine = MagicMock()
     engine.recommend.return_value = _GENRE_RESULT
     return engine
+
+
+def _make_analyzer_mock() -> MagicMock:
+    """Analyzer mock that always classifies high-confidence.
+
+    These tests exercise the agent + tool loop and memory storage, not the
+    intent clarify gate — a confident classification routes past
+    clarify_or_proceed straight to the agent node.
+    """
+    analyzer = MagicMock()
+    analyzer.analyze.return_value = QueryAnalysis(
+        original_query="",
+        intent="recommendation",
+        complexity="simple",
+        expanded_query="",
+        entities={},
+        sub_queries=[],
+        retrieval_mode="hybrid",
+        confidence=0.95,
+    )
+    return analyzer
 
 
 def _build_graph_with_store(store: InMemoryStore):
@@ -56,7 +79,8 @@ def _config(thread_id: str, user_id: str = "test-user") -> dict:
 
 
 @pytest.mark.integration
-@patch("agent.tools._engine", _make_engine_mock())
+@patch("agent.graph_nodes._query_analyzer", _make_analyzer_mock())
+@patch("agent.tools.recommend._engine", _make_engine_mock())
 @patch("agent.graph_nodes._llm_with_tools", new_callable=AsyncMock)
 async def test_taste_memory_roundtrip(mock_llm: AsyncMock) -> None:
     """manage_taste_memory stores a fact, search_taste_memory retrieves it."""
@@ -101,7 +125,8 @@ async def test_taste_memory_roundtrip(mock_llm: AsyncMock) -> None:
 
 
 @pytest.mark.integration
-@patch("agent.tools._engine", _make_engine_mock())
+@patch("agent.graph_nodes._query_analyzer", _make_analyzer_mock())
+@patch("agent.tools.recommend._engine", _make_engine_mock())
 @patch("agent.graph_nodes._llm_with_tools", new_callable=AsyncMock)
 async def test_episodic_session_stored_after_recommendation(mock_llm: AsyncMock) -> None:
     """After a recommendation, episodic memory stores the session."""
@@ -124,7 +149,7 @@ async def test_episodic_session_stored_after_recommendation(mock_llm: AsyncMock)
 
 
 @pytest.mark.integration
-@patch("agent.tools._engine", _make_engine_mock())
+@patch("agent.tools.recommend._engine", _make_engine_mock())
 @patch("agent.graph_nodes._llm_with_tools", new_callable=AsyncMock)
 async def test_memory_stats_populated(mock_llm: AsyncMock) -> None:
     """When store has data, memory_stats block appears in the system prompt."""

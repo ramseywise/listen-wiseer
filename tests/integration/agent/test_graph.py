@@ -6,9 +6,11 @@ All tests mock the LLM and engine — no Anthropic API calls or pkl loads.
 from __future__ import annotations
 
 import importlib
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import AIMessage, HumanMessage
+
+from agent.intent import QueryAnalysis
 from recommend.schemas import RecommendResult
 
 # ---------------------------------------------------------------------------
@@ -47,6 +49,27 @@ def _make_engine_mock() -> MagicMock:
     return engine
 
 
+def _make_analyzer_mock() -> MagicMock:
+    """Analyzer mock that always classifies high-confidence.
+
+    These tests exercise the ReAct agent + tool loop, not the intent
+    clarify gate — a confident classification routes past clarify_or_proceed
+    straight to the agent node.
+    """
+    analyzer = MagicMock()
+    analyzer.analyze.return_value = QueryAnalysis(
+        original_query="",
+        intent="recommendation",
+        complexity="simple",
+        expanded_query="",
+        entities={},
+        sub_queries=[],
+        retrieval_mode="hybrid",
+        confidence=0.95,
+    )
+    return analyzer
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -73,14 +96,14 @@ def _config(thread_id: str) -> dict:
 # ---------------------------------------------------------------------------
 
 
-@patch("agent.tools._engine", _make_engine_mock())
-@patch("agent.graph_nodes._llm_with_tools")
-def test_graph_direct_response(mock_llm: MagicMock) -> None:
+@patch("agent.tools.recommend._engine", _make_engine_mock())
+@patch("agent.graph_nodes._llm_with_tools", new_callable=AsyncMock)
+async def test_graph_direct_response(mock_llm: AsyncMock) -> None:
     """No tool_calls → straight to END."""
     mock_llm.ainvoke.return_value = AIMessage(content="Hello! How can I help?")
 
     graph = _build_fresh_graph()
-    result = graph.invoke(
+    result = await graph.ainvoke(
         {"messages": [HumanMessage(content="hello")]},
         config=_config("test-direct"),
     )
@@ -89,9 +112,10 @@ def test_graph_direct_response(mock_llm: MagicMock) -> None:
     mock_llm.ainvoke.assert_called_once()
 
 
-@patch("agent.tools._engine", _make_engine_mock())
-@patch("agent.graph_nodes._llm_with_tools")
-def test_graph_tool_then_response(mock_llm: MagicMock) -> None:
+@patch("agent.graph_nodes._query_analyzer", _make_analyzer_mock())
+@patch("agent.tools.recommend._engine", _make_engine_mock())
+@patch("agent.graph_nodes._llm_with_tools", new_callable=AsyncMock)
+async def test_graph_tool_then_response(mock_llm: AsyncMock) -> None:
     """tool_calls → call_tools → agent → END (one loop iteration)."""
     tool_call = {
         "name": "recommend_by_genre",
@@ -105,7 +129,7 @@ def test_graph_tool_then_response(mock_llm: MagicMock) -> None:
     mock_llm.ainvoke.side_effect = [ai_with_tools, ai_final]
 
     graph = _build_fresh_graph()
-    result = graph.invoke(
+    result = await graph.ainvoke(
         {"messages": [HumanMessage(content="recommend zouk tracks")]},
         config=_config("test-tool"),
     )
@@ -114,11 +138,11 @@ def test_graph_tool_then_response(mock_llm: MagicMock) -> None:
     assert mock_llm.ainvoke.call_count == 2
 
 
-@patch("agent.tools._get_client")
-@patch("agent.tools._engine", _make_engine_mock())
-@patch("agent.graph_nodes._llm_with_tools")
-def test_graph_multi_tool_chain(
-    mock_llm: MagicMock,
+@patch("agent.tools.spotify_read._get_client")
+@patch("agent.tools.recommend._engine", _make_engine_mock())
+@patch("agent.graph_nodes._llm_with_tools", new_callable=AsyncMock)
+async def test_graph_multi_tool_chain(
+    mock_llm: AsyncMock,
     mock_get_client: MagicMock,
 ) -> None:
     """Agent calls search_tracks then recommend_similar_tracks (two loop iterations)."""
@@ -161,7 +185,7 @@ def test_graph_multi_tool_chain(
     mock_llm.ainvoke.side_effect = [ai_search, ai_rec, ai_final]
 
     graph = _build_fresh_graph()
-    result = graph.invoke(
+    result = await graph.ainvoke(
         {"messages": [HumanMessage(content="find tracks like Radiohead Creep")]},
         config=_config("test-chain"),
     )
@@ -171,9 +195,10 @@ def test_graph_multi_tool_chain(
     assert "Creep" in final_content or "similar" in final_content
 
 
-@patch("agent.tools._engine", _make_engine_mock())
-@patch("agent.graph_nodes._llm_with_tools")
-def test_graph_multiturn_memory(mock_llm: MagicMock) -> None:
+@patch("agent.graph_nodes._query_analyzer", _make_analyzer_mock())
+@patch("agent.tools.recommend._engine", _make_engine_mock())
+@patch("agent.graph_nodes._llm_with_tools", new_callable=AsyncMock)
+async def test_graph_multiturn_memory(mock_llm: AsyncMock) -> None:
     """Two invocations with the same thread_id share message history."""
     mock_llm.ainvoke.side_effect = [
         AIMessage(content="I like zouk too!"),
@@ -184,14 +209,14 @@ def test_graph_multiturn_memory(mock_llm: MagicMock) -> None:
     thread_id = "test-multiturn"
 
     # Turn 1
-    result1 = graph.invoke(
+    result1 = await graph.ainvoke(
         {"messages": [HumanMessage(content="I love zouk")]},
         config=_config(thread_id),
     )
     assert result1["messages"][-1].content == "I like zouk too!"
 
     # Turn 2 — same thread
-    result2 = graph.invoke(
+    result2 = await graph.ainvoke(
         {"messages": [HumanMessage(content="give me more")]},
         config=_config(thread_id),
     )
@@ -201,17 +226,17 @@ def test_graph_multiturn_memory(mock_llm: MagicMock) -> None:
     assert len(second_call_messages) >= 4
 
 
-@patch("agent.tools._engine", MagicMock())
+@patch("agent.tools.recommend._engine", MagicMock())
 @patch("agent.graph_nodes._llm_with_tools")
 def test_route_after_agent_no_tool_calls(mock_llm: MagicMock) -> None:
-    """route_after_agent returns __end__ when no tool_calls."""
+    """route_after_agent returns format_response when no tool_calls."""
     from agent.graph_nodes import route_after_agent
 
     state: dict = {"messages": [AIMessage(content="done")]}
-    assert route_after_agent(state) == "__end__"
+    assert route_after_agent(state) == "format_response"
 
 
-@patch("agent.tools._engine", MagicMock())
+@patch("agent.tools.recommend._engine", MagicMock())
 @patch("agent.graph_nodes._llm_with_tools")
 def test_route_after_agent_with_tool_calls(mock_llm: MagicMock) -> None:
     """route_after_agent returns call_tools when tool_calls present."""

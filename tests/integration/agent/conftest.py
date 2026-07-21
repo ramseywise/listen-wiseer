@@ -15,11 +15,11 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def _patch_engine():
-    """Replace ``_engine`` in agent.tools with a safe mock.
+    """Replace ``_engine`` in agent.tools.recommend with a safe mock.
 
     Individual tests that need finer control can layer their own
-    ``@patch("agent.tools._engine", ...)`` on top.
+    ``@patch("agent.tools.recommend._engine", ...)`` on top.
     """
     mock_engine = MagicMock()
-    with patch("agent.tools._engine", mock_engine):
+    with patch("agent.tools.recommend._engine", mock_engine):
         yield mock_engine

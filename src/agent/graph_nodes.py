@@ -5,6 +5,7 @@ from __future__ import annotations
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, trim_messages
 from langchain_core.runnables import RunnableConfig
+from langgraph.config import get_store
 from langgraph.store.base import BaseStore
 
 from agent.intent import QueryAnalyzer
@@ -318,6 +319,16 @@ async def agent_node(
     - After a recommendation, stores the session for future recall.
     """
     user_id = _extract_user_id(config)
+
+    # `from __future__ import annotations` stringifies the ``store`` parameter's
+    # type hint, so LangGraph no longer auto-injects the compiled store into it
+    # (regressed in langgraph 1.3+). Resolve it from the runtime instead.
+    if store is None:
+        try:
+            store = get_store()
+        except RuntimeError:
+            store = None
+
     prompt_parts = [SYSTEM_PROMPT]
 
     # --- Procedural memory (per-user strategy) ---
