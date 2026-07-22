@@ -7,6 +7,10 @@ from unittest.mock import MagicMock
 import numpy as np
 import polars as pl
 import pytest
+from sklearn.mixture import GaussianMixture
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import MinMaxScaler
+
 from recommend.modules.classifiers import (
     ALL_DECADES,
     ALL_GEN4,
@@ -22,9 +26,6 @@ from recommend.modules.classifiers import (
     rerank_candidates,
     train_playlist_classifier,
 )
-from sklearn.mixture import GaussianMixture
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import MinMaxScaler
 from utils.const import all_decades, all_key_modes
 
 # ---------------------------------------------------------------------------

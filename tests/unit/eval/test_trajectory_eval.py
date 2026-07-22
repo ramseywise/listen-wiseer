@@ -75,11 +75,9 @@ class TestTrajectoryResult:
 
 
 class TestEvaluateTrajectory:
-    def test_raises_without_cost_gate(self) -> None:
+    async def test_raises_without_cost_gate(self) -> None:
         with patch("evals.agent.trajectory_eval.CONFIRM_EXPENSIVE_OPS", False):
             from evals.agent.trajectory_eval import evaluate_trajectory
 
             with pytest.raises(RuntimeError, match="CONFIRM_EXPENSIVE_OPS"):
-                import asyncio
-
-                asyncio.get_event_loop().run_until_complete(evaluate_trajectory([], None))
+                await evaluate_trajectory([], None)

@@ -8,18 +8,12 @@ node logic inline, matching the pattern in test_nodes.py.
 
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import AsyncMock
 
-from agent.intent import QueryAnalyzer
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+
+from agent.intent import QueryAnalyzer
 from utils.config import settings
-
-
-def _run(coro):
-    """Helper to run async in sync tests."""
-    return asyncio.get_event_loop().run_until_complete(coro)
-
 
 # ---------------------------------------------------------------------------
 # Replicated classify_intent_node (avoids DuckDB import chain)
@@ -92,44 +86,44 @@ async def _clarify_or_proceed(state: dict) -> dict:
 
 
 class TestClassifyIntentNode:
-    def test_populates_state(self) -> None:
+    async def test_populates_state(self) -> None:
         state = {"messages": [HumanMessage(content="who is Aphex Twin?")]}
-        result = _run(_classify_intent_node(state))
+        result = await _classify_intent_node(state)
         assert "intent" in result
         assert "intent_confidence" in result
         assert "entities" in result
         assert "query_variants" in result
 
-    def test_artist_info(self) -> None:
+    async def test_artist_info(self) -> None:
         state = {"messages": [HumanMessage(content="who is Aphex Twin?")]}
-        result = _run(_classify_intent_node(state))
+        result = await _classify_intent_node(state)
         assert result["intent"] == "artist_info"
 
-    def test_recommendation(self) -> None:
+    async def test_recommendation(self) -> None:
         state = {"messages": [HumanMessage(content="suggest tracks like Radiohead")]}
-        result = _run(_classify_intent_node(state))
+        result = await _classify_intent_node(state)
         assert result["intent"] == "recommendation"
 
-    def test_history(self) -> None:
+    async def test_history(self) -> None:
         state = {"messages": [HumanMessage(content="what have I been listening to?")]}
-        result = _run(_classify_intent_node(state))
+        result = await _classify_intent_node(state)
         assert result["intent"] == "history"
 
-    def test_chit_chat(self) -> None:
+    async def test_chit_chat(self) -> None:
         state = {"messages": [HumanMessage(content="hello!")]}
-        result = _run(_classify_intent_node(state))
+        result = await _classify_intent_node(state)
         assert result["intent"] == "chit_chat"
 
-    def test_extracts_entities(self) -> None:
+    async def test_extracts_entities(self) -> None:
         state = {"messages": [HumanMessage(content="suggest chill 80s tracks")]}
-        result = _run(_classify_intent_node(state))
+        result = await _classify_intent_node(state)
         assert "mood" in result["entities"]
         assert "time_period" in result["entities"]
 
-    def test_backward_compat_messages_only_state(self) -> None:
+    async def test_backward_compat_messages_only_state(self) -> None:
         """AgentState with only messages still works."""
         state = {"messages": [HumanMessage(content="hello")]}
-        result = _run(_classify_intent_node(state))
+        result = await _classify_intent_node(state)
         assert result["intent"] == "chit_chat"
 
 
@@ -167,36 +161,36 @@ class TestRouteAfterClassify:
 
 
 class TestClarifyOrProceed:
-    def test_returns_ai_message(self) -> None:
+    async def test_returns_ai_message(self) -> None:
         state = {
             "messages": [HumanMessage(content="something")],
             "intent": "unknown",
             "intent_confidence": 0.1,
         }
-        result = _run(_clarify_or_proceed(state))
+        result = await _clarify_or_proceed(state)
         assert len(result["messages"]) == 1
         assert isinstance(result["messages"][0], AIMessage)
         assert "clarify" in result["messages"][0].content.lower()
 
-    def test_includes_entities_in_hint(self) -> None:
+    async def test_includes_entities_in_hint(self) -> None:
         state = {
             "messages": [HumanMessage(content="chill stuff")],
             "intent": "unknown",
             "intent_confidence": 0.1,
             "entities": {"mood": ["chill"]},
         }
-        result = _run(_clarify_or_proceed(state))
+        result = await _clarify_or_proceed(state)
         content = result["messages"][0].content
         assert "chill" in content
 
-    def test_no_entities_no_hint(self) -> None:
+    async def test_no_entities_no_hint(self) -> None:
         state = {
             "messages": [HumanMessage(content="asdfghjkl")],
             "intent": "unknown",
             "intent_confidence": 0.1,
             "entities": {},
         }
-        result = _run(_clarify_or_proceed(state))
+        result = await _clarify_or_proceed(state)
         content = result["messages"][0].content
         assert "interested in" not in content
 
@@ -263,13 +257,13 @@ async def _rewrite_query(state: dict, *, llm_invoke: AsyncMock | None = None) ->
 
 
 class TestRewriteQuery:
-    def test_single_turn_passthrough(self) -> None:
+    async def test_single_turn_passthrough(self) -> None:
         """Single message → no rewrite needed."""
         state = {"messages": [HumanMessage(content="who is Aphex Twin?")]}
-        result = _run(_rewrite_query(state))
+        result = await _rewrite_query(state)
         assert result == {}
 
-    def test_no_coreference_passthrough(self) -> None:
+    async def test_no_coreference_passthrough(self) -> None:
         """Multi-turn but no pronouns → no rewrite."""
         state = {
             "messages": [
@@ -278,10 +272,10 @@ class TestRewriteQuery:
                 HumanMessage(content="what genre is zouk?"),
             ],
         }
-        result = _run(_rewrite_query(state))
+        result = await _rewrite_query(state)
         assert result == {}
 
-    def test_fires_on_pronoun(self) -> None:
+    async def test_fires_on_pronoun(self) -> None:
         """Multi-turn with pronoun → calls LLM and rewrites."""
         mock_response = AIMessage(content="Tell me more about Aphex Twin")
         mock_invoke = AsyncMock(return_value=mock_response)
@@ -293,7 +287,7 @@ class TestRewriteQuery:
                 HumanMessage(content="tell me more about them"),
             ],
         }
-        result = _run(_rewrite_query(state, llm_invoke=mock_invoke))
+        result = await _rewrite_query(state, llm_invoke=mock_invoke)
 
         # LLM was called
         mock_invoke.assert_awaited_once()
@@ -391,7 +385,7 @@ async def _validate_tool_output(state: dict, *, max_retries: int = 1) -> dict:
 
 
 class TestValidateToolOutput:
-    def test_passes_on_good_output(self) -> None:
+    async def test_passes_on_good_output(self) -> None:
         """Non-empty, aligned tool output → passes through."""
         state = {
             "messages": [
@@ -407,10 +401,10 @@ class TestValidateToolOutput:
             "entities": {},
             "tool_validation_retries": 0,
         }
-        result = _run(_validate_tool_output(state))
+        result = await _validate_tool_output(state)
         assert result == {}
 
-    def test_catches_empty_output(self) -> None:
+    async def test_catches_empty_output(self) -> None:
         """Empty tool message → corrective hint."""
         state = {
             "messages": [
@@ -421,13 +415,13 @@ class TestValidateToolOutput:
             "entities": {},
             "tool_validation_retries": 0,
         }
-        result = _run(_validate_tool_output(state))
+        result = await _validate_tool_output(state)
         assert "messages" in result
         assert isinstance(result["messages"][0], SystemMessage)
         assert "[Validation]" in result["messages"][0].content
         assert result["tool_validation_retries"] == 1
 
-    def test_catches_error_signal(self) -> None:
+    async def test_catches_error_signal(self) -> None:
         """Tool output with error signal → corrective hint."""
         state = {
             "messages": [
@@ -442,14 +436,14 @@ class TestValidateToolOutput:
             "entities": {},
             "tool_validation_retries": 0,
         }
-        result = _run(_validate_tool_output(state))
+        result = await _validate_tool_output(state)
         assert "messages" in result
         assert (
             "failed" in result["messages"][0].content.lower()
             or "Validation" in result["messages"][0].content
         )
 
-    def test_catches_intent_misalignment(self) -> None:
+    async def test_catches_intent_misalignment(self) -> None:
         """Intent=recommendation but tool=get_artist_context → flagged."""
         state = {
             "messages": [
@@ -464,14 +458,14 @@ class TestValidateToolOutput:
             "entities": {},
             "tool_validation_retries": 0,
         }
-        result = _run(_validate_tool_output(state))
+        result = await _validate_tool_output(state)
         assert "messages" in result
         assert (
             "Intent" in result["messages"][0].content
             or "intent" in result["messages"][0].content.lower()
         )
 
-    def test_respects_retry_cap(self) -> None:
+    async def test_respects_retry_cap(self) -> None:
         """Retries >= max → passes through even with issues."""
         state = {
             "messages": [
@@ -482,10 +476,10 @@ class TestValidateToolOutput:
             "entities": {},
             "tool_validation_retries": 1,  # already at max
         }
-        result = _run(_validate_tool_output(state, max_retries=1))
+        result = await _validate_tool_output(state, max_retries=1)
         assert result == {}
 
-    def test_no_tool_messages_passthrough(self) -> None:
+    async def test_no_tool_messages_passthrough(self) -> None:
         """No tool messages → passes through."""
         state = {
             "messages": [HumanMessage(content="hello")],
@@ -493,5 +487,5 @@ class TestValidateToolOutput:
             "entities": {},
             "tool_validation_retries": 0,
         }
-        result = _run(_validate_tool_output(state))
+        result = await _validate_tool_output(state)
         assert result == {}

@@ -8,6 +8,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
+
 from spotify.fetch import (
     fetch_artist_albums,
     fetch_artist_info,

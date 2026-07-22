@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from agent.state import AgentState
 from langchain_core.messages import AIMessage, HumanMessage
+
+from agent.state import AgentState
 
 
 def test_state_construction() -> None:

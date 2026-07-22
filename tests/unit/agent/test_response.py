@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from agent.response import format_response
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+
+from agent.response import format_response
 
 
 def _tool_message(

@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import duckdb
 import pytest
+
 from etl.lastfm import fetch_track_tags, match_genre
 from etl.sync import sync_lastfm_genres
 

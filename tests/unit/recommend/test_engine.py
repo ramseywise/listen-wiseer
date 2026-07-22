@@ -8,6 +8,7 @@ from unittest.mock import patch
 import numpy as np
 import polars as pl
 import pytest
+
 from recommend.engine import RecommendationEngine
 from recommend.modules.similarity import SIMILARITY_FEATURES
 from recommend.schemas import RecommendRequest, RecommendResult

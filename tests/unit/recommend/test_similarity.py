@@ -5,6 +5,8 @@ from __future__ import annotations
 import numpy as np
 import polars as pl
 import pytest
+from sklearn.metrics.pairwise import cosine_similarity
+
 from recommend.modules.similarity import (
     SIMILARITY_FEATURES,
     camelot_distance,
@@ -13,7 +15,6 @@ from recommend.modules.similarity import (
     playlist_centroid,
     tempo_compatible,
 )
-from sklearn.metrics.pairwise import cosine_similarity
 
 # ---------------------------------------------------------------------------
 # camelot_distance

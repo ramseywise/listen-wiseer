@@ -5,6 +5,9 @@ from __future__ import annotations
 import numpy as np
 import polars as pl
 import pytest
+from sklearn.mixture import GaussianMixture
+from sklearn.preprocessing import MinMaxScaler
+
 from recommend.modules.clustering import fit_gmm
 from recommend.modules.similarity import SIMILARITY_FEATURES
 from recommend.pipelines import (
@@ -15,8 +18,6 @@ from recommend.pipelines import (
     _mmr_select,
 )
 from recommend.schemas import RecommendRequest, RecommendResult
-from sklearn.mixture import GaussianMixture
-from sklearn.preprocessing import MinMaxScaler
 
 # ---------------------------------------------------------------------------
 # Fixture helpers

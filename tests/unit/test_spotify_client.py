@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
+
 from spotify.client import SpotifyClient
 from utils.exceptions import SpotifyClientError
 

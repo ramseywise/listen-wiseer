@@ -5,35 +5,30 @@ Mocks the langmem optimizer — no API costs. Tests trajectory shape and store u
 
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from agent.memory_store import get_procedural_prompt
-from agent.optimizer import optimize_prompt
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.store.memory import InMemoryStore
 from langmem import Prompt
 
-
-def _run(coro):
-    """Helper to run async in sync tests."""
-    return asyncio.get_event_loop().run_until_complete(coro)
+from agent.memory_store import get_procedural_prompt
+from agent.optimizer import optimize_prompt
 
 
-def test_optimizer_skips_short_conversations() -> None:
+async def test_optimizer_skips_short_conversations() -> None:
     """Conversations with < 4 messages are too short to learn from."""
     store = InMemoryStore()
     messages = [HumanMessage(content="hi"), AIMessage(content="hello")]
 
-    _run(optimize_prompt("user1", messages, store))
+    await optimize_prompt("user1", messages, store)
 
     # No procedural prompt should be written
-    result = _run(get_procedural_prompt("user1", store))
+    result = await get_procedural_prompt("user1", store)
     assert result is None
 
 
 @patch("agent.optimizer._get_optimizer")
-def test_optimizer_updates_procedural_memory(mock_get_opt: MagicMock) -> None:
+async def test_optimizer_updates_procedural_memory(mock_get_opt: MagicMock) -> None:
     """Optimizer writes new instructions to procedural memory."""
     mock_optimizer = AsyncMock()
     mock_optimizer.ainvoke.return_value = [
@@ -52,9 +47,9 @@ def test_optimizer_updates_procedural_memory(mock_get_opt: MagicMock) -> None:
         AIMessage(content="Here are 3 zouk tracks: 1. A 2. B 3. C"),
     ]
 
-    _run(optimize_prompt("user1", messages, store))
+    await optimize_prompt("user1", messages, store)
 
-    result = _run(get_procedural_prompt("user1", store))
+    result = await get_procedural_prompt("user1", store)
     assert result is not None
     assert "zouk" in result
 
@@ -67,7 +62,7 @@ def test_optimizer_updates_procedural_memory(mock_get_opt: MagicMock) -> None:
 
 
 @patch("agent.optimizer._get_optimizer")
-def test_optimizer_no_change_when_instructions_unchanged(mock_get_opt: MagicMock) -> None:
+async def test_optimizer_no_change_when_instructions_unchanged(mock_get_opt: MagicMock) -> None:
     """Optimizer doesn't write if the LLM returns the same instructions."""
     existing = "User likes zouk."
 
@@ -79,13 +74,11 @@ def test_optimizer_no_change_when_instructions_unchanged(mock_get_opt: MagicMock
 
     store = InMemoryStore()
     # Pre-populate procedural memory
-    _run(
-        store.aput(
-            ("enoa", "user1", "strategy"),
-            "system_instructions",
-            {"instructions": existing},
-            index=False,
-        )
+    await store.aput(
+        ("enoa", "user1", "strategy"),
+        "system_instructions",
+        {"instructions": existing},
+        index=False,
     )
 
     messages = [
@@ -95,15 +88,15 @@ def test_optimizer_no_change_when_instructions_unchanged(mock_get_opt: MagicMock
         AIMessage(content="done"),
     ]
 
-    _run(optimize_prompt("user1", messages, store))
+    await optimize_prompt("user1", messages, store)
 
     # Should still be the original
-    result = _run(get_procedural_prompt("user1", store))
+    result = await get_procedural_prompt("user1", store)
     assert result == existing
 
 
 @patch("agent.optimizer._get_optimizer")
-def test_optimizer_handles_llm_error(mock_get_opt: MagicMock) -> None:
+async def test_optimizer_handles_llm_error(mock_get_opt: MagicMock) -> None:
     """Optimizer catches LLM errors without crashing."""
     mock_optimizer = AsyncMock()
     mock_optimizer.ainvoke.side_effect = RuntimeError("API down")
@@ -118,8 +111,8 @@ def test_optimizer_handles_llm_error(mock_get_opt: MagicMock) -> None:
     ]
 
     # Should not raise
-    _run(optimize_prompt("user1", messages, store))
+    await optimize_prompt("user1", messages, store)
 
     # No procedural prompt written
-    result = _run(get_procedural_prompt("user1", store))
+    result = await get_procedural_prompt("user1", store)
     assert result is None

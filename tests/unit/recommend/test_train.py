@@ -8,6 +8,9 @@ from unittest.mock import patch
 import numpy as np
 import polars as pl
 import pytest
+from sklearn.mixture import GaussianMixture
+from sklearn.preprocessing import MinMaxScaler
+
 from recommend.modules.classifiers import ALL_GEN4
 from recommend.modules.clustering import fit_gmm
 from recommend.train import (
@@ -19,8 +22,6 @@ from recommend.train import (
     train_classifiers,
     train_gmm,
 )
-from sklearn.mixture import GaussianMixture
-from sklearn.preprocessing import MinMaxScaler
 from utils.const import all_decades, all_key_modes
 
 # ---------------------------------------------------------------------------

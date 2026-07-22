@@ -9,17 +9,11 @@ that module has no DuckDB dependency, unlike agent.graph_nodes.
 
 from __future__ import annotations
 
-import asyncio
-
-from agent.memory_helpers import build_memory_stats, format_episodic_examples
 from langchain_core.messages import AIMessage, HumanMessage, trim_messages
 from langgraph.store.memory import InMemoryStore
+
+from agent.memory_helpers import build_memory_stats, format_episodic_examples
 from utils.config import settings
-
-
-def _run(coro):
-    """Helper to run async in sync tests."""
-    return asyncio.get_event_loop().run_until_complete(coro)
 
 
 def _trim_history_impl(state: dict) -> dict:
@@ -89,11 +83,11 @@ def test_episodic_format_empty() -> None:
     assert format_episodic_examples([]) == ""
 
 
-def test_episodic_format_with_items() -> None:
+async def test_episodic_format_with_items() -> None:
     """Items produce a structured XML-like block."""
     store = InMemoryStore()
-    _run(store.aput(("ns",), "k1", {"request": "zouk recs", "tracks": "1. ZoukA 2. ZoukB"}))
-    items = _run(store.asearch(("ns",), limit=5))
+    await store.aput(("ns",), "k1", {"request": "zouk recs", "tracks": "1. ZoukA 2. ZoukB"})
+    items = await store.asearch(("ns",), limit=5)
 
     result = format_episodic_examples(items)
     assert "<past_sessions>" in result
@@ -106,37 +100,35 @@ def test_episodic_format_with_items() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_memory_stats_empty_store() -> None:
+async def test_memory_stats_empty_store() -> None:
     """Empty store produces empty stats string."""
     store = InMemoryStore()
-    result = _run(build_memory_stats(store, "user1"))
+    result = await build_memory_stats(store, "user1")
     assert result == ""
 
 
-def test_memory_stats_with_sessions() -> None:
+async def test_memory_stats_with_sessions() -> None:
     """Populated store produces stats block with counts."""
     store = InMemoryStore()
-    _run(store.aput(("enoa", "user1", "sessions"), "s1", {"request": "zouk", "tracks": "t1"}))
-    _run(store.aput(("enoa", "user1", "sessions"), "s2", {"request": "bossa", "tracks": "t2"}))
-    _run(store.aput(("enoa", "user1", "taste"), "t1", {"fact": "loves zouk"}))
+    await store.aput(("enoa", "user1", "sessions"), "s1", {"request": "zouk", "tracks": "t1"})
+    await store.aput(("enoa", "user1", "sessions"), "s2", {"request": "bossa", "tracks": "t2"})
+    await store.aput(("enoa", "user1", "taste"), "t1", {"fact": "loves zouk"})
 
-    result = _run(build_memory_stats(store, "user1"))
+    result = await build_memory_stats(store, "user1")
     assert "<memory_stats>" in result
     assert "Past sessions on record: 2" in result
     assert "Taste facts stored: 1" in result
     assert "Strategy profile: default" in result
 
 
-def test_memory_stats_with_strategy() -> None:
+async def test_memory_stats_with_strategy() -> None:
     """Active strategy shows 'active' status."""
     store = InMemoryStore()
-    _run(
-        store.aput(
-            ("enoa", "user1", "strategy"),
-            "system_instructions",
-            {"instructions": "be concise"},
-        )
+    await store.aput(
+        ("enoa", "user1", "strategy"),
+        "system_instructions",
+        {"instructions": "be concise"},
     )
 
-    result = _run(build_memory_stats(store, "user1"))
+    result = await build_memory_stats(store, "user1")
     assert "Strategy profile: active" in result

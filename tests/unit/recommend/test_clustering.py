@@ -3,6 +3,8 @@
 import numpy as np
 import polars as pl
 import pytest
+from sklearn.preprocessing import MinMaxScaler
+
 from recommend.modules.clustering import (
     CLUSTER_AUDIO_FEATURES,
     N_CLUSTER_FEATURES,
@@ -11,7 +13,6 @@ from recommend.modules.clustering import (
     fit_gmm,
     predict_cluster_probs,
 )
-from sklearn.preprocessing import MinMaxScaler
 from utils.const import all_decades, all_key_modes
 
 # ---------------------------------------------------------------------------

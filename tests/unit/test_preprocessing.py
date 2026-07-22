@@ -6,6 +6,7 @@ import duckdb
 import numpy as np
 import polars as pl
 import pytest
+
 from recommend.preprocessing import (
     IMPUTABLE_AUDIO_FEATURES,
     add_collaborative_features,
