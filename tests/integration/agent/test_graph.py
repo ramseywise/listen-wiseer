@@ -97,7 +97,7 @@ def _config(thread_id: str) -> dict:
 
 
 @patch("agent.tools.recommend._engine", _make_engine_mock())
-@patch("agent.graph_nodes._llm_with_tools", new_callable=AsyncMock)
+@patch("agent.graph_nodes._llm_with_tools_instance", new_callable=AsyncMock)
 async def test_graph_direct_response(mock_llm: AsyncMock) -> None:
     """No tool_calls → straight to END."""
     mock_llm.ainvoke.return_value = AIMessage(content="Hello! How can I help?")
@@ -114,7 +114,7 @@ async def test_graph_direct_response(mock_llm: AsyncMock) -> None:
 
 @patch("agent.graph_nodes._query_analyzer", _make_analyzer_mock())
 @patch("agent.tools.recommend._engine", _make_engine_mock())
-@patch("agent.graph_nodes._llm_with_tools", new_callable=AsyncMock)
+@patch("agent.graph_nodes._llm_with_tools_instance", new_callable=AsyncMock)
 async def test_graph_tool_then_response(mock_llm: AsyncMock) -> None:
     """tool_calls → call_tools → agent → END (one loop iteration)."""
     tool_call = {
@@ -140,7 +140,7 @@ async def test_graph_tool_then_response(mock_llm: AsyncMock) -> None:
 
 @patch("agent.tools.spotify_read._get_client")
 @patch("agent.tools.recommend._engine", _make_engine_mock())
-@patch("agent.graph_nodes._llm_with_tools", new_callable=AsyncMock)
+@patch("agent.graph_nodes._llm_with_tools_instance", new_callable=AsyncMock)
 async def test_graph_multi_tool_chain(
     mock_llm: AsyncMock,
     mock_get_client: MagicMock,
@@ -197,7 +197,7 @@ async def test_graph_multi_tool_chain(
 
 @patch("agent.graph_nodes._query_analyzer", _make_analyzer_mock())
 @patch("agent.tools.recommend._engine", _make_engine_mock())
-@patch("agent.graph_nodes._llm_with_tools", new_callable=AsyncMock)
+@patch("agent.graph_nodes._llm_with_tools_instance", new_callable=AsyncMock)
 async def test_graph_multiturn_memory(mock_llm: AsyncMock) -> None:
     """Two invocations with the same thread_id share message history."""
     mock_llm.ainvoke.side_effect = [
@@ -227,7 +227,7 @@ async def test_graph_multiturn_memory(mock_llm: AsyncMock) -> None:
 
 
 @patch("agent.tools.recommend._engine", MagicMock())
-@patch("agent.graph_nodes._llm_with_tools")
+@patch("agent.graph_nodes._llm_with_tools_instance")
 def test_route_after_agent_no_tool_calls(mock_llm: MagicMock) -> None:
     """route_after_agent returns format_response when no tool_calls."""
     from agent.graph_nodes import route_after_agent
@@ -237,7 +237,7 @@ def test_route_after_agent_no_tool_calls(mock_llm: MagicMock) -> None:
 
 
 @patch("agent.tools.recommend._engine", MagicMock())
-@patch("agent.graph_nodes._llm_with_tools")
+@patch("agent.graph_nodes._llm_with_tools_instance")
 def test_route_after_agent_with_tool_calls(mock_llm: MagicMock) -> None:
     """route_after_agent returns call_tools when tool_calls present."""
     from agent.graph_nodes import route_after_agent
