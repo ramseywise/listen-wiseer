@@ -76,7 +76,7 @@ dev = [
     "pre-commit>=3.7.0",
 
     # Type stubs
-    "types-pyyaml>=6.0.12.20260518",
+    "types-pyyaml>=6.0.12.20260724",
 
     # Jupyter for exploration
     "jupyter>=1.0.0",
