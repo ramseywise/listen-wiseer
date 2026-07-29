@@ -90,14 +90,14 @@ def _dedupe_sources(hits: list[dict]) -> list[dict]:
 
 def _synthesize(subject: str, hits: list[dict]) -> str:
     """Merge multiple sub-query results into one answer with inline citations."""
-    from agent.graph_nodes import _llm  # shared Haiku instance
+    from agent.graph_nodes import _get_llm  # shared Haiku instance
 
     passages = "\n\n".join(f"[{i + 1}] {hit['text']}" for i, hit in enumerate(hits))
     prompt = (
         f"Synthesize a concise, accurate answer about '{subject}' from these search "
         f"results. Cite passage numbers like [1] inline where relevant.\n\n{passages}"
     )
-    response = _llm.invoke([HumanMessage(content=prompt)])
+    response = _get_llm().invoke([HumanMessage(content=prompt)])
     return str(response.content).strip()
 
 

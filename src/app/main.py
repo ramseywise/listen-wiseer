@@ -10,6 +10,7 @@ import uuid
 
 import chainlit as cl
 from langchain_core.messages import HumanMessage
+from langgraph.store.base import BaseStore
 from langgraph.types import Command
 
 from agent.dependencies import get_checkpointer
@@ -25,14 +26,15 @@ log = get_logger(__name__)
 # Lazy graph — rebuilt once on first session to inject async checkpointer + store
 # ---------------------------------------------------------------------------
 _graph = None
+_store: BaseStore | None = None
 
 
 async def _get_graph():
-    global _graph  # noqa: PLW0603
+    global _graph, _store  # noqa: PLW0603
     if _graph is None:
         checkpointer = await get_checkpointer()
-        store = await get_store()
-        _graph = build_graph(checkpointer=checkpointer, store=store)
+        _store = await get_store()
+        _graph = build_graph(checkpointer=checkpointer, store=_store)
         log.info("app.graph_built")
     return _graph
 
@@ -113,7 +115,7 @@ async def on_message(message: cl.Message) -> None:
             if track_list:
                 formatted = "\n".join(f"• {t}" for t in track_list)
                 reply = f"{reply}\n\n**Tracks:**\n{formatted}"
-            schedule_optimization(user_id, result["messages"], get_store())
+            schedule_optimization(user_id, result["messages"], _store)
     except Exception as exc:
         log.error("app.on_message.failed", error=str(exc), thread_id=thread_id)
         reply = "Something went wrong — please try again."
