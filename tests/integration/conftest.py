@@ -19,6 +19,7 @@ def _duckdb_available() -> bool:
     """Check whether the LFS-tracked DuckDB file is readable."""
     try:
         import duckdb
+
         from paths import DB_PATH
 
         if not Path(DB_PATH).exists():

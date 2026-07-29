@@ -9,10 +9,9 @@ from __future__ import annotations
 from collections import defaultdict
 
 from agent.intent import QueryAnalyzer
+from evals.tasks.models import AgentGoldenSample, IntentEvalMetrics
 from utils.config import settings
 from utils.logging import get_logger
-
-from evals.tasks.models import AgentGoldenSample, IntentEvalMetrics
 
 log = get_logger(__name__)
 

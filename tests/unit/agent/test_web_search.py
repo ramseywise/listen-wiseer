@@ -10,6 +10,7 @@ from agent.tools.web_search import (
     _dedupe_sources,
     _get_artist_context,
     _get_genre_context,
+    _synthesize,
     _tavily_search,
     _wikipedia_fallback,
 )
@@ -193,3 +194,21 @@ class TestToolWrappers:
             _get_genre_context("zouk")
 
         assert mock_search.call_args.kwargs["wiki_query"] == "zouk music"
+
+
+# =============================================================================
+# _synthesize — regression: import path and _get_llm accessor
+# =============================================================================
+
+
+class TestSynthesize:
+    def test_synthesize_invokes_shared_llm(self) -> None:
+        mock_llm = MagicMock()
+        mock_llm.invoke.return_value = MagicMock(content="Synthesized [1]")
+        with patch("agent.graph_nodes._get_llm", return_value=mock_llm):
+            result = _synthesize(
+                "bossa nova",
+                [{"text": "hit one"}, {"text": "hit two"}],
+            )
+        assert result == "Synthesized [1]"
+        mock_llm.invoke.assert_called_once()

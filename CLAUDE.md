@@ -166,4 +166,4 @@ All standards below are enforced via `settings.json` hooks — do not run manual
 
 ### Issue tracking
 
-Branch: `feature/lin-{id}-{slug}` | Commit: `{type}: {desc} (LIN-{id})` | PR: `LIN-{id} {description}`
+Branch: `LIS-{id}-{slug}` | Commit: `{type}({scope}): {desc} (#{id})` | PR: `LIS-{id} {description}`

@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 
 from langchain_core.messages import BaseMessage
-from langgraph.store.memory import InMemoryStore
+from langgraph.store.base import BaseStore
 from langmem import Prompt, create_multi_prompt_optimizer
 
 from agent.memory_store import get_procedural_prompt, update_procedural_prompt
@@ -40,7 +40,7 @@ def _get_optimizer():
 async def optimize_prompt(
     user_id: str,
     messages: list[BaseMessage],
-    store: InMemoryStore,
+    store: BaseStore,
 ) -> None:
     """Review a conversation and update procedural memory if warranted.
 
@@ -97,7 +97,7 @@ async def optimize_prompt(
 def schedule_optimization(
     user_id: str,
     messages: list[BaseMessage],
-    store: InMemoryStore,
+    store: BaseStore,
 ) -> asyncio.Task | None:
     """Fire-and-forget the optimizer as a background task.
 
