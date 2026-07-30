@@ -23,3 +23,17 @@ def _patch_engine():
     mock_engine = MagicMock()
     with patch("agent.tools.recommend._engine", mock_engine):
         yield mock_engine
+
+
+@pytest.fixture(autouse=True)
+def _disable_verification_retries(monkeypatch: pytest.MonkeyPatch):
+    """Zero the checker retry cap for scripted-LLM integration tests.
+
+    These tests feed exact ``side_effect`` response sequences; a HeuristicChecker
+    retry consumes the next scripted response out of order and breaks multiturn
+    assertions. The verification loop itself is covered by unit tests
+    (tests/unit/agent/test_verification.py).
+    """
+    from utils.config import settings
+
+    monkeypatch.setattr(settings, "max_verification_retries", 0)
