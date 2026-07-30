@@ -1,0 +1,44 @@
+name: Eval
+
+# Runs heuristic (Tier 1) evals on every PR and main push.
+# No API key required — intent/route graders are fully deterministic.
+#
+# Full RAGAS eval (Tier 3) is NOT run here: it costs money and requires
+# ANTHROPIC_API_KEY. Trigger manually with `make eval-full`.
+# If ANTHROPIC_API_KEY is absent, eval-ci skips with a warning rather
+# than hard-failing — keeps fork PRs green.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  eval-ci:
+    name: Tier 1 eval (heuristic, no LLM cost)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Run heuristic eval
+        # No ANTHROPIC_API_KEY needed — Tier 1 is purely deterministic.
+        # The script exits 0 (pass), 1 (regression), or 2 (load error).
+        run: PYTHONPATH=src uv run python -m evals.eval_ci
+
+      - name: Upload eval results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results
+          path: evals/datasets/eval_results.json
+          retention-days: 30
