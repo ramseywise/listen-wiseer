@@ -204,9 +204,19 @@ make infra-logs       # Follow logs
 make infra-smoke      # Smoke-test: postgres + app health
 
 # Eval harness
+make eval-ci          # CI gate: heuristic graders vs baseline (no API cost, <30s)
+make eval-full        # All tiers: trajectory + RAGAS (costs money, needs ANTHROPIC_API_KEY)
 make eval-unit        # Tier 1 — intent/route (free, CI-safe)
 make eval-trajectory  # Tier 2 — live graph trajectory (costs money)
 make eval-e2e         # Tier 3 — RAGAS faithfulness + tool correctness
+
+# Eval tiers
+# Tier 1 (CI gate): deterministic intent/route eval against golden dataset.
+#   Runs on every PR via .github/workflows/eval.yml. No API key. Fails PR if any
+#   metric drops >5% from evals/datasets/eval_baseline.json.
+# Tier 2 (manual): live trajectory eval against compiled LangGraph graph. Costs money.
+# Tier 3 (manual): RAGAS faithfulness + tool-correctness graders. Costs money.
+#   Run locally with `make eval-full` or `make eval-e2e`. Never auto-triggered in CI.
 
 # Code quality
 make lint             # ruff check + format check
