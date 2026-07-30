@@ -1,6 +1,6 @@
 COMPOSE = docker compose -f infrastructure/containers/docker-compose.yml
 
-.PHONY: help infra-up infra-down infra-build infra-ps infra-logs infra-smoke app mcp-server auth lint format test test-unit test-fast test-integration test-data notebook init-db data-sync train train-cat train-compare eval-unit eval-trajectory eval-e2e pull status push quick-pr ship
+.PHONY: help infra-up infra-down infra-build infra-ps infra-logs infra-smoke app mcp-server auth lint format test test-unit test-fast test-integration test-data notebook init-db data-sync train train-cat train-compare eval-ci eval-full eval-unit eval-trajectory eval-e2e pull status push quick-pr ship
 
 help:
 	@echo "listen-wiseer targets:"
@@ -14,6 +14,8 @@ help:
 	@echo "  test-unit    Unit tests (with coverage)"
 	@echo "  test-fast    Unit tests (no coverage, quick)"
 	@echo "  test-integration  Integration tests (needs DuckDB/Spotify)"
+	@echo "  eval-ci      Heuristic eval vs baseline — fails on >5% regression (no API cost)"
+	@echo "  eval-full    Full RAGAS eval, all tiers (costs money, needs ANTHROPIC_API_KEY)"
 	@echo "  eval-unit    Tier 1 intent/route eval (free, CI-safe)"
 	@echo "  eval-trajectory  Tier 2 trajectory eval (costs money)"
 	@echo "  eval-e2e     Tier 3 RAGAS + tool-correctness eval (costs money)"
@@ -114,6 +116,17 @@ train-compare:
 	PYTHONPATH=src uv run python -m recommend.train --compare
 
 # --- Agent eval harness ---
+
+# CI gate: heuristic graders only, no LLM calls.
+# Compares against evals/datasets/eval_baseline.json; exits 1 if any metric
+# drops >5% from baseline. Safe for fork PRs (no API key required).
+eval-ci:
+	PYTHONPATH=src uv run python -m evals.eval_ci
+
+# Full RAGAS eval across all tiers (costs money).
+# Requires ANTHROPIC_API_KEY in the environment.
+eval-full:
+	CONFIRM_EXPENSIVE_OPS=true PYTHONPATH=src uv run python -m evals.run_agent_eval --tier all
 
 eval-unit:
 	PYTHONPATH=src uv run python -m evals.run_agent_eval --tier 1
