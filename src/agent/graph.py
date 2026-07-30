@@ -5,9 +5,15 @@ Graph structure:
         -> low confidence  -> clarify_or_proceed -> END (wait for user)
         -> high confidence -> rewrite_query (coreference) -> agent (LLM + tools) -> [route]
             -> has tool_calls -> call_tools -> validate_tool_output -> agent  (loop)
-            -> no tool_calls  -> END
+            -> no tool_calls  -> format_response -> verify_answer -> [route]
+                -> pass (score >= threshold or retries exhausted) -> END
+                -> fail (score < threshold and retries remaining)  -> agent  (retry loop)
 
-The loop is bounded by recursion_limit from config.
+Retry caps:
+    ReAct loop:         bounded by recursion_limit (settings.max_agent_iterations * 2)
+    Verification loop:  bounded by settings.max_verification_retries (default 2)
+    Stall detection:    escalates after settings.stall_detection_threshold identical
+                        consecutive tool sequences (default 3)
 """
 
 from __future__ import annotations
@@ -26,7 +32,9 @@ from agent.graph_nodes import (
     rewrite_query,
     route_after_agent,
     route_after_classify,
+    route_after_verify,
     trim_history,
+    verify_answer,
 )
 from agent.response import format_response
 from agent.state import AgentState
@@ -59,6 +67,7 @@ def build_graph(
     builder.add_node("call_tools", ToolNode(ALL_TOOLS))
     builder.add_node("validate_tool_output", validate_tool_output)
     builder.add_node("format_response", format_response)
+    builder.add_node("verify_answer", verify_answer)
 
     builder.add_edge(START, "trim_history")
     builder.add_edge("trim_history", "classify_intent")
@@ -75,8 +84,13 @@ def build_graph(
         {"call_tools": "call_tools", "format_response": "format_response"},
     )
     builder.add_edge("call_tools", "validate_tool_output")
-    builder.add_edge("validate_tool_output", "agent")  # loop back
-    builder.add_edge("format_response", END)
+    builder.add_edge("validate_tool_output", "agent")  # ReAct loop back
+    builder.add_edge("format_response", "verify_answer")
+    builder.add_conditional_edges(
+        "verify_answer",
+        route_after_verify,
+        {"agent": "agent", "END": END},  # verification retry loop or done
+    )
 
     if checkpointer is None:
         checkpointer = MemorySaver()

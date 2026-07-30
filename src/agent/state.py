@@ -20,6 +20,10 @@ class AgentState(TypedDict, total=False):
     entities: dict  # {"mood": [...], "time_period": [...]}
     query_variants: list[str]  # expanded/decomposed query variants
     tool_validation_retries: int  # 0 initially, max controlled by config
+    verification_retries: int  # 0 initially; counts maker/checker retry cycles
+    last_tool_call_sequence: list[str]  # ordered tool names from the last ReAct turn
+    stall_count: int  # consecutive turns with identical tool call sequence
+    checker_critique: str  # feedback injected on verification failure
     agent_response: (
         dict  # structured output from format_response: {message, track_list, suggestions, sources}
     )

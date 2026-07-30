@@ -57,6 +57,7 @@ async def validate_tool_output(state: AgentState) -> dict:
     1. Tool returned non-empty, non-error content
     2. Tool aligns with classified intent
     3. Extracted entities appear in output (soft check — log only)
+    4. Stall detection — identical consecutive tool sequences escalate
 
     On failure: injects corrective hint, increments retry counter.
     On success or retry exhausted: passes through.
@@ -123,6 +124,40 @@ async def validate_tool_output(state: AgentState) -> dict:
                 intent=intent,
             )
 
+    # Stall detection — track tool call sequences across turns
+    current_sequence = sorted(
+        tool_msg.name for tool_msg in tool_messages if hasattr(tool_msg, "name")
+    )
+    prev_sequence = state.get("last_tool_call_sequence", [])
+    stall_count = state.get("stall_count", 0)
+
+    if current_sequence and current_sequence == prev_sequence:
+        stall_count += 1
+    else:
+        stall_count = 0
+
+    stall_update: dict = {
+        "last_tool_call_sequence": current_sequence,
+        "stall_count": stall_count,
+    }
+
+    if stall_count >= settings.stall_detection_threshold:
+        log.warning(
+            "agent.validate.stall_detected",
+            stall_count=stall_count,
+            sequence=current_sequence,
+        )
+        stall_hint = (
+            "[Stall detected] You have called the same tools in the same sequence "
+            f"{stall_count} consecutive times without progress. "
+            "Try a different approach, use different tools, or acknowledge that "
+            "you cannot fulfill the request with the available information."
+        )
+        return {
+            "messages": [SystemMessage(content=stall_hint)],
+            **stall_update,
+        }
+
     if not issues or retries >= max_retries:
         if issues:
             log.warning(
@@ -130,7 +165,7 @@ async def validate_tool_output(state: AgentState) -> dict:
                 issues=issues,
                 retries=retries,
             )
-        return {}  # pass through
+        return stall_update  # pass through (still update stall tracking)
 
     # Inject corrective hint
     hint = (
@@ -142,4 +177,5 @@ async def validate_tool_output(state: AgentState) -> dict:
     return {
         "messages": [SystemMessage(content=hint)],
         "tool_validation_retries": retries + 1,
+        **stall_update,
     }

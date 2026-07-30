@@ -51,6 +51,11 @@ class Settings(BaseSettings):
     intent_confidence_threshold: float = 0.4
     max_tool_validation_retries: int = 1
 
+    # Verification loop (maker/checker)
+    max_verification_retries: int = 2  # checker retry cap, independent of ReAct loop cap
+    verification_score_threshold: float = 0.5  # minimum score to pass; below → retry
+    stall_detection_threshold: int = 3  # identical consecutive tool sequences → escalate
+
     # Memory / persistence (priority: postgres > redis > in-memory)
     postgres_url: str = ""
     redis_url: str = ""
