@@ -20,6 +20,7 @@ from agent.memory_store import get_procedural_prompt
 from agent.prompts import load_prompt
 from agent.state import AgentState
 from agent.tools import ALL_TOOLS
+from evals.graders.answer_eval import HeuristicChecker
 from utils.config import settings
 from utils.logging import get_logger
 
@@ -351,3 +352,99 @@ def route_after_agent(state: AgentState) -> str:
     if hasattr(last, "tool_calls") and last.tool_calls:
         return "call_tools"
     return "format_response"
+
+
+# ---------------------------------------------------------------------------
+# Verification loop — maker/checker
+# ---------------------------------------------------------------------------
+
+_heuristic_checker = HeuristicChecker()
+
+
+async def verify_answer(state: AgentState) -> dict:
+    """Checker node — validates the formatted answer with heuristic grading.
+
+    Sits after ``format_response``. If the answer fails the quality threshold
+    and the retry cap has not been reached, injects the checker critique back
+    into the message list so the agent can revise.
+
+    State written:
+    - ``verification_retries``: incremented on failure
+    - ``checker_critique``: critique text (empty on pass)
+    - ``messages``: critique injected as HumanMessage on failure
+    """
+    agent_response = state.get("agent_response", {})
+    answer = agent_response.get("message", "")
+    retries = state.get("verification_retries", 0)
+    max_retries = settings.max_verification_retries
+
+    # Collect tool outputs from the current turn (stop at last HumanMessage)
+    messages = state.get("messages", [])
+    tool_outputs: list[str] = []
+    for msg in reversed(messages):
+        if isinstance(msg, HumanMessage):
+            break
+        if hasattr(msg, "type") and msg.type == "tool":
+            tool_outputs.append(str(msg.content))
+
+    # Extract the original user question
+    question = ""
+    for msg in reversed(messages):
+        if isinstance(msg, HumanMessage):
+            question = str(msg.content)
+            break
+
+    result = _heuristic_checker.check(
+        query_id=f"verify-{retries}",
+        question=question,
+        answer=answer,
+        tool_outputs=tool_outputs,
+    )
+
+    log.info(
+        "agent.verify_answer",
+        score=result.score,
+        is_correct=result.is_correct,
+        reasoning=result.reasoning,
+        retries=retries,
+        max_retries=max_retries,
+    )
+
+    if result.is_correct or result.score >= settings.verification_score_threshold:
+        return {"verification_retries": retries, "checker_critique": ""}
+
+    if retries >= max_retries:
+        log.warning(
+            "agent.verify_answer.cap_reached",
+            retries=retries,
+            score=result.score,
+            reasoning=result.reasoning,
+        )
+        return {"verification_retries": retries, "checker_critique": result.reasoning}
+
+    critique = (
+        f"[Checker] Your answer did not meet quality standards "
+        f"(score {result.score:.2f}, threshold {settings.verification_score_threshold}). "
+        f"Reason: {result.reasoning}. "
+        f"Please revise your answer to better address the query."
+    )
+    log.info("agent.verify_answer.retry", retry=retries + 1, critique=critique)
+    return {
+        "messages": [HumanMessage(content=critique)],
+        "verification_retries": retries + 1,
+        "checker_critique": result.reasoning,
+    }
+
+
+def route_after_verify(state: AgentState) -> str:
+    """Route after verify_answer: retry agent if critique present, else END."""
+    retries = state.get("verification_retries", 0)
+    critique = state.get("checker_critique", "")
+    max_retries = settings.max_verification_retries
+
+    # If a critique was injected and we haven't exhausted retries, loop back
+    if critique and retries <= max_retries:
+        last_messages = state.get("messages", [])
+        if last_messages and isinstance(last_messages[-1], HumanMessage):
+            return "agent"
+    return "END"
