@@ -55,6 +55,9 @@ logs/
 .ruff_cache/
 .mypy_cache/
 
+# Eval — generated output, not committed
+evals/datasets/eval_results.json
+
 # Obsidian
 .obsidian/
 
