@@ -137,14 +137,13 @@ eval-trajectory:
 eval-e2e:
 	CONFIRM_EXPENSIVE_OPS=true PYTHONPATH=src uv run python -m evals.run_agent_eval --tier 3
 
-.PHONY: precommit
-precommit:  ## run all pre-commit hooks (ruff, format, gitleaks, eslint where wired) on all files
-	pre-commit run --all-files
+# precommit comes from Makefile.common (identical recipe) — included below.
 
 # --- Git workflow ---
+# pull, push, quick-pr come from Makefile.common — canon (~/.claude/Makefile.common).
+# Local overrides below: status (adds open-PR listing), ship (adds lint + test).
 
-pull:  ## Pull latest from origin/main
-	git pull origin main
+include $(HOME)/.claude/Makefile.common
 
 status:  ## Show branch, unpushed commits, staged changes, open PRs
 	@echo "=== listen-wiseer ==="
@@ -157,24 +156,5 @@ status:  ## Show branch, unpushed commits, staged changes, open PRs
 	@git diff --stat 2>/dev/null || true
 	@echo "Open PRs:"
 	@gh pr list --state open --json number,title,headBranch --jq '.[] | "#\(.number) \(.title) [\(.headBranch)]"' 2>/dev/null || echo "  (none)"
-
-push:  ## Push current branch to origin
-	git push -u origin $$(git branch --show-current)
-
-quick-pr:  ## Create PR from current branch with auto-generated body
-	@BRANCH=$$(git branch --show-current); \
-	if [ "$$BRANCH" = "main" ]; then echo "Error: can't PR from main"; exit 1; fi; \
-	EXISTING=$$(gh pr list --head "$$BRANCH" --json number --jq '.[0].number' 2>/dev/null); \
-	if [ -n "$$EXISTING" ]; then echo "PR #$$EXISTING already exists for $$BRANCH"; exit 0; fi; \
-	COMMITS=$$(git log origin/main..HEAD --oneline 2>/dev/null); \
-	ISSUES=$$(echo "$$COMMITS" | grep -oE '#[0-9]+' | sort -u | tr '\n' ' ' | xargs); \
-	if [ -n "$$ISSUES" ]; then \
-		CLOSES=$$(echo "$$ISSUES" | tr ' ' '\n' | grep -v '^$$' | sed 's/^/Closes /' | tr '\n' ' '); \
-	else \
-		CLOSES="(no issue references found in commits)"; \
-	fi; \
-	BODY=$$(printf "## Summary\n%s\n\n%s\n" "$$COMMITS" "$$CLOSES"); \
-	echo "Creating PR for $$BRANCH..."; \
-	gh pr create --title "$$BRANCH" --body "$$BODY"
 
 ship: lint test pull push quick-pr  ## lint → test → pull → push → PR
