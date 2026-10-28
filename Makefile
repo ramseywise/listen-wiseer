@@ -103,6 +103,12 @@ data-sync:
 	@echo "Requires .spotify_cache - run 'make auth' once to authenticate first"
 	PYTHONPATH=src uv run python -m etl.sync
 
+import-history:  ## Load Spotify privacy-export JSON from data/listening_history/ into plays
+	PYTHONPATH=src uv run python -m etl.history
+
+resolve-ids:  ## Match played tracks to MusicBrainz/Deezer IDs (resumable; ARGS="--limit 500")
+	PYTHONPATH=src uv run python -m etl.resolve $(ARGS)
+
 # Default training (LightGBM, same as before but with fixed features)
 train:
 	PYTHONPATH=src uv run python -m recommend.train

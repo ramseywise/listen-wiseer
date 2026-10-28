@@ -3,6 +3,8 @@ DuckDB connection and schema management.
 DB file lives at infrastructure/db/listen_wiseer.db (tracked via Git LFS).
 """
 
+from pathlib import Path
+
 import duckdb
 
 from paths import DB_PATH
@@ -204,6 +206,41 @@ CREATE TABLE IF NOT EXISTS external_tracks (
     y_target         VARCHAR
 );
 
+-- Play events from the Spotify privacy export (music only).
+-- track_key = lower(artist) || '\t' || lower(title); spotify_id NULL for account-data exports.
+CREATE TABLE IF NOT EXISTS plays (
+    ts          TIMESTAMP,
+    track_key   VARCHAR,
+    spotify_id  VARCHAR,
+    track_name  VARCHAR,
+    artist_name VARCHAR,
+    album_name  VARCHAR,
+    ms_played   BIGINT,
+    skipped     BOOLEAN,   -- NULL = unknown (account-data export has no skip info)
+    reason_end  VARCHAR,
+    PRIMARY KEY (ts, track_key)
+);
+
+-- Cross-source track identity; MusicBrainz recording MBID is canonical.
+-- A row with mbid NULL = attempted, unmatched (not retried unless asked).
+CREATE TABLE IF NOT EXISTS track_xref (
+    track_key        VARCHAR PRIMARY KEY,
+    artist_name      VARCHAR,
+    track_name       VARCHAR,
+    spotify_id       VARCHAR,
+    mbid             VARCHAR,
+    artist_mbids     VARCHAR[],
+    mb_score         INTEGER,
+    mb_method        VARCHAR,  -- 'search' | 'spotify_url' | NULL
+    deezer_id        BIGINT,
+    isrc             VARCHAR,
+    youtube_video_id VARCHAR,
+    resolved_at      TIMESTAMP
+);
+
+-- Leftover from the deleted rag_core/ (Phase 8)
+DROP TABLE IF EXISTS rag_chunks;
+
 -- Enriched view used by agent / models
 -- genre columns sourced from track_genre (falls back to genre_map for coverage)
 CREATE OR REPLACE VIEW track_profile AS
@@ -250,6 +287,11 @@ LEFT JOIN faves f USING (track_id);
 """
 
 
+def _is_duckdb_file(path: Path) -> bool:
+    with path.open("rb") as f:
+        return f.read(12)[8:12] == b"DUCK"
+
+
 def get_connection(read_only: bool = False) -> duckdb.DuckDBPyConnection:
     """Return a connection to the project DuckDB file."""
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -257,8 +299,9 @@ def get_connection(read_only: bool = False) -> duckdb.DuckDBPyConnection:
         conn = duckdb.connect(str(DB_PATH), read_only=read_only)
     except duckdb.IOException:
         # File exists but is not a valid DuckDB database (e.g. a Git LFS pointer).
-        # Delete it and create a fresh database.
-        if DB_PATH.exists() and DB_PATH.read_bytes()[:8] != b"DUCK\x00\x00\x00\x00":
+        # Delete it and create a fresh database. A real DuckDB file has an 8-byte
+        # checksum then b"DUCK" — anything else (lock held by another process) re-raises.
+        if DB_PATH.exists() and not _is_duckdb_file(DB_PATH):
             log.warning("db.invalid_file.replaced", path=str(DB_PATH))
             DB_PATH.unlink()
             conn = duckdb.connect(str(DB_PATH), read_only=read_only)

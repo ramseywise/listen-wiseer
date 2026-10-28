@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     last_fm_api_key: str = ""
     last_fm_id: str = ""
 
+    # Free music sources (MusicBrainz, ListenBrainz, Deezer, YouTube)
+    source_user_agent: str = "listen-wiseer/0.1 (https://github.com/ramseywise/listen-wiseer)"
+    listenbrainz_token: str = ""
+    listenbrainz_user: str = ""
+    youtube_api_key: str = ""
+
     # Web search (artist/genre context)
     tavily_api_key: str = ""
 

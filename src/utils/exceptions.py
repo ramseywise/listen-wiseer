@@ -21,5 +21,9 @@ class SpotifyAuthError(SpotifyClientError):
     """OAuth token exchange or refresh failures."""
 
 
+class SourceError(ListenWiseerError):
+    """Free music-data source (MusicBrainz, ListenBrainz, Last.fm, Deezer, YouTube) failures."""
+
+
 class DataLoadError(ListenWiseerError):
     """Failure loading or parsing local data files."""
