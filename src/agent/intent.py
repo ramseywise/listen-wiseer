@@ -29,7 +29,7 @@ class QueryAnalysis:
     """Result of query analysis."""
 
     original_query: str
-    intent: str  # artist_info | genre_info | recommendation | history | explore_my_taste | discover | chit_chat
+    intent: str  # artist_info | genre_info | recommendation | history | explore_my_taste | discover | listen | chit_chat
     complexity: str  # simple | moderate | complex
     expanded_query: str
     entities: dict[str, list[str]]
@@ -118,6 +118,16 @@ INTENT_PATTERNS: dict[str, list[str]] = {
         "underrated",
         "hidden gem",
     ],
+    # After the others so ties ("play something like X") go to recommendation.
+    "listen": [
+        "play ",
+        "put on",
+        "listen to",
+        "hear ",
+        "preview",
+        "download",
+        "offline",
+    ],
     "chit_chat": [
         "hello",
         "hi",
@@ -131,6 +141,11 @@ INTENT_PATTERNS: dict[str, list[str]] = {
         "good night",
     ],
 }
+
+
+# Imperative requests ("play X", "download X") are unambiguous on one keyword —
+# don't send them to clarify.
+_MIN_CONFIDENCE: dict[str, float] = {"listen": 0.6}
 
 
 def classify_intent(query: str) -> dict[str, Any]:
@@ -150,7 +165,7 @@ def classify_intent(query: str) -> dict[str, Any]:
         return {"intent": "artist_info", "confidence": 0.3, "matches": []}
 
     best = max(scores.keys(), key=lambda k: scores[k]["score"])
-    confidence = min(1.0, scores[best]["score"] / 3)
+    confidence = max(min(1.0, scores[best]["score"] / 3), _MIN_CONFIDENCE.get(best, 0.0))
     return {"intent": best, "confidence": confidence, "matches": scores[best]["matches"]}
 
 

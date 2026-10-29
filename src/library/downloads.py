@@ -11,6 +11,8 @@ from functools import cache
 from pathlib import Path
 
 import duckdb
+from mutagen import MutagenError
+from mutagen.id3 import ID3, TIT2, TPE1, UFID, WCOP, ID3NoHeaderError
 
 from etl.history import track_key
 from paths import DATA_DIR
@@ -23,6 +25,7 @@ from utils.logging import get_logger
 log = get_logger(__name__)
 
 LIBRARY_DIR = DATA_DIR / "library"
+_MB_UFID_OWNER = "http://musicbrainz.org"  # Picard's recording-MBID frame
 
 _Finder = Callable[..., list[FreeTrack]]
 _FINDERS: tuple[tuple[str, _Finder], ...] = (
@@ -59,31 +62,62 @@ def local_path(conn: duckdb.DuckDBPyConnection, artist: str, title: str) -> str 
     return row[0] if row and Path(row[0]).is_file() else None
 
 
+def tag(path: Path, track: FreeTrack, mbid: str = "") -> None:
+    """Write the ID3 frames Navidrome / Picard read: recording MBID (UFID), licence (WCOP),
+    and artist / title when the file has none. Best effort — a bad file is only logged."""
+    try:
+        try:
+            tags = ID3(path)
+        except ID3NoHeaderError:
+            tags = ID3()
+        if "TPE1" not in tags:
+            tags.add(TPE1(encoding=3, text=track.artist))
+        if "TIT2" not in tags:
+            tags.add(TIT2(encoding=3, text=track.title))
+        if mbid:
+            tags.add(UFID(owner=_MB_UFID_OWNER, data=mbid.encode()))
+        if track.license_url:
+            tags.add(WCOP(url=track.license_url))
+        tags.save(path)
+    except MutagenError as exc:
+        log.warning("library.tag_failed", path=str(path), error=str(exc))
+
+
 def download(
     conn: duckdb.DuckDBPyConnection,
     track: FreeTrack,
     *,
     mbid: str = "",
+    requested: tuple[str, str] | None = None,
     library_dir: Path = LIBRARY_DIR,
     client: SourceClient | None = None,
 ) -> Path:
-    """Download ``track`` into the library and record it; raises SourceError on failure."""
+    """Download ``track`` into the library, tag it and record it; raises SourceError on failure.
+
+    ``requested`` (artist, title) is what the user asked for — also recorded, so playback
+    finds the file under either name ("Weird Fishes" vs "Weird Fishes / Arpeggi").
+    """
     dest = library_dir / _safe(track.artist) / f"{_safe(track.title)}.mp3"
     if not dest.is_file():
         (client or default_downloader()).download(track.download_url, dest)
-    conn.execute(
-        "INSERT OR REPLACE INTO library VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [
-            track_key(track.artist, track.title),
-            track.artist,
-            track.title,
-            mbid,
-            track.source,
-            track.source_id,
-            track.license_url,
-            str(dest),
-            datetime.now(),
-        ],
-    )
+        tag(dest, track, mbid)
+    keys = {track_key(track.artist, track.title)}
+    if requested:
+        keys.add(track_key(*requested))
+    for key in keys:
+        conn.execute(
+            "INSERT OR REPLACE INTO library VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                key,
+                track.artist,
+                track.title,
+                mbid,
+                track.source,
+                track.source_id,
+                track.license_url,
+                str(dest),
+                datetime.now(),
+            ],
+        )
     log.info("library.downloaded", source=track.source, artist=track.artist, path=str(dest))
     return dest

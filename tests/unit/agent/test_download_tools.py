@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from agent.tools import downloads
 from sources.schemas import FreeTrack
@@ -39,7 +39,7 @@ def test_download_success():
     ):
         out = downloads._download_track("Band A", "Ripple", mbid="m")
     assert out.startswith("Downloaded Band A — Ripple") and out.endswith("/lib/a.mp3")
-    assert dl.call_args.kwargs == {"mbid": "m"}
+    assert dl.call_args.kwargs == {"mbid": "m", "requested": ("Band A", "Ripple")}
 
 
 def test_download_failure_reported():
@@ -49,3 +49,20 @@ def test_download_failure_reported():
         patch.object(downloads, "download", side_effect=SourceError("HTTP 403")),
     ):
         assert downloads._download_track("Band A", "Ripple").startswith("Download failed")
+
+
+def test_download_resolves_mbid_and_passes_requested_name():
+    rec = MagicMock(mbid="rec-1")
+    with (
+        patch.object(downloads, "find_free", return_value=[FREE]),
+        patch.object(downloads, "db", _db),
+        patch.object(downloads.musicbrainz, "best_match", return_value=rec),
+        patch.object(downloads, "download", return_value=Path("/lib/a.mp3")) as dl,
+    ):
+        downloads._download_track("band a", "ripple")
+    assert dl.call_args.kwargs == {"mbid": "rec-1", "requested": ("band a", "ripple")}
+
+
+def test_mbid_lookup_failure_downloads_untagged():
+    with patch.object(downloads.musicbrainz, "best_match", side_effect=SourceError("503")):
+        assert downloads._recording_mbid("Band A", "Ripple") == ""

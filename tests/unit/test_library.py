@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 import httpx
 import pytest
+from mutagen.id3 import ID3, TPE1
 
 from etl.history import track_key
 from library import downloads
@@ -121,7 +122,7 @@ class TestDownloads:
         path = downloads.download(mem_conn, FREE, mbid="m", library_dir=tmp_path,
                                   client=_cdn(calls))  # fmt: skip
         assert path == tmp_path / "A_B" / "One_.mp3"
-        assert path.read_bytes() == b"mp3"
+        assert path.read_bytes().endswith(b"mp3")
         row = mem_conn.execute("SELECT mbid, source, license_url, path FROM library").fetchone()
         assert row == ("m", "jamendo", "https://cc/by", str(path))
 
@@ -136,6 +137,31 @@ class TestDownloads:
         assert downloads.local_path(mem_conn, "a/b", "one?") == str(path)
         path.unlink()
         assert downloads.local_path(mem_conn, "A/B", "One?") is None
+
+    def test_tags_mbid_licence_and_names(self, mem_conn, tmp_path):
+        path = downloads.download(mem_conn, FREE, mbid="rec-1", library_dir=tmp_path,
+                                  client=_cdn([]))  # fmt: skip
+        tags = ID3(path)
+        assert tags.getall("UFID")[0].data == b"rec-1"
+        assert tags.getall("WCOP")[0].url == "https://cc/by"
+        assert (str(tags["TPE1"]), str(tags["TIT2"])) == ("A/B", "One?")
+
+    def test_existing_tags_kept(self, mem_conn, tmp_path):
+        seed = tmp_path / "seed.mp3"
+        seed.write_bytes(b"")
+        tagged = ID3()
+        tagged.add(TPE1(encoding=3, text="Original"))
+        tagged.save(seed)
+        body = seed.read_bytes() + b"audio"
+        cdn = _client(lambda _r: httpx.Response(200, content=body))
+        path = downloads.download(mem_conn, FREE, library_dir=tmp_path / "lib", client=cdn)
+        assert str(ID3(path)["TPE1"]) == "Original"
+
+    def test_requested_name_also_finds_file(self, mem_conn, tmp_path):
+        path = downloads.download(mem_conn, FREE, requested=("A/B", "One"),
+                                  library_dir=tmp_path, client=_cdn([]))  # fmt: skip
+        assert downloads.local_path(mem_conn, "a/b", "one") == str(path)
+        assert downloads.local_path(mem_conn, "A/B", "One?") == str(path)
 
     def test_find_free_skips_failing_source(self):
         def broken(*_a, **_k):

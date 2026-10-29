@@ -37,6 +37,10 @@ _SUGGESTION_TEMPLATES: dict[str, list[str]] = {
         "Want to save any of these to a playlist?",
         "Should I dig deeper into any of these artists?",
     ],
+    "listen": [
+        "Want more tracks like this one?",
+        "Should I save this to a playlist?",
+    ],
 }
 
 

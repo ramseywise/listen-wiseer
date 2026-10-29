@@ -41,6 +41,22 @@ class TestAllTools:
 
         assert len(ALL_TOOLS) == 23
 
+    def test_intent_map_and_golden_tools_exist(self) -> None:
+        """Validation map and golden eval set must not reference retired tools."""
+        import json
+
+        from agent.tools import ALL_TOOLS
+        from agent.validation import TOOL_INTENT_MAP
+        from paths import REPO_ROOT
+
+        tool_names = {t.name for t in ALL_TOOLS}
+        referenced = set().union(*TOOL_INTENT_MAP.values())
+        golden = REPO_ROOT / "evals" / "datasets" / "golden_intent.jsonl"
+        for line in golden.read_text().splitlines():
+            if line.strip():
+                referenced |= set(json.loads(line)["expected_tools"])
+        assert referenced <= tool_names, referenced - tool_names
+
     def test_tool_names_unique(self) -> None:
         from agent.tools import ALL_TOOLS
 

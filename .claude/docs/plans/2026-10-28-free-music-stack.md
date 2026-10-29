@@ -1,6 +1,6 @@
 # Free music stack — move off Spotify
 
-Status: IN PROGRESS — S0–S2, S3a, S4, S5 done; S6 code done (Jamendo untested live — needs client_id); next S7
+Status: IN PROGRESS — S0–S2, S3a, S4, S5 done; S6 code done (Jamendo untested live — client_id set, not yet visible to settings); S7 ✓; left: S3b
 Branch: `free-music-stack`
 
 ## Research
@@ -75,7 +75,7 @@ Branch: `free-music-stack`
 
 ### S6 — Offline / downloads (legal sources only) ✓ (code)
 - Done 2026-10-29: `sources/archive_org.py` (live-verified: Kevin MacLeod mp3 downloaded), `sources/jamendo.py` (mocked only — no client_id yet), `SourceClient.download` (`.part` file, no API key leakage to CDNs), `library/downloads.py` + `library` table, `PlayableTrack.local_path` (Chainlit plays local file inline), tools `find_free_downloads` / `download_track` (agent + MCP; 23 tools), Navidrome `--profile library` + `make navidrome`.
-- Not done: ID3 MBID tagging (would need `mutagen`; MBID kept in DB only). Library lookup is by exact track_key of the *found* track, so name variants miss.
+- Follow-up done 2026-10-29: ID3 tagging via `mutagen` (UFID recording MBID resolved via `musicbrainz.best_match`, WCOP licence, TPE1/TIT2 if missing; live-verified); library rows recorded under both found and requested track_key.
 Catalogs do **not** overlap — each covers a different slice:
 | Source | Catalog | Access | Plan |
 |---|---|---|---|
@@ -89,8 +89,12 @@ Catalogs do **not** overlap — each covers a different slice:
 - Agent: `play` prefers local file > YouTube > Deezer preview.
 - No yt-dlp / YouTube or Deezer downloading (ToS).
 
-### S7 — Evals
-- Update tool-trajectory evals for new tool names (`golden_intent.jsonl` still has `get_spotify_recommendations`, `get_listening_history`).
+### S7 — Evals ✓
+- `golden_intent.jsonl`: `get_listening_history` → `get_recently_played`, `get_spotify_recommendations` → `discover_tracks`.
+- New `listen` intent (play / put on / hear / preview / download / offline) — "play X" used to fall through to `artist_info` @ 0.3 → clarify, and validation flagged `play_track`. Confidence floor 0.6 (`_MIN_CONFIDENCE`); placed last before chit_chat so "play something like X" ties go to recommendation. Wired into `TOOL_INTENT_MAP`, intent hints, suggestions.
+- +6 golden samples (li01–li06, 61 total); baseline re-cut with `f1_listen` (intent/route acc 0.964 → 0.967).
+- Guard test: every tool in `TOOL_INTENT_MAP` and golden `expected_tools` must exist in `ALL_TOOLS`.
+- Not done: Tier 2/3 (LLM tool-trajectory, ragas) not re-run — need API spend; run `make eval-trajectory` / `make eval-full` when wanted.
 
 ### Env
 - `lightgbm` can't load `libomp.dylib` → whole unit suite (and pre-commit hook) fails at `tests/conftest.py`. Fix: `brew install libomp`.

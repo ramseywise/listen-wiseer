@@ -37,6 +37,7 @@ TOOL_INTENT_MAP: dict[str, set[str]] = {
         "get_related_artists",
         "get_top_artists",
     },
+    "listen": {"play_track", "find_free_downloads", "download_track", "search_tracks"},
 }
 
 ERROR_SIGNALS = [

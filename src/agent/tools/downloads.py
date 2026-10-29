@@ -7,6 +7,7 @@ from langchain_core.tools import StructuredTool
 
 from agent.tools.discover import db
 from library.downloads import download, find_free
+from sources import musicbrainz
 from sources.schemas import FreeTrack
 from utils.exceptions import SourceError
 from utils.logging import get_logger
@@ -44,14 +45,25 @@ find_free_downloads_tool = StructuredTool.from_function(
 )
 
 
+def _recording_mbid(artist: str, title: str) -> str:
+    """Best-effort MusicBrainz recording MBID for tagging; '' when unsure or unreachable."""
+    try:
+        rec = musicbrainz.best_match(artist, title)
+    except SourceError as exc:
+        log.warning("agent.tools.mbid_lookup_failed", artist=artist, error=str(exc))
+        return ""
+    return rec.mbid if rec else ""
+
+
 def _download_track(artist: str, title: str, mbid: str = "") -> str:
     tracks = find_free(artist, title, limit=1)
     if not tracks:
         return _NONE_FOUND.format(query=f"{artist} — {title}")
     track = tracks[0]
+    mbid = mbid or _recording_mbid(track.artist, track.title)
     try:
         with db() as conn:
-            path = download(conn, track, mbid=mbid)
+            path = download(conn, track, mbid=mbid, requested=(artist, title))
     except (SourceError, duckdb.IOException) as exc:
         log.warning("agent.tools.download_failed", artist=artist, title=title, error=str(exc))
         return f"Download failed for {artist} — {title}: {exc}"

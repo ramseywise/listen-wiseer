@@ -11,10 +11,10 @@ from evals.tasks.models import AgentGoldenSample
 GOLDEN_PATH = Path(__file__).resolve().parents[3] / "evals" / "datasets" / "golden_intent.jsonl"
 
 EXPECTED_INTENTS = {"artist_info", "genre_info", "recommendation", "history", "chit_chat"}
-NEW_INTENTS = {"explore_my_taste", "discover"}
+NEW_INTENTS = {"explore_my_taste", "discover", "listen"}
 MIN_SAMPLES_PER_INTENT = 8
 MIN_SAMPLES_NEW_INTENTS = 2
-EXPECTED_TOTAL = 55
+EXPECTED_TOTAL = 61
 
 
 @pytest.fixture()
