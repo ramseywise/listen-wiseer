@@ -119,3 +119,21 @@ class TestFormatResponse:
         }
         result = format_response(state)
         assert result["agent_response"]["sources"] == []
+
+    def test_surfaces_tracks_and_playable(self) -> None:
+        old = {"tracks": [{"artist": "Old", "title": "x", "mbid": ""}]}
+        new = {"tracks": [{"artist": "New", "title": "y", "mbid": ""}]}
+        play = {"playable": [{"artist": "P", "title": "z", "preview_url": "https://p.test"}]}
+        state = {
+            "messages": [
+                HumanMessage(content="find me music like X and play one"),
+                _tool_message("1. Old — x", artifact=old, name="discover_tracks"),
+                _tool_message("1. New — y", artifact=new, name="discover_tracks"),
+                _tool_message("P — z", artifact=play, name="play_track"),
+                AIMessage(content="Here you go"),
+            ],
+            "intent": "discover",
+        }
+        resp = format_response(state)["agent_response"]
+        assert resp["tracks"] == new["tracks"]  # latest discovery wins
+        assert resp["playable"] == play["playable"]

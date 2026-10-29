@@ -15,7 +15,7 @@ _TRACK_LINE_RE = re.compile(
 
 _SUGGESTION_TEMPLATES: dict[str, list[str]] = {
     "recommendation": [
-        "Want me to save these as a Spotify playlist?",
+        "Want me to save these as a playlist?",
         "Should I find more tracks like one of these?",
         "Want to explore the artist behind any of these?",
     ],
@@ -36,6 +36,10 @@ _SUGGESTION_TEMPLATES: dict[str, list[str]] = {
     "discover": [
         "Want to save any of these to a playlist?",
         "Should I dig deeper into any of these artists?",
+    ],
+    "listen": [
+        "Want more tracks like this one?",
+        "Should I save this to a playlist?",
     ],
 }
 
@@ -61,6 +65,8 @@ def format_response(state: AgentState) -> dict:
 
     sources: list[dict] = []
     seen_urls: set[str] = set()
+    tracks: list[dict] = []
+    playable: list[dict] = []
     for msg in reversed(messages):
         if isinstance(msg, HumanMessage):
             break  # stop at the current turn's boundary — don't leak prior turns' citations
@@ -74,6 +80,9 @@ def format_response(state: AgentState) -> dict:
             if url and url not in seen_urls:
                 seen_urls.add(url)
                 sources.append(source)
+        # Latest tool call wins (iterating newest-first)
+        tracks = tracks or artifact.get("tracks") or []
+        playable += artifact.get("playable") or []
 
     return {
         "agent_response": {
@@ -81,5 +90,7 @@ def format_response(state: AgentState) -> dict:
             "track_list": track_list[:20],
             "suggestions": suggestions,
             "sources": sources,
+            "tracks": tracks,
+            "playable": playable,
         }
     }

@@ -277,19 +277,31 @@ def test_recommend_routes_to_genre_pipeline(tmp_path: Path) -> None:
     assert result.pipeline_used == "genre"
 
 
-def test_recommend_playlist_without_spotify_client_returns_graceful(
+def test_recommend_playlist_without_tracks_fn_returns_graceful(
     tmp_path: Path,
 ) -> None:
-    """recommend(request_type='playlist') with no spotify_client returns empty result."""
+    """recommend(request_type='playlist') with no playlist_tracks_fn returns empty result."""
     engine, _ = _make_mock_engine(tmp_path)
-    # Engine was created without spotify_client
 
     request = RecommendRequest(request_type="playlist", seed_id="some_playlist_id", k=3)
     result = engine.recommend(request)
 
     assert isinstance(result, RecommendResult)
     assert result.track_uris == []
-    assert "Spotify client not configured" in result.explanation
+    assert "no tracks in the corpus" in result.explanation
+
+
+def test_recommend_playlist_uses_corpus_rows_for_playlist_tracks(tmp_path: Path) -> None:
+    """Playlist pipeline gets the corpus rows for the IDs playlist_tracks_fn returns."""
+    engine, _ = _make_mock_engine(tmp_path)
+    engine._playlist_tracks_fn = lambda pid: ["track_001", "track_002", "missing"]
+
+    with patch("recommend.engine.PlaylistPipeline") as MockPipeline:
+        MockPipeline.return_value.run.return_value = "ok"
+        engine.recommend(RecommendRequest(request_type="playlist", seed_id="p1", k=3))
+
+    passed = MockPipeline.return_value.run.call_args.kwargs["playlist_tracks"]
+    assert sorted(passed["id"].to_list()) == ["track_001", "track_002"]
 
 
 # ---------------------------------------------------------------------------

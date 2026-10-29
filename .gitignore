@@ -13,6 +13,7 @@ build/
 
 # Data (personal / large / generated — not committed)
 data/archived
+data/library
 
 # Infrastructure DB is committed (operational DuckDB, ~7MB, no external training data)
 # infrastructure/db/listen_wiseer.db is tracked

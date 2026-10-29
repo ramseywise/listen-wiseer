@@ -7,6 +7,7 @@ cached per playlist slug.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 import duckdb
@@ -45,15 +46,15 @@ class RecommendationEngine:
         data_dir: Root data directory. Corpus loaded from
             data_dir/cache/corpus_features.parquet (written by train.py).
             Genre map loaded from DuckDB genre_xy table.
-        spotify_client: Optional SpotifyClient used only for playlist pipeline
-            (fetching live playlist tracks). Engine is fully testable without it.
+        playlist_tracks_fn: Maps a playlist ID to its track IDs (playlist pipeline
+            only). Injected so the engine never holds a DB connection per request.
     """
 
     def __init__(
         self,
         models_dir: Path,
         data_dir: Path,
-        spotify_client=None,
+        playlist_tracks_fn: Callable[[str], list[str]] | None = None,
     ) -> None:
         # Load corpus from Parquet cache (written by train.py)
         self._corpus: pl.DataFrame = self._load_corpus(data_dir)
@@ -81,7 +82,7 @@ class RecommendationEngine:
 
         self._models_dir: Path = models_dir
         self._classifier_cache: dict[str, Pipeline | None] = {}
-        self._spotify_client = spotify_client
+        self._playlist_tracks_fn = playlist_tracks_fn
 
     @staticmethod
     def _load_corpus(data_dir: Path) -> pl.DataFrame:
@@ -206,7 +207,9 @@ class RecommendationEngine:
         request: RecommendRequest,
         classifier: Pipeline | None,
     ) -> RecommendResult:
-        if self._spotify_client is None:
+        track_ids = self._playlist_tracks_fn(request.seed_id) if self._playlist_tracks_fn else []
+        playlist_tracks_df = self._corpus.filter(pl.col("id").is_in(track_ids))
+        if playlist_tracks_df.is_empty():
             return RecommendResult(
                 track_uris=[],
                 track_ids=[],
@@ -214,84 +217,9 @@ class RecommendationEngine:
                 scores=[],
                 pipeline_used="playlist",
                 explanation=(
-                    "Spotify client not configured. "
-                    "Pass a SpotifyClient to RecommendationEngine to enable playlist recommendations."
+                    f"Playlist '{request.seed_id}' has no tracks in the corpus "
+                    "(unknown playlist, or its tracks have no audio features)."
                 ),
-            )
-
-        try:
-            from spotify.fetch import fetch_audio_features, fetch_playlist_tracks
-
-            track_features_list = fetch_playlist_tracks(self._spotify_client, request.seed_id)
-            if not track_features_list:
-                return RecommendResult(
-                    track_uris=[],
-                    track_ids=[],
-                    track_names=[],
-                    scores=[],
-                    pipeline_used="playlist",
-                    explanation=f"Playlist '{request.seed_id}' appears to be empty or inaccessible.",
-                )
-
-            track_ids = [t.id for t in track_features_list]
-            audio_features_list = fetch_audio_features(self._spotify_client, track_ids)
-
-            # Build a Polars DataFrame with columns the pipeline needs
-            audio_map = {af.id: af for af in audio_features_list}
-            rows = []
-            for tf in track_features_list:
-                af = audio_map.get(tf.id)
-                if af is None:
-                    continue
-                row: dict = {
-                    "id": tf.id,
-                    "track_name": tf.name,
-                    "danceability": af.danceability,
-                    "energy": af.energy,
-                    "loudness": af.loudness,
-                    "speechiness": af.speechiness,
-                    "acousticness": af.acousticness,
-                    "instrumentalness": af.instrumentalness,
-                    "liveness": af.liveness,
-                    "valence": af.valence,
-                    "tempo": af.tempo,
-                    "popularity": 0.0,
-                    "top": 0.0,
-                    "left": 0.0,
-                    "key_mode": "",
-                    "decade": "",
-                }
-                # Enrich from corpus if available
-                corpus_match = self._corpus.filter(pl.col("id") == tf.id)
-                if len(corpus_match) > 0:
-                    corpus_row = corpus_match.row(0, named=True)
-                    row["popularity"] = float(corpus_row.get("popularity", 0.0))
-                    row["top"] = float(corpus_row.get("top", 0.0))
-                    row["left"] = float(corpus_row.get("left", 0.0))
-                    row["key_mode"] = corpus_row.get("key_mode", "")
-                    row["decade"] = corpus_row.get("decade", "")
-                rows.append(row)
-
-            if not rows:
-                return RecommendResult(
-                    track_uris=[],
-                    track_ids=[],
-                    track_names=[],
-                    scores=[],
-                    pipeline_used="playlist",
-                    explanation="No audio features available for playlist tracks.",
-                )
-
-            playlist_tracks_df = pl.DataFrame(rows)
-
-        except Exception as exc:
-            return RecommendResult(
-                track_uris=[],
-                track_ids=[],
-                track_names=[],
-                scores=[],
-                pipeline_used="playlist",
-                explanation=f"Failed to fetch playlist tracks: {exc}",
             )
 
         return PlaylistPipeline().run(
