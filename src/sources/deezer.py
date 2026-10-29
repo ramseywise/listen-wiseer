@@ -52,6 +52,13 @@ def find_track(artist: str, title: str, *, client: SourceClient | None = None) -
     return next((t for t in loose.get("data", []) if _same_artist(artist, t)), None)
 
 
+def search_tracks(query: str, *, limit: int = 10, client: SourceClient | None = None) -> list[dict]:
+    """Free-text track search (raw Deezer track objects: title, artist, album, preview, link)."""
+    c = client or default_client()
+    data = c.get_json("search", q=query, limit=limit)
+    return data.get("data", []) if _ok(data, "search") else []
+
+
 def find_by_isrc(isrc: str, *, client: SourceClient | None = None) -> dict | None:
     c = client or default_client()
     data = c.get_json(f"track/isrc:{isrc}")

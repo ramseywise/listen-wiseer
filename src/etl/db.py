@@ -238,6 +238,30 @@ CREATE TABLE IF NOT EXISTS track_xref (
     resolved_at      TIMESTAMP
 );
 
+-- Local playlists (Spotify-free). Tracks stored by identity, not by source ID.
+CREATE TABLE IF NOT EXISTS local_playlists (
+    id          VARCHAR PRIMARY KEY,
+    name        VARCHAR,
+    description VARCHAR,
+    created_at  TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS local_playlist_tracks (
+    playlist_id VARCHAR,
+    position    INTEGER,
+    artist_name VARCHAR,
+    track_name  VARCHAR,
+    mbid        VARCHAR,
+    PRIMARY KEY (playlist_id, position)
+);
+
+-- YouTube video lookups (100 quota units each). '' = searched, nothing found.
+CREATE TABLE IF NOT EXISTS playable_cache (
+    track_key        VARCHAR PRIMARY KEY,
+    youtube_video_id VARCHAR,
+    resolved_at      TIMESTAMP
+);
+
 -- Leftover from the deleted rag_core/ (Phase 8)
 DROP TABLE IF EXISTS rag_chunks;
 

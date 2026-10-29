@@ -18,7 +18,10 @@ def resolve_playable(
     *,
     deezer_client: SourceClient | None = None,
     youtube_client: SourceClient | None = None,
+    video_id: str | None = None,
+    search_youtube: bool = True,
 ) -> PlayableTrack:
+    """``video_id`` (e.g. from a cache) skips the YouTube search; so does ``search_youtube=False``."""
     track = PlayableTrack(artist=artist, title=title, youtube_url=youtube.search_url(artist, title))
 
     try:
@@ -32,11 +35,11 @@ def resolve_playable(
         track.preview_url = dz.get("preview", "")
         track.isrc = dz.get("isrc", "")
 
-    try:
-        video_id = youtube.find_video_id(artist, title, client=youtube_client)
-    except SourceError as exc:
-        log.warning("playable.youtube_failed", artist=artist, title=title, error=str(exc))
-        video_id = None
+    if video_id is None and search_youtube:
+        try:
+            video_id = youtube.find_video_id(artist, title, client=youtube_client)
+        except SourceError as exc:
+            log.warning("playable.youtube_failed", artist=artist, title=title, error=str(exc))
     if video_id:
         track.youtube_url = youtube.watch_url(video_id)
         track.youtube_embed_url = youtube.embed_url(video_id)

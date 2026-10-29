@@ -8,7 +8,7 @@ API docs: https://www.last.fm/api/show/track.getSimilar
 from functools import cache
 
 from sources.http import SourceClient
-from sources.schemas import SimilarItem
+from sources.schemas import SimilarItem, TrackRef
 from utils.config import settings
 from utils.logging import get_logger
 
@@ -77,4 +77,18 @@ def similar_artists(
             match=float(a.get("match", 0.0)),
         )
         for a in _as_list(data.get("similarartists", {}).get("artist"))
+    ]
+
+
+def artist_top_tracks(
+    artist: str, *, limit: int = 10, client: SourceClient | None = None
+) -> list[TrackRef]:
+    data = _call(client, "artist.gettoptracks", artist=artist, limit=limit)
+    return [
+        TrackRef(
+            artist=t.get("artist", {}).get("name", artist),
+            title=t.get("name", ""),
+            mbid=t.get("mbid") or "",
+        )  # fmt: skip
+        for t in _as_list(data.get("toptracks", {}).get("track"))
     ]

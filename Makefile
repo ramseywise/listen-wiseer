@@ -1,19 +1,18 @@
 COMPOSE = docker compose -f infrastructure/containers/docker-compose.yml
 
-.PHONY: help infra-up infra-down infra-build infra-ps infra-logs infra-smoke app mcp-server auth lint format test test-unit test-fast test-integration test-data notebook init-db data-sync train train-cat train-compare eval-ci eval-full eval-unit eval-trajectory eval-e2e pull status push quick-pr ship
+.PHONY: help infra-up infra-down infra-build infra-ps infra-logs infra-smoke app mcp-server lint format test test-unit test-fast test-integration test-data notebook init-db data-sync train train-cat train-compare eval-ci eval-full eval-unit eval-trajectory eval-e2e pull status push quick-pr ship
 
 help:
 	@echo "listen-wiseer targets:"
 	@echo "  app          Chainlit UI"
-	@echo "  mcp-server   MCP server (triggers OAuth on first run)"
-	@echo "  auth         Spotify OAuth → .spotify_cache"
+	@echo "  mcp-server   MCP server (agent tools for other MCP clients)"
 	@echo "  init-db      Bootstrap DuckDB from CSVs"
-	@echo "  data-sync    Live Spotify → DuckDB (requires .spotify_cache)"
+	@echo "  data-sync    Last.fm genre tags → genre profiles (archived library)"
 	@echo "  train        Fit GMM + LightGBM → models/*.pkl"
 	@echo "  test         Full test suite"
 	@echo "  test-unit    Unit tests (with coverage)"
 	@echo "  test-fast    Unit tests (no coverage, quick)"
-	@echo "  test-integration  Integration tests (needs DuckDB/Spotify)"
+	@echo "  test-integration  Integration tests (needs DuckDB)"
 	@echo "  eval-ci      Heuristic eval vs baseline — fails on >5% regression (no API cost)"
 	@echo "  eval-full    Full RAGAS eval, all tiers (costs money, needs ANTHROPIC_API_KEY)"
 	@echo "  eval-unit    Tier 1 intent/route eval (free, CI-safe)"
@@ -66,9 +65,6 @@ app:
 mcp-server:
 	PYTHONPATH=src uv run python src/mcp_server/server.py
 
-auth:
-	PYTHONPATH=src uv run python -c "from spotify.auth import SpotifyAuth; SpotifyAuth().authenticate(); print('Auth complete — .spotify_cache written.')"
-
 lint:
 	uv run ruff check src/ --unsafe-fixes
 	uv run ruff format --check src/
@@ -100,7 +96,6 @@ init-db:
 	PYTHONPATH=src uv run python -m etl.bootstrap
 
 data-sync:
-	@echo "Requires .spotify_cache - run 'make auth' once to authenticate first"
 	PYTHONPATH=src uv run python -m etl.sync
 
 import-history:  ## Load Spotify privacy-export JSON from data/listening_history/ into plays

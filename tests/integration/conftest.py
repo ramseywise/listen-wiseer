@@ -1,7 +1,6 @@
 """Fixtures for integration tests.
 
-Integration tests require external resources (DuckDB file, Spotify OAuth,
-Redis). They are skipped when the required resource is unavailable.
+Integration tests require external resources (DuckDB file, Redis). They are skipped when the required resource is unavailable.
 
 Tests that don't need external resources can opt out of the auto-skip by
 adding ``@pytest.mark.integration`` (which runs unconditionally).
@@ -9,7 +8,6 @@ adding ``@pytest.mark.integration`` (which runs unconditionally).
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest
@@ -32,7 +30,6 @@ def _duckdb_available() -> bool:
 
 
 _DUCKDB_OK = _duckdb_available()
-_SPOTIFY_OK = bool(os.getenv("SPOTIFY_CLIENT_ID"))
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
@@ -53,6 +50,3 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
         # Agent/MCP tests need the DuckDB file for engine import
         if not _DUCKDB_OK:
             item.add_marker(pytest.mark.skip(reason="DuckDB file not available (git-lfs)"))
-        # Spotify tests also need credentials
-        if not _SPOTIFY_OK and "spotify" in path_str.lower():
-            item.add_marker(pytest.mark.skip(reason="SPOTIFY_CLIENT_ID not set"))

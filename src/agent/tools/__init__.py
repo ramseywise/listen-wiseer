@@ -1,41 +1,46 @@
 from __future__ import annotations
 
+from agent.tools.discover import (
+    discover_tracks_tool,
+    list_playlists_tool,
+    play_track_tool,
+    save_playlist_tool,
+)
 from agent.tools.memory import manage_taste_memory, search_taste_memory
+from agent.tools.music import (
+    get_artist_albums_tool,
+    get_artist_info_tool,
+    get_artist_top_tracks_tool,
+    get_recently_played_tool,
+    get_related_artists_tool,
+    get_taste_analysis_tool,
+    get_top_artists_tool,
+    get_top_tracks_tool,
+    search_tracks_tool,
+)
 from agent.tools.recommend import (
     recommend_by_genre,
     recommend_for_artist,
     recommend_for_playlist,
     recommend_similar_tracks,
 )
-from agent.tools.spotify_read import (
-    get_artist_albums_tool,
-    get_artist_info_tool,
-    get_artist_top_tracks_tool,
-    get_recently_played_tool,
-    get_related_artists_tool,
-    get_spotify_recommendations_tool,
-    get_taste_analysis_tool,
-    get_top_artists_tool,
-    get_top_tracks_tool,
-    get_user_playlists_tool,
-    search_tracks_tool,
-)
-from agent.tools.spotify_write import create_playlist_tool
 from agent.tools.web_search import get_artist_context_tool, get_genre_context_tool
 
 ALL_TOOLS = [
+    # Open-world discovery, free playback
+    discover_tracks_tool,
+    play_track_tool,
     # Recommendations (ENOA corpus)
     recommend_similar_tracks,
     recommend_for_artist,
     recommend_by_genre,
     recommend_for_playlist,
-    # Spotify read — discovery & exploration
-    get_spotify_recommendations_tool,
+    # Listening history (local plays)
     get_top_tracks_tool,
     get_top_artists_tool,
     get_recently_played_tool,
-    get_user_playlists_tool,
-    # Spotify read — artist deep dives
+    get_taste_analysis_tool,
+    # Artist / track lookups
     search_tracks_tool,
     get_artist_info_tool,
     get_related_artists_tool,
@@ -44,24 +49,27 @@ ALL_TOOLS = [
     # Context & memory
     get_artist_context_tool,
     get_genre_context_tool,
-    get_taste_analysis_tool,
     manage_taste_memory,
     search_taste_memory,
-    # Spotify write (HITL)
-    create_playlist_tool,
+    # Local playlists (save is HITL)
+    list_playlists_tool,
+    save_playlist_tool,
 ]
 
 __all__ = [
     "ALL_TOOLS",
+    "discover_tracks_tool",
+    "play_track_tool",
+    "save_playlist_tool",
+    "list_playlists_tool",
     "recommend_similar_tracks",
     "recommend_for_artist",
     "recommend_by_genre",
     "recommend_for_playlist",
-    "get_spotify_recommendations_tool",
     "get_top_tracks_tool",
     "get_top_artists_tool",
     "get_recently_played_tool",
-    "get_user_playlists_tool",
+    "get_taste_analysis_tool",
     "search_tracks_tool",
     "get_artist_info_tool",
     "get_related_artists_tool",
@@ -69,8 +77,6 @@ __all__ = [
     "get_artist_albums_tool",
     "get_artist_context_tool",
     "get_genre_context_tool",
-    "get_taste_analysis_tool",
-    "create_playlist_tool",
     "manage_taste_memory",
     "search_taste_memory",
 ]

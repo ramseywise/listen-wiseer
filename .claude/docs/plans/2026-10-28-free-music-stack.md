@@ -1,6 +1,6 @@
 # Free music stack — move off Spotify
 
-Status: IN PROGRESS — S0–S2, S3a done; S4 blocked on review-gate approval
+Status: IN PROGRESS — S0–S2, S3a, S4, S5 done; next S6 (needs Jamendo client_id)
 Branch: `free-music-stack`
 
 ## Research
@@ -64,10 +64,14 @@ Branch: `free-music-stack`
 - Also fixed: `etl/db.get_connection` deleted a *valid* DB on any IOException (header check looked for DUCK at offset 0; it is at 8) — a lock held by the MCP server would wipe it. Committed DB is already empty → `make init-db`.
 - S4 design: `local_playlists` + `local_playlist_tracks` + `playable_cache(track_key, youtube_video_id)` DDL; `resolve_playable(video_id=, search_youtube=)`; `library/playlists.py` (save/list/get, `to_jspf`); `library/playback.py` (cached playable — YouTube search is 100 quota units); agent tools `discover_tracks`, `play_track`; app renders `cl.Audio` + YouTube link from this turn's tool outputs, Play/Save-playlist actions, JSPF as `cl.File`.
 - `cl.Audio` for Deezer preview; YouTube embed/link for full track. Playlists saved locally (DuckDB) + exportable as JSPF (ListenBrainz-importable).
+- S4 ✓ (2026-10-29): `library/{playlists,playback}.py`; `agent/tools/discover.py` — `discover_tracks`, `play_track` (content_and_artifact), `save_playlist` (HITL, writes `data/playlists/<id>.jspf`), `list_playlists`; `format_response` surfaces `tracks`/`playable` artifacts; Chainlit ▶ actions (top 5), 💾 save (AskUserMessage → `cl.File` JSPF), inline 30s audio. 582 unit tests pass; live smoke OK.
+- Found: LB Radio match is positional (1 − i/n) vs Last.fm absolute similarity → LB dominates ranking. Normalise per source (rank-based) in S3b. `plays` empty until export imported.
 
 ### S5 — Agent / MCP swap
 - Replace `agent/tools/spotify_read.py`, `spotify_write.py` and Spotify MCP tools with sources-backed tools.
 - Delete `src/spotify/`, Spotify settings, `.spotify_cache` gotchas; update CLAUDE.md + `.env.example`.
+- S5 ✓ (2026-10-29): `agent/tools/music.py` (history from local `plays`; MusicBrainz/Last.fm/Deezer lookups), `recommend_*` take names (lookup → legacy corpus IDs; engine gets `playlist_tracks_fn` instead of a Spotify client). 21 agent tools. MCP server re-exposes agent tools (19; no memory, `save_playlist` without interrupt). `etl/sync.py` slimmed to Last.fm genres + genre profiles. `user_id` setting (alias `SPOTIFY_USER_ID` keeps memory namespace). Deleted `src/spotify/`, Spotify tools/tests, `notebooks/08_sync.ipynb`, `make auth`. 554 tests pass.
+- Left for user: strip `SPOTIFY_*` from `.env.example` / `.env` (agent can't touch env files); README still describes Spotify.
 
 ### S6 — Offline / downloads (legal sources only)
 Catalogs do **not** overlap — each covers a different slice:
@@ -84,7 +88,7 @@ Catalogs do **not** overlap — each covers a different slice:
 - No yt-dlp / YouTube or Deezer downloading (ToS).
 
 ### S7 — Evals
-- Update tool-trajectory evals for new tool names.
+- Update tool-trajectory evals for new tool names (`golden_intent.jsonl` still has `get_spotify_recommendations`, `get_listening_history`).
 
 ### Env
 - `lightgbm` can't load `libomp.dylib` → whole unit suite (and pre-commit hook) fails at `tests/conftest.py`. Fix: `brew install libomp`.
@@ -92,6 +96,6 @@ Catalogs do **not** overlap — each covers a different slice:
 ### User actions (blocking S2/S3 real runs)
 1. Spotify → Account → Privacy → request **Extended streaming history** (takes days–weeks). Drop JSON in `data/listening_history/`.
 2. ListenBrainz account → copy user token → `LISTENBRAINZ_TOKEN`, `LISTENBRAINZ_USER`. Import the Spotify export there too.
-3. Last.fm key (pending activation).
+3. ~~Last.fm key~~ ✓ verified live 2026-10-29.
 4. ~~`YOUTUBE_API_KEY`~~ ✓ set, verified live 2026-10-28. LB token ✓.
 5. S6: Jamendo client_id (devportal.jamendo.com).

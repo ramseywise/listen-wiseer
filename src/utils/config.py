@@ -1,13 +1,12 @@
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    # Spotify
-    spotify_client_id: str = ""
-    spotify_client_secret: str = ""
-    spotify_redirect_uri: str = "http://127.0.0.1:8000/callback"
-    spotify_user_id: str = ""
-    spotify_cache_path: str = ".spotify_cache"
+    # Memory namespace; SPOTIFY_USER_ID still accepted so existing memories stay reachable
+    user_id: str = Field(
+        default="default", validation_alias=AliasChoices("USER_ID", "SPOTIFY_USER_ID")
+    )
 
     # Anthropic
     anthropic_api_key: str = ""

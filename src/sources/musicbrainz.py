@@ -83,6 +83,21 @@ def search_artist(
     return hits[0]["id"] if hits and int(hits[0].get("score", 0)) >= min_score else None
 
 
+def artist_albums(mbid: str, *, client: SourceClient | None = None) -> list[dict]:
+    """Album/EP release groups, oldest first: ``{"title", "date", "type"}``."""
+    c = client or default_client()
+    data = c.get_json("release-group", artist=mbid, type="album|ep", limit=100)
+    groups = [
+        {
+            "title": g.get("title", ""),
+            "date": g.get("first-release-date", ""),
+            "type": g.get("primary-type", ""),
+        }
+        for g in data.get("release-groups", [])
+    ]
+    return sorted(groups, key=lambda g: g["date"] or "9999")
+
+
 def get_artist(mbid: str, *, client: SourceClient | None = None) -> ArtistInfo | None:
     """Artist metadata with genres/tags (by vote count) and de-duplicated artist relations."""
     c = client or default_client()

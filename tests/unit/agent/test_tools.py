@@ -1,115 +1,51 @@
-"""Unit tests for agent tool definitions.
+"""Unit tests for agent tool definitions — the ALL_TOOLS registry and web_search tools.
 
-Tests the current module-split structure: agent.tools is a package with
-spotify_read, spotify_write, recommend, memory, web_search submodules.
+Behaviour of the discover / music / recommend tools lives in their own test modules.
 """
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 
 class TestAllTools:
-    def test_get_artist_context_tool_in_all_tools(self) -> None:
-        from agent.tools import ALL_TOOLS
-
-        tool_names = [t.name for t in ALL_TOOLS]
-        assert "get_artist_context" in tool_names
-
-    def test_get_related_artists_in_all_tools(self) -> None:
-        from agent.tools import ALL_TOOLS
-
-        tool_names = [t.name for t in ALL_TOOLS]
-        assert "get_related_artists" in tool_names
-
-    def test_all_exploration_tools_present(self) -> None:
+    def test_expected_tools_present(self) -> None:
         from agent.tools import ALL_TOOLS
 
         tool_names = {t.name for t in ALL_TOOLS}
         expected = {
+            "discover_tracks",
+            "play_track",
+            "save_playlist",
+            "get_user_playlists",
             "get_top_tracks",
             "get_top_artists",
+            "get_taste_analysis",
+            "get_related_artists",
             "get_artist_info",
             "get_artist_top_tracks",
             "get_artist_albums",
-            "get_user_playlists",
-            "get_spotify_recommendations",
+            "get_artist_context",
+            "get_genre_context",
         }
         assert expected <= tool_names
+
+    def test_no_spotify_tools(self) -> None:
+        from agent.tools import ALL_TOOLS
+
+        tool_names = {t.name for t in ALL_TOOLS}
+        assert not tool_names & {"get_spotify_recommendations", "create_playlist"}
 
     def test_all_tools_count(self) -> None:
         from agent.tools import ALL_TOOLS
 
-        assert len(ALL_TOOLS) == 20
+        assert len(ALL_TOOLS) == 21
 
-    def test_create_playlist_in_all_tools(self) -> None:
+    def test_tool_names_unique(self) -> None:
         from agent.tools import ALL_TOOLS
 
-        tool_names = [t.name for t in ALL_TOOLS]
-        assert "create_playlist" in tool_names
-
-
-class TestGetRelatedArtists:
-    def test_formats_output_with_genres(self) -> None:
-        mock_artists = [
-            {"id": "a1", "name": "Artist A", "genres": ["rock", "indie"]},
-            {"id": "a2", "name": "Artist B", "genres": []},
-        ]
-        with (
-            patch("agent.tools.spotify_read.fetch_related_artists", return_value=mock_artists),
-            patch("agent.tools.spotify_read._get_client", return_value=MagicMock()),
-        ):
-            from agent.tools.spotify_read import _get_related_artists
-
-            result = _get_related_artists("seed_id")
-
-        assert "Artist A" in result
-        assert "rock, indie" in result
-        assert "Artist B" in result
-        assert "unknown genre" in result
-
-
-class TestGetTasteAnalysis:
-    def test_new_obsessions_stable_fading(self) -> None:
-        short_artists = [{"name": "New Artist"}, {"name": "Stable Artist"}]
-        long_artists = [{"name": "Stable Artist"}, {"name": "Fading Artist"}]
-        with (
-            patch(
-                "agent.tools.spotify_read.fetch_top_artists",
-                side_effect=[short_artists, long_artists],
-            ),
-            patch("agent.tools.spotify_read._get_client", return_value=MagicMock()),
-        ):
-            from agent.tools.spotify_read import _get_taste_analysis
-
-            result = _get_taste_analysis()
-
-        assert "New Artist" in result
-        assert "Stable Artist" in result
-        assert "Fading Artist" in result
-        assert "New obsessions" in result
-        assert "Consistent staples" in result
-        assert "Fading interests" in result
-
-    def test_empty_short_term(self) -> None:
-        with (
-            patch(
-                "agent.tools.spotify_read.fetch_top_artists",
-                side_effect=[[], [{"name": "Old Fave"}]],
-            ),
-            patch("agent.tools.spotify_read._get_client", return_value=MagicMock()),
-        ):
-            from agent.tools.spotify_read import _get_taste_analysis
-
-            result = _get_taste_analysis()
-
-        assert "Old Fave" in result
-
-    def test_get_taste_analysis_in_all_tools(self) -> None:
-        from agent.tools import ALL_TOOLS
-
-        tool_names = [t.name for t in ALL_TOOLS]
-        assert "get_taste_analysis" in tool_names
+        names = [t.name for t in ALL_TOOLS]
+        assert len(names) == len(set(names))
 
 
 class TestGetGenreContext:

@@ -4,8 +4,7 @@ from utils.exceptions import (
     ConfigurationError,
     DataLoadError,
     ListenWiseerError,
-    SpotifyAuthError,
-    SpotifyClientError,
+    SourceError,
 )
 
 
@@ -17,16 +16,8 @@ def test_configuration_error_inherits_base() -> None:
     assert issubclass(ConfigurationError, ListenWiseerError)
 
 
-def test_spotify_client_error_inherits_base() -> None:
-    assert issubclass(SpotifyClientError, ListenWiseerError)
-
-
-def test_spotify_auth_error_inherits_spotify_client_error() -> None:
-    assert issubclass(SpotifyAuthError, SpotifyClientError)
-
-
-def test_spotify_auth_error_inherits_base() -> None:
-    assert issubclass(SpotifyAuthError, ListenWiseerError)
+def test_source_error_inherits_base() -> None:
+    assert issubclass(SourceError, ListenWiseerError)
 
 
 def test_data_load_error_inherits_base() -> None:
@@ -40,18 +31,11 @@ def test_listen_wiseer_error_can_be_raised() -> None:
         raise ListenWiseerError("test")
 
 
-def test_spotify_auth_error_caught_as_spotify_client_error() -> None:
-    import pytest
-
-    with pytest.raises(SpotifyClientError):
-        raise SpotifyAuthError("token exchange failed")
-
-
-def test_spotify_auth_error_caught_as_base() -> None:
+def test_source_error_caught_as_base() -> None:
     import pytest
 
     with pytest.raises(ListenWiseerError):
-        raise SpotifyAuthError("token exchange failed")
+        raise SourceError("musicbrainz 503")
 
 
 def test_data_load_error_caught_as_base() -> None:
