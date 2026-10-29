@@ -6,6 +6,7 @@ import duckdb
 from langchain_core.tools import StructuredTool
 
 from agent.tools.discover import db
+from etl.db import fetch_one
 from paths import DATA_DIR, MODELS_DIR
 from recommend.engine import RecommendationEngine
 from recommend.schemas import RecommendRequest, RecommendResult
@@ -18,7 +19,7 @@ log = get_logger(__name__)
 
 def _lookup(sql: str, params: list) -> str | None:
     with db() as conn:
-        row = conn.execute(sql, params).fetchone()
+        row = fetch_one(conn, sql, params)
     return row[0] if row else None
 
 

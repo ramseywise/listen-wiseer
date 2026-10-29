@@ -58,7 +58,7 @@ def pending_tracks(
     """
     no_limit = 2**62
     params = [MIN_MS_PLAYED, retry_unmatched, min_plays, no_limit if limit is None else limit]
-    return conn.execute(sql, params).pl()
+    return conn.sql(sql, params=params).pl()
 
 
 def resolve_track(

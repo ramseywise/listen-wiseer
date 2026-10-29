@@ -19,7 +19,7 @@ from pathlib import Path
 
 import polars as pl
 
-from etl.db import get_connection, init_schema
+from etl.db import fetch_one, get_connection, init_schema
 from paths import PLAYLIST_CONFIG_PATH
 from utils.logging import get_logger
 
@@ -142,7 +142,7 @@ def load_enoa_coordinates(conn) -> None:
         WHERE genre_map.first_genre = e.first_genre
     """
     )
-    updated = conn.execute("SELECT COUNT(*) FROM genre_map WHERE top IS NOT NULL").fetchone()[0]
+    updated = fetch_one(conn, "SELECT COUNT(*) FROM genre_map WHERE top IS NOT NULL")[0]
     log.info("bootstrap.enoa.done", n_updated=updated)
 
 
@@ -167,7 +167,7 @@ def load_genre_xy(conn) -> None:
         SELECT first_genre, top, "left", color FROM _genre_xy
     """
     )
-    n = conn.execute("SELECT COUNT(*) FROM genre_xy").fetchone()[0]
+    n = fetch_one(conn, "SELECT COUNT(*) FROM genre_xy")[0]
     log.info("bootstrap.genre_xy.done", n=n)
 
 
@@ -382,9 +382,9 @@ def main() -> None:
     load_faves(conn)
     load_playlist_tracks(conn)
 
-    n_tracks = conn.execute("SELECT COUNT(*) FROM tracks").fetchone()[0]
-    n_genres = conn.execute("SELECT COUNT(*) FROM genre_map").fetchone()[0]
-    n_profile = conn.execute("SELECT COUNT(*) FROM track_profile").fetchone()[0]
+    n_tracks = fetch_one(conn, "SELECT COUNT(*) FROM tracks")[0]
+    n_genres = fetch_one(conn, "SELECT COUNT(*) FROM genre_map")[0]
+    n_profile = fetch_one(conn, "SELECT COUNT(*) FROM track_profile")[0]
     from etl.db import DB_PATH
 
     log.info(

@@ -18,7 +18,7 @@ from pathlib import Path
 
 import polars as pl
 
-from etl.db import get_connection, init_schema
+from etl.db import fetch_one, get_connection, init_schema
 from utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -67,17 +67,11 @@ def populate_track_genre(conn) -> None:
         """
     )
 
-    total = conn.execute("SELECT COUNT(*) FROM track_genre").fetchone()[0]
-    manual = conn.execute(
-        "SELECT COUNT(*) FROM track_genre WHERE genre_source = 'manual'"
-    ).fetchone()[0]
-    lookup = conn.execute(
-        "SELECT COUNT(*) FROM track_genre WHERE genre_source = 'lookup'"
-    ).fetchone()[0]
-    unknown = conn.execute(
-        "SELECT COUNT(*) FROM track_genre WHERE genre_source = 'unknown'"
-    ).fetchone()[0]
-    no_coords = conn.execute("SELECT COUNT(*) FROM track_genre WHERE top IS NULL").fetchone()[0]
+    total = fetch_one(conn, "SELECT COUNT(*) FROM track_genre")[0]
+    manual = fetch_one(conn, "SELECT COUNT(*) FROM track_genre WHERE genre_source = 'manual'")[0]
+    lookup = fetch_one(conn, "SELECT COUNT(*) FROM track_genre WHERE genre_source = 'lookup'")[0]
+    unknown = fetch_one(conn, "SELECT COUNT(*) FROM track_genre WHERE genre_source = 'unknown'")[0]
+    no_coords = fetch_one(conn, "SELECT COUNT(*) FROM track_genre WHERE top IS NULL")[0]
 
     log.info(
         "genre_tables.track_genre.done",
@@ -94,7 +88,7 @@ def populate_track_genre(conn) -> None:
 
 def _mode_agg(conn, group_col: str, value_col: str, source_table: str) -> pl.DataFrame:
     """Return mode of value_col grouped by group_col from a registered temp view."""
-    return conn.execute(
+    return conn.sql(
         f"""
         SELECT {group_col}, {value_col}
         FROM (
@@ -133,7 +127,7 @@ def populate_artist_genre(conn) -> None:
     )
 
     # Centroids + track count
-    base = conn.execute(
+    base = conn.sql(
         """
         SELECT
             artist_id,
@@ -153,7 +147,7 @@ def populate_artist_genre(conn) -> None:
 
     # Top first_genres by count → JSON array
     dominant = (
-        conn.execute(
+        conn.sql(
             """
         SELECT artist_id,
                LIST(first_genre ORDER BY cnt DESC)[1:5] AS dominant_genres
@@ -231,7 +225,7 @@ def populate_playlist_genre(conn) -> None:
         """
     )
 
-    base = conn.execute(
+    base = conn.sql(
         """
         SELECT
             playlist_id,
@@ -248,7 +242,7 @@ def populate_playlist_genre(conn) -> None:
     gen8 = _mode_agg(conn, "playlist_id", "gen_8", "_playlist_track_genre")
 
     # genre counts for top/other split
-    genre_counts = conn.execute(
+    genre_counts = conn.sql(
         """
         SELECT playlist_id,
                LIST(first_genre ORDER BY cnt DESC) AS genres_ranked
@@ -383,7 +377,7 @@ def load_external_tracks(conn) -> None:
         FROM _external
         """
     )
-    n = conn.execute("SELECT COUNT(*) FROM external_tracks").fetchone()[0]
+    n = fetch_one(conn, "SELECT COUNT(*) FROM external_tracks")[0]
     log.info("genre_tables.external_tracks.done", n=n)
 
 
@@ -402,10 +396,10 @@ def main() -> None:
 
     log.info(
         "genre_tables.done",
-        track_genre=conn.execute("SELECT COUNT(*) FROM track_genre").fetchone()[0],
-        artist_genre=conn.execute("SELECT COUNT(*) FROM artist_genre").fetchone()[0],
-        playlist_genre=conn.execute("SELECT COUNT(*) FROM playlist_genre").fetchone()[0],
-        external_tracks=conn.execute("SELECT COUNT(*) FROM external_tracks").fetchone()[0],
+        track_genre=fetch_one(conn, "SELECT COUNT(*) FROM track_genre")[0],
+        artist_genre=fetch_one(conn, "SELECT COUNT(*) FROM artist_genre")[0],
+        playlist_genre=fetch_one(conn, "SELECT COUNT(*) FROM playlist_genre")[0],
+        external_tracks=fetch_one(conn, "SELECT COUNT(*) FROM external_tracks")[0],
     )
     conn.close()
 

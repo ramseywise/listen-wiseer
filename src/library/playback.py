@@ -7,6 +7,7 @@ from datetime import datetime
 
 import duckdb
 
+from etl.db import fetch_one
 from etl.history import track_key
 from library.downloads import local_path
 from sources import youtube
@@ -21,9 +22,7 @@ log = get_logger(__name__)
 
 def _cached_video_id(conn: duckdb.DuckDBPyConnection, key: str) -> str | None:
     """'' = searched before, nothing found; None = never searched."""
-    row = conn.execute(
-        "SELECT youtube_video_id FROM playable_cache WHERE track_key = ?", [key]
-    ).fetchone()
+    row = fetch_one(conn, "SELECT youtube_video_id FROM playable_cache WHERE track_key = ?", [key])
     return None if row is None else row[0] or ""
 
 

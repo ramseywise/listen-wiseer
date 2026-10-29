@@ -14,6 +14,7 @@ import duckdb
 from mutagen import MutagenError
 from mutagen.id3 import ID3, TIT2, TPE1, UFID, WCOP, ID3NoHeaderError
 
+from etl.db import fetch_one
 from etl.history import track_key
 from paths import DATA_DIR
 from sources import archive_org, jamendo
@@ -56,9 +57,9 @@ def _safe(name: str) -> str:
 
 def local_path(conn: duckdb.DuckDBPyConnection, artist: str, title: str) -> str | None:
     """Path of a downloaded copy that still exists on disk, else None."""
-    row = conn.execute(
-        "SELECT path FROM library WHERE track_key = ?", [track_key(artist, title)]
-    ).fetchone()
+    row = fetch_one(
+        conn, "SELECT path FROM library WHERE track_key = ?", [track_key(artist, title)]
+    )
     return row[0] if row and Path(row[0]).is_file() else None
 
 

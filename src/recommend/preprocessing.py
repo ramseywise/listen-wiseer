@@ -62,7 +62,7 @@ def load_corpus_from_db(conn: DuckDBPyConnection) -> pl.DataFrame:
         pl.DataFrame with all track_profile columns, renamed track_id → id
         for backward compatibility with the ML pipeline.
     """
-    df = conn.execute("SELECT * FROM track_profile").pl()
+    df = conn.sql("SELECT * FROM track_profile").pl()
     # Rename track_id → id for compatibility with existing pipeline code
     if "track_id" in df.columns:
         df = df.rename({"track_id": "id"})
@@ -213,7 +213,7 @@ def compute_artist_medians(
         DataFrame with columns: artist_id + one median column per audio feature.
     """
     # Get track→artist mapping
-    ta_df = conn.execute("SELECT track_id, artist_id FROM track_artists").pl()
+    ta_df = conn.sql("SELECT track_id, artist_id FROM track_artists").pl()
     if ta_df.is_empty():
         log.warning("preprocessing.artist_medians.no_track_artists")
         return pl.DataFrame(
@@ -301,7 +301,7 @@ def impute_missing_features(
     log.info("preprocessing.impute.start", n_missing=n_missing)
 
     # Get track→artist mapping for artist-level imputation
-    ta_df = conn.execute("SELECT track_id, artist_id FROM track_artists").pl()
+    ta_df = conn.sql("SELECT track_id, artist_id FROM track_artists").pl()
 
     # Compute global median as final fallback
     spotify_corpus = corpus.filter(pl.col("features_source") == "spotify")
@@ -400,14 +400,14 @@ def add_collaborative_features(
         Corpus with three new columns appended.
     """
     # n_playlists: how many playlists each track appears in
-    n_playlists_df = conn.execute("""
+    n_playlists_df = conn.sql("""
         SELECT track_id AS id, COUNT(*) AS n_playlists
         FROM playlist_tracks
         GROUP BY track_id
     """).pl()
 
     # playlist_diversity: how many distinct gen_4 groups
-    diversity_df = conn.execute("""
+    diversity_df = conn.sql("""
         SELECT pt.track_id AS id, COUNT(DISTINCT p.gen_4) AS playlist_diversity
         FROM playlist_tracks pt
         JOIN playlists p ON pt.playlist_id = p.playlist_id
@@ -421,7 +421,7 @@ def add_collaborative_features(
 
     # fave_score: skip if already present (e.g. from track_profile view)
     if "fave_score" not in result.columns:
-        faves_df = conn.execute("""
+        faves_df = conn.sql("""
             SELECT track_id AS id, score AS fave_score
             FROM faves
         """).pl()
@@ -548,7 +548,7 @@ def compute_artist_enoa_centroid(
         Artists with no matched genres are excluded.
     """
     # Get artists with genre strings
-    artists_df = conn.execute(
+    artists_df = conn.sql(
         "SELECT artist_id, genres FROM artists WHERE genres IS NOT NULL AND genres != ''"
     ).pl()
 
@@ -563,7 +563,7 @@ def compute_artist_enoa_centroid(
         )
 
     # Get genre_xy lookup
-    genre_xy = conn.execute('SELECT first_genre, top, "left" FROM genre_xy').pl()
+    genre_xy = conn.sql('SELECT first_genre, top, "left" FROM genre_xy').pl()
 
     if genre_xy.is_empty():
         log.warning("preprocessing.artist_enoa.no_genre_xy")
@@ -646,7 +646,7 @@ def propagate_playlist_profiles(
         Corpus with playlist-propagated profile columns added.
     """
     # Get all playlist → track mappings
-    pt_df = conn.execute("SELECT playlist_id, track_id FROM playlist_tracks").pl()
+    pt_df = conn.sql("SELECT playlist_id, track_id FROM playlist_tracks").pl()
     if pt_df.is_empty():
         log.warning("preprocessing.playlist_propagation.no_data")
         return corpus
@@ -732,7 +732,7 @@ def build_feature_matrix(conn: DuckDBPyConnection) -> pl.DataFrame:
     artist_enoa = compute_artist_enoa_centroid(conn)
     if not artist_enoa.is_empty():
         # Join via track_artists: track → artist → artist_enoa
-        ta_df = conn.execute("SELECT track_id, artist_id FROM track_artists").pl()
+        ta_df = conn.sql("SELECT track_id, artist_id FROM track_artists").pl()
         if not ta_df.is_empty():
             # Take first artist per track for ENOA (primary artist)
             ta_first = ta_df.unique(subset=["track_id"], keep="first")
