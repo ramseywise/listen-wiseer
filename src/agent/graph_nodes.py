@@ -53,8 +53,12 @@ _INTENT_TOOL_HINTS: dict[str, str] = {
         "Search taste_memory for stored preferences too."
     ),
     "discover": (
-        "Use get_spotify_recommendations seeded from top artists or a track the user mentioned. "
+        "Use discover_tracks seeded from top artists or a track the user mentioned. "
         "Use get_related_artists to surface adjacent artists they may not know."
+    ),
+    "listen": (
+        "Use play_track to play a specific track (YouTube link + 30s preview). "
+        "Use find_free_downloads / download_track only for legal downloads the user asks for."
     ),
     "chit_chat": "Respond directly without using tools.",
 }

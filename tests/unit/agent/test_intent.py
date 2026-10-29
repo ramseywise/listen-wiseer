@@ -85,6 +85,23 @@ class TestClassifyIntent:
         result = classify_intent("I want to discover something new and underrated")
         assert result["intent"] == "discover"
 
+    def test_classify_listen_play(self) -> None:
+        result = classify_intent("play Weird Fishes by Radiohead")
+        assert result["intent"] == "listen"
+        assert result["confidence"] >= 0.6  # floor — single keyword must not go to clarify
+
+    def test_classify_listen_download(self) -> None:
+        result = classify_intent("download some Kevin MacLeod tracks for offline")
+        assert result["intent"] == "listen"
+
+    def test_playlist_not_classified_as_listen(self) -> None:
+        result = classify_intent("make me a playlist for running")
+        assert result["intent"] != "listen"
+
+    def test_play_like_tie_goes_to_recommendation(self) -> None:
+        result = classify_intent("play something like Boards of Canada")
+        assert result["intent"] == "recommendation"
+
     def test_history_not_reclassified_as_explore(self) -> None:
         result = classify_intent("show me my recently played tracks")
         assert result["intent"] == "history"

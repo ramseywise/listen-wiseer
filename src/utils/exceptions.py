@@ -13,12 +13,8 @@ class ConfigurationError(ListenWiseerError):
     """Missing or invalid environment configuration."""
 
 
-class SpotifyClientError(ListenWiseerError):
-    """Spotify API request failures."""
-
-
-class SpotifyAuthError(SpotifyClientError):
-    """OAuth token exchange or refresh failures."""
+class SourceError(ListenWiseerError):
+    """Free music-data source (MusicBrainz, ListenBrainz, Last.fm, Deezer, YouTube) failures."""
 
 
 class DataLoadError(ListenWiseerError):

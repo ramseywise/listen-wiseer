@@ -138,28 +138,19 @@ async def test_graph_tool_then_response(mock_llm: AsyncMock) -> None:
     assert mock_llm.ainvoke.call_count == 2
 
 
-@patch("agent.tools.spotify_read._get_client")
+@patch("agent.tools.recommend._lookup", return_value="radio123")
+@patch("agent.tools.music.deezer.search_tracks")
 @patch("agent.tools.recommend._engine", _make_engine_mock())
 @patch("agent.graph_nodes._llm_with_tools_instance", new_callable=AsyncMock)
 async def test_graph_multi_tool_chain(
     mock_llm: AsyncMock,
-    mock_get_client: MagicMock,
+    mock_search: MagicMock,
+    _lookup: MagicMock,
 ) -> None:
     """Agent calls search_tracks then recommend_similar_tracks (two loop iterations)."""
-    # Mock Spotify client for search_tracks
-    mock_client = MagicMock()
-    mock_client.search.return_value = {
-        "tracks": {
-            "items": [
-                {
-                    "name": "Creep",
-                    "artists": [{"name": "Radiohead"}],
-                    "id": "radio123",
-                },
-            ],
-        },
-    }
-    mock_get_client.return_value = mock_client
+    mock_search.return_value = [
+        {"title": "Creep", "artist": {"name": "Radiohead"}, "album": {"title": "Pablo Honey"}}
+    ]
 
     # Iteration 1: search
     search_call = {
@@ -173,7 +164,7 @@ async def test_graph_multi_tool_chain(
     # Iteration 2: recommend
     rec_call = {
         "name": "recommend_similar_tracks",
-        "args": {"track_id": "radio123"},
+        "args": {"artist": "Radiohead", "title": "Creep"},
         "id": "tc2",
         "type": "tool_call",
     }

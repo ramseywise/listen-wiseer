@@ -60,6 +60,7 @@ dependencies = [
     # Eval & observability
     "langfuse>=4.14.4",
     "ragas>=0.2.0",
+    "mutagen>=1.48.1",
 ]
 
 [project.optional-dependencies]

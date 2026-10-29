@@ -33,10 +33,11 @@ TOOL_INTENT_MAP: dict[str, set[str]] = {
         "manage_taste_memory",
     },
     "discover": {
-        "get_spotify_recommendations",
+        "discover_tracks",
         "get_related_artists",
         "get_top_artists",
     },
+    "listen": {"play_track", "find_free_downloads", "download_track", "search_tracks"},
 }
 
 ERROR_SIGNALS = [
