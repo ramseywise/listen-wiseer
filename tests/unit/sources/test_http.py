@@ -61,3 +61,31 @@ class TestGetJson:
 
         with pytest.raises(SourceError, match="failed"):
             make_client(handler).get_json("thing")
+
+
+class TestDownload:
+    def test_streams_to_dest_without_default_params(self, make_client, tmp_path):
+        seen = []
+
+        def handler(request):
+            seen.append(request)
+            return httpx.Response(200, content=b"ID3audio")
+
+        client = make_client(handler, params={"client_id": "secret"})
+        dest = client.download("https://cdn.test/a.mp3", tmp_path / "x" / "a.mp3")
+        assert dest.read_bytes() == b"ID3audio"
+        assert "client_id" not in str(seen[0].url)
+
+    def test_http_error_leaves_no_file(self, make_client, tmp_path):
+        client = make_client(lambda _r: httpx.Response(403))
+        with pytest.raises(SourceError, match="HTTP 403"):
+            client.download("https://cdn.test/a.mp3", tmp_path / "a.mp3")
+        assert list(tmp_path.iterdir()) == []
+
+    def test_transport_error_leaves_no_file(self, make_client, tmp_path):
+        def handler(request):
+            raise httpx.ReadError("cut", request=request)
+
+        with pytest.raises(SourceError, match="download"):
+            make_client(handler).download("https://cdn.test/a.mp3", tmp_path / "a.mp3")
+        assert list(tmp_path.iterdir()) == []

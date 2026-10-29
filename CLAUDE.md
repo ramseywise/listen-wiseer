@@ -22,8 +22,8 @@ Run `make help` for the full list.
 ```
 src/
   utils/        — config, schemas, exceptions, constants, logging
-  sources/      — free-source httpx clients (musicbrainz, listenbrainz, lastfm, deezer, youtube)
-  library/      — local playlists (JSPF export) + cached playback resolution
+  sources/      — free-source httpx clients (musicbrainz, listenbrainz, lastfm, deezer, youtube, jamendo, archive_org)
+  library/      — local playlists (JSPF export), cached playback resolution, legal downloads (data/library/)
   etl/          — DuckDB bootstrap/sync, Polars loader
   recommend/    — ML layer (GMM + LightGBM, Polars-native)
     schemas.py, train.py, engine.py, pipelines.py
@@ -53,7 +53,7 @@ models/         — serialized artifacts (gitignored)
 | 7b — Intent taxonomy (explore_my_taste + discover), Chainlit suggestion chips | ✓ DONE |
 | 7c — Genre lineage tool, taste drift analysis, Postgres memory store | ✓ DONE |
 | 8 — RAG right-sizing (deleted `rag_core/`), agentic web search, HITL/eval hardening | ✓ DONE |
-| 9 — Free music stack: S0–S5 Spotify removed (free sources, YouTube/Deezer playback, local playlists) · S6 legal downloads · S7 evals | S5 ✓ |
+| 9 — Free music stack: S0–S5 Spotify removed (free sources, YouTube/Deezer playback, local playlists) · S6 legal downloads · S7 evals | S6 ✓ |
 
 ## Active gotchas
 
@@ -70,7 +70,7 @@ models/         — serialized artifacts (gitignored)
 ## Environment
 
 Copy `.env.example` → `.env` and fill in:
-- `LAST_FM_API_KEY`, `LISTENBRAINZ_TOKEN/USER`, `YOUTUBE_API_KEY`; optional `USER_ID` (memory namespace; legacy `SPOTIFY_USER_ID` still read)
+- `LAST_FM_API_KEY`, `LISTENBRAINZ_TOKEN/USER`, `YOUTUBE_API_KEY`, `JAMENDO_CLIENT_ID` (legal downloads); optional `USER_ID` (memory namespace; legacy `SPOTIFY_USER_ID` still read)
 - `ANTHROPIC_API_KEY`
 - `TAVILY_API_KEY` — required for artist/genre context tool
 

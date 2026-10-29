@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     listenbrainz_token: str = ""
     listenbrainz_user: str = ""
     youtube_api_key: str = ""
+    jamendo_client_id: str = ""  # legal CC downloads (S6)
 
     # Web search (artist/genre context)
     tavily_api_key: str = ""

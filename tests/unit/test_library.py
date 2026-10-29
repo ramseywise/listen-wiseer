@@ -1,12 +1,17 @@
-"""Unit tests for library — local playlists, JSPF export, cached playback resolution."""
+"""Unit tests for library — local playlists, JSPF export, playback resolution, downloads."""
+
+from unittest.mock import patch
 
 import httpx
+import pytest
 
 from etl.history import track_key
+from library import downloads
 from library.playback import playable
 from library.playlists import get_tracks, list_playlists, save_playlist, to_jspf
 from sources.http import SourceClient
-from sources.schemas import TrackRef
+from sources.schemas import FreeTrack, TrackRef
+from utils.exceptions import SourceError
 
 
 def _client(handler) -> SourceClient:
@@ -96,3 +101,57 @@ class TestPlayable:
                          youtube_client=broken)  # fmt: skip
         assert track.youtube_embed_url == ""
         assert mem_conn.execute("SELECT count(*) FROM playable_cache").fetchone() == (0,)
+
+
+FREE = FreeTrack(source="jamendo", source_id="42", artist="A/B", title="One?",
+                 download_url="https://cdn.test/42", license_url="https://cc/by")  # fmt: skip
+
+
+def _cdn(calls: list) -> SourceClient:
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(200, content=b"mp3")
+
+    return _client(handler)
+
+
+class TestDownloads:
+    def test_download_records_and_sanitises_path(self, mem_conn, tmp_path):
+        calls: list = []
+        path = downloads.download(mem_conn, FREE, mbid="m", library_dir=tmp_path,
+                                  client=_cdn(calls))  # fmt: skip
+        assert path == tmp_path / "A_B" / "One_.mp3"
+        assert path.read_bytes() == b"mp3"
+        row = mem_conn.execute("SELECT mbid, source, license_url, path FROM library").fetchone()
+        assert row == ("m", "jamendo", "https://cc/by", str(path))
+
+    def test_existing_file_not_refetched(self, mem_conn, tmp_path):
+        calls: list = []
+        for _ in range(2):
+            downloads.download(mem_conn, FREE, library_dir=tmp_path, client=_cdn(calls))
+        assert len(calls) == 1
+
+    def test_local_path_requires_file_on_disk(self, mem_conn, tmp_path):
+        path = downloads.download(mem_conn, FREE, library_dir=tmp_path, client=_cdn([]))
+        assert downloads.local_path(mem_conn, "a/b", "one?") == str(path)
+        path.unlink()
+        assert downloads.local_path(mem_conn, "A/B", "One?") is None
+
+    def test_find_free_skips_failing_source(self):
+        def broken(*_a, **_k):
+            raise SourceError("down")
+
+        finders = (("jamendo", broken), ("archive_org", lambda *_a, **_k: [FREE]))
+        with patch.object(downloads, "_FINDERS", finders):
+            assert downloads.find_free("A/B") == [FREE]
+
+    def test_playable_prefers_downloaded_file(self, mem_conn, tmp_path):
+        path = downloads.download(mem_conn, FREE, library_dir=tmp_path, client=_cdn([]))
+        track = playable("A/B", "One?", conn=mem_conn, deezer_client=_client(_deezer),
+                         youtube_client=_client(_YouTube(None)))  # fmt: skip
+        assert track.local_path == str(path)
+
+
+@pytest.fixture(autouse=True)
+def _no_sleep(monkeypatch):
+    monkeypatch.setattr("sources.http.time.sleep", lambda _s: None)

@@ -149,7 +149,7 @@ def test_recommend_for_playlist(mock_engine: MagicMock, _lookup: MagicMock) -> N
 def test_all_tools_count() -> None:
     from agent.tools import ALL_TOOLS
 
-    assert len(ALL_TOOLS) == 21
+    assert len(ALL_TOOLS) == 23
 
 
 @patch("agent.tools.recommend._engine", MagicMock())
@@ -160,6 +160,8 @@ def test_all_tools_names() -> None:
     expected = {
         "discover_tracks",
         "play_track",
+        "find_free_downloads",
+        "download_track",
         "save_playlist",
         "get_user_playlists",
         "recommend_similar_tracks",

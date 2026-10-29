@@ -43,7 +43,10 @@ def db() -> Iterator[duckdb.DuckDBPyConnection]:
 
 
 def format_playable(p: PlayableTrack) -> str:
-    lines = [f"{p.artist} — {p.title}", f"YouTube: {p.youtube_url}"]
+    lines = [f"{p.artist} — {p.title}"]
+    if p.local_path:
+        lines.append(f"Local file: {p.local_path}")
+    lines.append(f"YouTube: {p.youtube_url}")
     if p.deezer_url:
         lines.append(f"Deezer: {p.deezer_url}")
     if p.preview_url:

@@ -1,11 +1,12 @@
 COMPOSE = docker compose -f infrastructure/containers/docker-compose.yml
 
-.PHONY: help infra-up infra-down infra-build infra-ps infra-logs infra-smoke app mcp-server lint format test test-unit test-fast test-integration test-data notebook init-db data-sync train train-cat train-compare eval-ci eval-full eval-unit eval-trajectory eval-e2e pull status push quick-pr ship
+.PHONY: help infra-up infra-down infra-build infra-ps infra-logs infra-smoke app mcp-server navidrome lint format test test-unit test-fast test-integration test-data notebook init-db data-sync train train-cat train-compare eval-ci eval-full eval-unit eval-trajectory eval-e2e pull status push quick-pr ship
 
 help:
 	@echo "listen-wiseer targets:"
 	@echo "  app          Chainlit UI"
 	@echo "  mcp-server   MCP server (agent tools for other MCP clients)"
+	@echo "  navidrome    Music server for data/library/ (http://localhost:4533)"
 	@echo "  init-db      Bootstrap DuckDB from CSVs"
 	@echo "  data-sync    Last.fm genre tags → genre profiles (archived library)"
 	@echo "  train        Fit GMM + LightGBM → models/*.pkl"
@@ -64,6 +65,10 @@ app:
 
 mcp-server:
 	PYTHONPATH=src uv run python src/mcp_server/server.py
+
+navidrome:  ## Serve legal downloads in data/library/ to Subsonic apps
+	mkdir -p data/library
+	$(COMPOSE) --profile library up -d navidrome
 
 lint:
 	uv run ruff check src/ --unsafe-fixes

@@ -6,6 +6,7 @@ from agent.tools.discover import (
     play_track_tool,
     save_playlist_tool,
 )
+from agent.tools.downloads import download_track_tool, find_free_downloads_tool
 from agent.tools.memory import manage_taste_memory, search_taste_memory
 from agent.tools.music import (
     get_artist_albums_tool,
@@ -30,6 +31,9 @@ ALL_TOOLS = [
     # Open-world discovery, free playback
     discover_tracks_tool,
     play_track_tool,
+    # Legal downloads into the local library
+    find_free_downloads_tool,
+    download_track_tool,
     # Recommendations (ENOA corpus)
     recommend_similar_tracks,
     recommend_for_artist,
@@ -60,6 +64,8 @@ __all__ = [
     "ALL_TOOLS",
     "discover_tracks_tool",
     "play_track_tool",
+    "find_free_downloads_tool",
+    "download_track_tool",
     "save_playlist_tool",
     "list_playlists_tool",
     "recommend_similar_tracks",

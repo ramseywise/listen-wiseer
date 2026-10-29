@@ -1,6 +1,6 @@
 # Free music stack — move off Spotify
 
-Status: IN PROGRESS — S0–S2, S3a, S4, S5 done; next S6 (needs Jamendo client_id)
+Status: IN PROGRESS — S0–S2, S3a, S4, S5 done; S6 code done (Jamendo untested live — needs client_id); next S7
 Branch: `free-music-stack`
 
 ## Research
@@ -73,7 +73,9 @@ Branch: `free-music-stack`
 - S5 ✓ (2026-10-29): `agent/tools/music.py` (history from local `plays`; MusicBrainz/Last.fm/Deezer lookups), `recommend_*` take names (lookup → legacy corpus IDs; engine gets `playlist_tracks_fn` instead of a Spotify client). 21 agent tools. MCP server re-exposes agent tools (19; no memory, `save_playlist` without interrupt). `etl/sync.py` slimmed to Last.fm genres + genre profiles. `user_id` setting (alias `SPOTIFY_USER_ID` keeps memory namespace). Deleted `src/spotify/`, Spotify tools/tests, `notebooks/08_sync.ipynb`, `make auth`. 554 tests pass.
 - Left for user: strip `SPOTIFY_*` from `.env.example` / `.env` (agent can't touch env files); README still describes Spotify.
 
-### S6 — Offline / downloads (legal sources only)
+### S6 — Offline / downloads (legal sources only) ✓ (code)
+- Done 2026-10-29: `sources/archive_org.py` (live-verified: Kevin MacLeod mp3 downloaded), `sources/jamendo.py` (mocked only — no client_id yet), `SourceClient.download` (`.part` file, no API key leakage to CDNs), `library/downloads.py` + `library` table, `PlayableTrack.local_path` (Chainlit plays local file inline), tools `find_free_downloads` / `download_track` (agent + MCP; 23 tools), Navidrome `--profile library` + `make navidrome`.
+- Not done: ID3 MBID tagging (would need `mutagen`; MBID kept in DB only). Library lookup is by exact track_key of the *found* track, so name variants miss.
 Catalogs do **not** overlap — each covers a different slice:
 | Source | Catalog | Access | Plan |
 |---|---|---|---|

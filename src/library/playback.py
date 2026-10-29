@@ -8,6 +8,7 @@ from datetime import datetime
 import duckdb
 
 from etl.history import track_key
+from library.downloads import local_path
 from sources import youtube
 from sources.http import SourceClient
 from sources.playable import resolve_playable
@@ -53,10 +54,11 @@ def playable(
                 "INSERT OR REPLACE INTO playable_cache VALUES (?, ?, ?)",
                 [key, video_id, datetime.now()],
             )
-    return resolve_playable(
+    p = resolve_playable(
         artist,
         title,
         deezer_client=deezer_client,
         video_id=video_id or None,
         search_youtube=False,
     )
+    return p.model_copy(update={"local_path": local_path(conn, artist, title) or ""})

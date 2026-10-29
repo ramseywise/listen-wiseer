@@ -7,6 +7,7 @@ raises ``SourceError``.
 """
 
 import time
+from pathlib import Path
 
 import httpx
 
@@ -80,3 +81,26 @@ class SourceClient:
                 raise SourceError(f"{self.name}: HTTP {response.status_code} on {path!r}")
             return response.json() if response.content else {}
         raise SourceError(f"{self.name}: still rate-limited after {_MAX_RETRIES} attempts")
+
+    def download(self, url: str, dest: Path) -> Path:
+        """Stream ``url`` to ``dest`` via a ``.part`` file, so a failed download leaves nothing.
+
+        Default params (API keys) are not sent — download hosts are often third-party CDNs.
+        """
+        self._throttle()
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        part = dest.with_name(dest.name + ".part")
+        try:
+            with self._http.stream("GET", url, follow_redirects=True) as response:
+                if response.is_error:
+                    raise SourceError(f"{self.name}: HTTP {response.status_code} on {url!r}")
+                with part.open("wb") as f:
+                    for chunk in response.iter_bytes():
+                        f.write(chunk)
+        except httpx.HTTPError as exc:
+            part.unlink(missing_ok=True)
+            raise SourceError(f"{self.name}: download of {url!r} failed: {exc}") from exc
+        except SourceError:
+            part.unlink(missing_ok=True)
+            raise
+        return part.replace(dest)

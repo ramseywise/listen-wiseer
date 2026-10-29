@@ -62,3 +62,16 @@ class PlayableTrack(BaseModel):
     deezer_url: str = ""
     preview_url: str = ""  # 30s mp3; signed URL, expires
     isrc: str = ""
+    local_path: str = ""  # downloaded copy in the library, preferred when present
+
+
+class FreeTrack(BaseModel):
+    """A legally downloadable track (Jamendo CC catalogue, Internet Archive)."""
+
+    source: str  # "jamendo" | "archive_org"
+    source_id: str
+    artist: str
+    title: str
+    download_url: str
+    page_url: str = ""
+    license_url: str = ""

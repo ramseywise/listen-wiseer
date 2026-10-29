@@ -18,6 +18,8 @@ from mcp.server.fastmcp import FastMCP
 
 from agent.tools import (
     discover_tracks_tool,
+    download_track_tool,
+    find_free_downloads_tool,
     get_artist_albums_tool,
     get_artist_context_tool,
     get_artist_info_tool,
@@ -49,6 +51,8 @@ mcp = FastMCP("listen-wiseer")
 _EXPOSED: list[StructuredTool] = [
     discover_tracks_tool,
     play_track_tool,
+    find_free_downloads_tool,
+    download_track_tool,
     recommend_similar_tracks,
     recommend_for_artist,
     recommend_by_genre,

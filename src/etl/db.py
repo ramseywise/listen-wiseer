@@ -262,6 +262,19 @@ CREATE TABLE IF NOT EXISTS playable_cache (
     resolved_at      TIMESTAMP
 );
 
+-- Legally downloaded files under data/library/ (Jamendo, Internet Archive)
+CREATE TABLE IF NOT EXISTS library (
+    track_key     VARCHAR PRIMARY KEY,
+    artist_name   VARCHAR,
+    track_name    VARCHAR,
+    mbid          VARCHAR,
+    source        VARCHAR,
+    source_id     VARCHAR,
+    license_url   VARCHAR,
+    path          VARCHAR,
+    downloaded_at TIMESTAMP
+);
+
 -- Leftover from the deleted rag_core/ (Phase 8)
 DROP TABLE IF EXISTS rag_chunks;
 

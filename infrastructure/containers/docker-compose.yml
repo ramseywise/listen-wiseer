@@ -4,6 +4,7 @@ networks:
 
 volumes:
   postgres-data:
+  navidrome-data:
 
 services:
 
@@ -62,6 +63,7 @@ services:
       - LISTENBRAINZ_TOKEN=${LISTENBRAINZ_TOKEN}
       - LISTENBRAINZ_USER=${LISTENBRAINZ_USER}
       - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
+      - JAMENDO_CLIENT_ID=${JAMENDO_CLIENT_ID}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - MCP_SERVER_HOST=0.0.0.0
@@ -87,6 +89,7 @@ services:
       - LISTENBRAINZ_TOKEN=${LISTENBRAINZ_TOKEN}
       - LISTENBRAINZ_USER=${LISTENBRAINZ_USER}
       - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
+      - JAMENDO_CLIENT_ID=${JAMENDO_CLIENT_ID}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-haiku-4-5-20251001}
       - TAVILY_API_KEY=${TAVILY_API_KEY}
@@ -126,6 +129,26 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+
+  # ── Optional: Navidrome music server (--profile library) ─────────────────────
+  # Serves data/library/ (legal downloads) over the Subsonic API → phone apps
+  # (Symfonium, Substreamer) cache offline. Web UI: http://localhost:4533
+  navidrome:
+    image: deluan/navidrome:0.53.3
+    container_name: listen-wiseer-navidrome
+    ports:
+      - "4533:4533"
+    environment:
+      - ND_SCANSCHEDULE=1h
+      - ND_LOGLEVEL=info
+    volumes:
+      - ../../data/library:/music:ro
+      - navidrome-data:/data
+    networks:
+      - listen-wiseer-network
+    restart: unless-stopped
+    profiles:
+      - library
 
   # ── Optional: Jaeger tracing (--profile observability) ───────────────────────
   jaeger:

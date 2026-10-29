@@ -47,13 +47,19 @@ async def _get_graph():
     return _graph
 
 
+def _audio(p: dict) -> cl.Audio | None:
+    """Inline player: the downloaded file when there is one, else the 30s preview."""
+    name = f"{p['artist']} — {p['title']}"
+    if p.get("local_path"):
+        return cl.Audio(name=name, path=p["local_path"], display="inline")
+    if p.get("preview_url"):
+        return cl.Audio(name=f"{name} (30s)", url=p["preview_url"], display="inline")
+    return None
+
+
 def _playable_message(p: PlayableTrack) -> cl.Message:
-    elements = []
-    if p.preview_url:
-        elements.append(
-            cl.Audio(name=f"{p.artist} — {p.title} (30s)", url=p.preview_url, display="inline")
-        )
-    return cl.Message(content=format_playable(p), elements=elements)
+    audio = _audio(p.model_dump())
+    return cl.Message(content=format_playable(p), elements=[audio] if audio else [])
 
 
 @cl.on_chat_start
@@ -150,15 +156,7 @@ async def on_message(message: cl.Message) -> None:
                         payload={"tracks": tracks},
                     )  # fmt: skip
                 )
-            for p in agent_resp.get("playable", []):
-                if p.get("preview_url"):
-                    elements.append(
-                        cl.Audio(
-                            name=f"{p['artist']} — {p['title']} (30s)",
-                            url=p["preview_url"],
-                            display="inline",
-                        )
-                    )
+            elements += [a for p in agent_resp.get("playable", []) if (a := _audio(p))]
             schedule_optimization(user_id, result["messages"], _store)
     except Exception as exc:
         log.error("app.on_message.failed", error=str(exc), thread_id=thread_id)

@@ -39,7 +39,7 @@ class TestAllTools:
     def test_all_tools_count(self) -> None:
         from agent.tools import ALL_TOOLS
 
-        assert len(ALL_TOOLS) == 21
+        assert len(ALL_TOOLS) == 23
 
     def test_tool_names_unique(self) -> None:
         from agent.tools import ALL_TOOLS

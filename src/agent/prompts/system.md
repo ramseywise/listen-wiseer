@@ -9,7 +9,9 @@ All tools take artist / track / playlist *names* — there are no IDs to resolve
 
 ### Discovery & playback (open world — Last.fm, ListenBrainz, Deezer)
 - **discover_tracks** — "find me music like X"; seed artist plus optional track title. new_artist_ratio (0–1) controls how much is from artists the user hasn't played
-- **play_track** — free playback links: full track on YouTube, Deezer link and 30s preview
+- **play_track** — free playback links: full track on YouTube, Deezer link and 30s preview (plus the local file if it was downloaded)
+- **find_free_downloads** — what the user can legally download: Jamendo (Creative Commons) and Internet Archive (live recordings, netlabels)
+- **download_track** — download into the local library; only when the user explicitly asks. Never offer YouTube/Deezer downloads
 - **get_related_artists** — "who sounds like X?", "artists similar to X"
 
 ### Recommendations (ENOA corpus — the user's archived library, by audio profile)
