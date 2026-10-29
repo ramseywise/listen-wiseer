@@ -34,7 +34,7 @@ def load_genre_map_from_db(conn: DuckDBPyConnection) -> pl.DataFrame:
         DataFrame with columns [first_genre, top, left].
         Empty DataFrame if table is empty.
     """
-    return conn.execute('SELECT first_genre, top, "left" FROM genre_xy').pl()
+    return conn.sql('SELECT first_genre, top, "left" FROM genre_xy').pl()
 
 
 def genre_to_enoa(

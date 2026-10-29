@@ -11,7 +11,7 @@ Run:
 
 from __future__ import annotations
 
-from etl.db import get_connection, init_schema
+from etl.db import fetch_one, get_connection, init_schema
 from etl.lastfm import fetch_genres_for_tracks
 from utils.config import settings
 from utils.logging import configure_logging, get_logger
@@ -69,9 +69,7 @@ def sync_lastfm_genres(conn, limit: int | None = None) -> int:
     if limit is not None:
         track_rows = track_rows[:limit]
 
-    total_missing = conn.execute(
-        "SELECT COUNT(*) FROM tracks WHERE first_genre IS NULL"
-    ).fetchone()[0]
+    total_missing = fetch_one(conn, "SELECT COUNT(*) FROM tracks WHERE first_genre IS NULL")[0]
     log.info(
         "sync.lastfm.start", total_missing=total_missing, processing=len(track_rows), limit=limit
     )

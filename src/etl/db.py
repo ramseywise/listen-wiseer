@@ -348,6 +348,16 @@ def get_connection(read_only: bool = False) -> duckdb.DuckDBPyConnection:
     return conn
 
 
+def fetch_one(conn: duckdb.DuckDBPyConnection, sql: str, params: object = None) -> tuple | None:
+    """First row of a single-row query, result fully drained.
+
+    duckdb 2 streams results: a half-read ``execute()`` (``.fetchone()`` on a row) blocks
+    ``register()`` / ``sql()`` on the connection until it is finished.
+    """
+    rows = conn.execute(sql, params).fetchall()
+    return rows[0] if rows else None
+
+
 def init_schema(conn: duckdb.DuckDBPyConnection) -> None:
     """Create all tables and the track_profile view (idempotent)."""
     conn.execute(_DDL)
