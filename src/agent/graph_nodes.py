@@ -206,6 +206,8 @@ async def rewrite_query(state: AgentState) -> dict:
         f"{'User' if isinstance(m, HumanMessage) else 'Assistant'}: {m.content}"
         for m in messages[-5:]
     )
+    if player_context := state.get("player_context", ""):
+        history = f"Player:\n{player_context}\n\n{history}"
     prompt = (
         "Rewrite the following question as a standalone question that doesn't "
         "require the conversation history to understand. Only output the "
@@ -229,6 +231,9 @@ def route_after_classify(state: AgentState) -> str:
 
     # Chit-chat always proceeds (no clarification needed)
     if intent == "chit_chat":
+        return "rewrite_query"
+    # "What is this?" / "more like this" are vague alone, but not with the player's context
+    if state.get("player_context"):
         return "rewrite_query"
 
     if confidence < settings.intent_confidence_threshold:
@@ -317,6 +322,15 @@ async def agent_node(
         stats = await build_memory_stats(store, user_id)
         if stats:
             prompt_parts.append(stats)
+
+    # --- Web player context (now playing / up next), refreshed every turn ---
+    player_context = state.get("player_context", "")
+    if player_context:
+        prompt_parts.append(
+            "<player_context>\nWhat the user's player has on right now — resolve "
+            '"this", "this track", "what\'s on", "more like this" against it.\n'
+            f"{player_context}\n</player_context>"
+        )
 
     # --- Intent hint (from classify_intent_node) ---
     intent = state.get("intent", "")

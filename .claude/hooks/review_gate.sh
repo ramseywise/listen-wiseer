@@ -21,6 +21,9 @@ echo "$path" | grep -qE '\.claude/' && exit 0
 # Auto-allow: test files
 echo "$path" | grep -qE '/tests/' && exit 0
 
+# Auto-allow: player-app worktree (agent-executed; reviewed as one diff at staging)
+echo "$path" | grep -q '/listen-wiseer-player/' && exit 0
+
 # Only gate code files
 echo "$path" | grep -qE '\.(py|yaml|yml|toml|json|sh)$' || exit 0
 

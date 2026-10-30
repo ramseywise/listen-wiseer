@@ -12,6 +12,8 @@ import sys
 
 import structlog
 
+_QUIET_LOGGERS = ("httpx", "httpcore")
+
 
 def configure_logging(log_level: str = "INFO", render_json: bool = False) -> None:
     """Configure structlog. Call once at application startup."""
@@ -22,6 +24,10 @@ def configure_logging(log_level: str = "INFO", render_json: bool = False) -> Non
         stream=sys.stdout,
         level=level,
     )
+
+    # httpx logs every request URL at INFO — Subsonic token auth (u, t, s) rides in the query.
+    for noisy in _QUIET_LOGGERS:
+        logging.getLogger(noisy).setLevel(max(level, logging.WARNING))
 
     renderer = (
         structlog.processors.JSONRenderer()

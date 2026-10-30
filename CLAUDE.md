@@ -3,7 +3,7 @@
 ## Project Stack
 
 **listen-wiseer** — music recommendation agent (Spotify-free since S5; Spotify data is archived history only)
-- LLM: Claude Haiku (`claude-haiku-4-5-20251001`) · LangGraph · Chainlit · FastMCP
+- LLM: Claude Haiku (`claude-haiku-4-5-20251001`) · LangGraph · FastAPI (SSE) + React web player · FastMCP
 - Data: Polars · DuckDB · Parquet cache
 - ML: GMM clustering + LightGBM reranker · scikit-learn pipelines
 - Context: agentic Tavily web search for artist/genre history (query decompose/fan-out + confidence gating; see Phase 8 plan)
@@ -29,10 +29,11 @@ src/
     schemas.py, train.py, engine.py, pipelines.py
     modules/: similarity, clustering, classifiers, genre (ENOA)
   mcp_server/   — agent tools re-exposed over MCP (minus memory tools)
-  agent/        — LangGraph agent + Chainlit app
+  agent/        — LangGraph agent
     graph.py, graph_nodes.py, memory_helpers.py, validation.py, response.py,
     state.py, memory_store.py, intent.py, checker.py (runtime HeuristicChecker), tools/
-  app/          — Chainlit entry point
+  api/          — FastAPI backend: Navidrome proxy, /api/chat (SSE), /api/playable
+web/            — React player UI + assistant panel
 
 models/         — serialized artifacts (gitignored)
 .mcp.json       — Claude Code MCP server registration
@@ -67,6 +68,7 @@ models/         — serialized artifacts (gitignored)
 - LightGBM and torch (via `sentence-transformers`, only installed with `uv sync --extra embeddings`) each vendor their own `libomp.dylib`, and they are *different builds*. Whichever loads first wins; if torch's wins, LightGBM training segfaults in its C library — a hard crash, no Python traceback. `tests/conftest.py` imports `lightgbm` at module scope to pin load order. Don't remove that import, and be aware the same trap applies to any script importing torch before training. `KMP_DUPLICATE_LIB_OK` does *not* help (that's Intel MKL; these are LLVM builds).
 - `[tool.uv.sources]` only applies to *direct* deps: `torch` must stay listed in the `embeddings` extra or Linux/Docker builds pull the ~6 GB CUDA wheels instead of the `pytorch-cpu` index. Without the extra, memory search is unranked (no torch)
 - `rag_core/` deleted (Phase 8) — was an unfinished retrofit of a Danish support-bot RAG (OpenSearch/e5-large lineage), never fully adapted to music. Web/artist/genre context is Tavily-only now (`get_artist_context_tool`, `get_genre_context_tool`); set `TAVILY_API_KEY`. Intent classification (`QueryAnalyzer`) moved to `agent/intent.py` — it was the one music-relevant piece.
+- DuckDB is single-writer across processes: the player API (`make api`/`app`, compose `api`) is *the* writer (`plays`, `track_xref`, caches) and opens per-request connections. The MCP server opens it read-only (`discover.use_read_only_db()`; cache writes skipped); its one real write, `download_track`, opens read-write and returns a clear "database in use" message on the lock. New tools: read via `db()`, write via `db(write=True)` and handle `duckdb.IOException`
 - `InMemoryStore` used for cross-session memory in dev; Redis/Postgres for prod (Phase 6 Phase 3)
 
 ## Environment

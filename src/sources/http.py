@@ -6,6 +6,7 @@ Contract for callers: "not found" (404 / 204) returns ``{}``; any other failure
 raises ``SourceError``.
 """
 
+import threading
 import time
 from pathlib import Path
 
@@ -46,6 +47,7 @@ class SourceClient:
         self.name = name
         self._min_interval = min_interval
         self._last_request = 0.0
+        self._throttle_lock = threading.Lock()  # the API calls one client from worker threads
         self._default_params = params or {}
         self._http = httpx.Client(
             base_url=base_url,
@@ -55,10 +57,11 @@ class SourceClient:
         )
 
     def _throttle(self) -> None:
-        wait = self._min_interval - (time.monotonic() - self._last_request)
-        if wait > 0:
-            time.sleep(wait)
-        self._last_request = time.monotonic()
+        with self._throttle_lock:
+            wait = self._min_interval - (time.monotonic() - self._last_request)
+            if wait > 0:
+                time.sleep(wait)
+            self._last_request = time.monotonic()
 
     def get_json(self, path: str, **params) -> dict:
         for attempt in range(_MAX_RETRIES):

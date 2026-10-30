@@ -62,9 +62,16 @@ def _download_track(artist: str, title: str, mbid: str = "") -> str:
     track = tracks[0]
     mbid = mbid or _recording_mbid(track.artist, track.title)
     try:
-        with db() as conn:
+        with db(write=True) as conn:  # records the file + licence in `library`
             path = download(conn, track, mbid=mbid, requested=(artist, title))
-    except (SourceError, duckdb.IOException) as exc:
+    except (duckdb.IOException, duckdb.ConnectionException) as exc:
+        log.warning("agent.tools.download_db_locked", artist=artist, title=title, error=str(exc))
+        return (
+            f"Download of {artist} — {title} not started: the library database is in use by "
+            "another process (the player API is its writer). Retry in a moment, or ask the "
+            "player's assistant to download it."
+        )
+    except SourceError as exc:
         log.warning("agent.tools.download_failed", artist=artist, title=title, error=str(exc))
         return f"Download failed for {artist} — {title}: {exc}"
     return f"Downloaded {_describe(track)} to {path}"

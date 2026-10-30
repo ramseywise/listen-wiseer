@@ -220,6 +220,10 @@ CREATE TABLE IF NOT EXISTS plays (
     reason_end  VARCHAR,
     PRIMARY KEY (ts, track_key)
 );
+-- Migrate existing installs: plays recorded by the web player (api/player.py) via Navidrome.
+-- source NULL = Spotify export; 'navidrome' = scrobbled through the player.
+ALTER TABLE plays ADD COLUMN IF NOT EXISTS navidrome_id VARCHAR;
+ALTER TABLE plays ADD COLUMN IF NOT EXISTS source VARCHAR;
 
 -- Cross-source track identity; MusicBrainz recording MBID is canonical.
 -- A row with mbid NULL = attempted, unmatched (not retried unless asked).
@@ -237,6 +241,11 @@ CREATE TABLE IF NOT EXISTS track_xref (
     youtube_video_id VARCHAR,
     resolved_at      TIMESTAMP
 );
+-- Navidrome song id from library/match.py; only hits are cached (misses retry later).
+-- Rows match.py inserts have resolved_at NULL, so etl.resolve still treats them as pending.
+ALTER TABLE track_xref ADD COLUMN IF NOT EXISTS navidrome_id VARCHAR;
+ALTER TABLE track_xref ADD COLUMN IF NOT EXISTS navidrome_confidence DOUBLE;
+ALTER TABLE track_xref ADD COLUMN IF NOT EXISTS navidrome_matched_at TIMESTAMP;
 
 -- Local playlists (Spotify-free). Tracks stored by identity, not by source ID.
 CREATE TABLE IF NOT EXISTS local_playlists (

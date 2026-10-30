@@ -1,7 +1,12 @@
-# Allow-list: the image only needs the lockfile and source.
+# Allow-list: the image only needs the lockfiles and sources (data/, models/, .venv,
+# htmlcov, coverage.xml stay out; data/ and models/ are mounted at runtime).
 *
 !pyproject.toml
 !uv.lock
 !src/
+!web/
+web/node_modules
+web/dist
+web/coverage
 **/__pycache__
 **/*.pyc

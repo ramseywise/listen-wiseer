@@ -1,4 +1,4 @@
-"""Local readiness check: API keys, DuckDB tables, trained models.
+"""Local readiness check: API keys, DuckDB tables, trained models, Navidrome.
 
 Never prints secret values — only whether each key is set.
 
@@ -11,6 +11,7 @@ Run:
 from __future__ import annotations
 
 import argparse
+import asyncio
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -18,6 +19,8 @@ from pathlib import Path
 import duckdb
 
 from paths import CACHE_DIR, DB_PATH, MODELS_DIR
+from sources.subsonic import SubsonicClient
+from utils.exceptions import SourceError
 
 # (settings field, what it enables). anthropic is the only hard requirement for chat.
 API_KEYS: tuple[tuple[str, str], ...] = (
@@ -46,6 +49,9 @@ class DoctorReport:
     models: dict[str, bool] = field(default_factory=dict)
     n_classifiers: int = 0
     corpus_cache: bool = False
+    navidrome_url: str | None = None  # None = not checked
+    navidrome_songs: int | None = None  # None = unreachable
+    navidrome_error: str | None = None
     warnings: list[str] = field(default_factory=list)
 
 
@@ -77,14 +83,45 @@ def table_counts(db_path: Path) -> dict[str, int]:
         conn.close()
 
 
+def navidrome_songs(client: SubsonicClient) -> int:
+    """Song count from Navidrome's scan status; closes ``client``. Raises SourceError."""
+
+    async def _count() -> int:
+        try:
+            return (await client.scan_status()).count
+        finally:
+            await client.aclose()
+
+    return asyncio.run(_count())
+
+
+def navidrome_configured(settings: object) -> bool:
+    """Blank user or password = player app not set up → skip the check, don't report it down."""
+    return bool(
+        getattr(settings, "navidrome_user", "") and getattr(settings, "navidrome_password", "")
+    )
+
+
 def run_checks(
     source: object,
     db_path: Path = DB_PATH,
     models_dir: Path = MODELS_DIR,
     cache_dir: Path = CACHE_DIR,
+    navidrome: SubsonicClient | None = None,
 ) -> DoctorReport:
-    """Collect the full readiness report; no side effects on disk."""
+    """Collect the full readiness report; no side effects on disk.
+
+    Navidrome is optional (the player app needs it, chat doesn't), so its state is
+    reported but never adds a warning.
+    """
     report = DoctorReport(keys=check_keys(source), db_path=db_path)
+
+    if navidrome is not None:
+        report.navidrome_url = navidrome.base_url
+        try:
+            report.navidrome_songs = navidrome_songs(navidrome)
+        except SourceError as exc:
+            report.navidrome_error = str(exc).splitlines()[0]
 
     for name in sorted(REQUIRED_KEYS):
         if not report.keys.get(name):
@@ -147,6 +184,13 @@ def render(report: DoctorReport) -> str:
     lines.append(f"  {mark(report.n_classifiers > 0)}classifier_*.pkl x{report.n_classifiers}")
     lines.append(f"  {mark(report.corpus_cache)}data/cache/{CORPUS_CACHE}")
 
+    if report.navidrome_url is not None:
+        lines += ["", f"Navidrome ({report.navidrome_url}, optional — player app):"]
+        if report.navidrome_songs is not None:
+            lines.append(f"  ok reachable, {report.navidrome_songs} songs")
+        else:
+            lines.append(f"  -- unreachable: {report.navidrome_error} (`make navidrome`)")
+
     lines.append("")
     if report.warnings:
         lines.append(f"Warnings ({len(report.warnings)}):")
@@ -163,7 +207,12 @@ def main(argv: list[str] | None = None) -> int:
 
     from utils.config import settings
 
-    report = run_checks(settings)
+    navidrome = (
+        SubsonicClient.from_settings(settings, timeout=3.0)
+        if navidrome_configured(settings)
+        else None
+    )
+    report = run_checks(settings, navidrome=navidrome)
     sys.stdout.write(render(report))
     return 1 if args.strict and report.warnings else 0
 

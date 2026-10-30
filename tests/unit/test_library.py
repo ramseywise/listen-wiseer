@@ -163,6 +163,14 @@ class TestDownloads:
         assert downloads.local_path(mem_conn, "a/b", "one") == str(path)
         assert downloads.local_path(mem_conn, "A/B", "One?") == str(path)
 
+    def test_default_dir_is_music_dir_downloads(self):
+        assert downloads.LIBRARY_DIR == downloads.MUSIC_DIR / "downloads"
+
+    def test_music_dir_resolution(self, tmp_path):
+        assert downloads.resolve_music_dir("") == downloads.DATA_DIR / "library"
+        assert downloads.resolve_music_dir(str(tmp_path)) == tmp_path
+        assert downloads.resolve_music_dir("music") == downloads.REPO_ROOT / "music"
+
     def test_find_free_skips_failing_source(self):
         def broken(*_a, **_k):
             raise SourceError("down")

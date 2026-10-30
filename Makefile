@@ -1,14 +1,22 @@
 # Compose resolves ${VARS} from .env next to the compose file, not the repo root — pass it explicitly.
 COMPOSE = docker compose $(if $(wildcard .env),--env-file .env) -f infrastructure/containers/docker-compose.yml
+# API_PORT given on the make command line / shell wins over .env; the ?= default does not.
+COMPOSE_ENV = $(if $(filter command line environment,$(origin API_PORT)),API_PORT=$(API_PORT))
 
-.PHONY: help infra-up infra-down infra-build infra-ps infra-logs infra-smoke app doctor mcp-server navidrome lint format test test-unit test-fast test-integration test-data notebook init-db data-sync import-history resolve-ids train train-cat train-compare eval-ci eval-full eval-unit eval-trajectory eval-e2e pull status push quick-pr ship
+.PHONY: help infra-up infra-down infra-build infra-ps infra-logs infra-smoke app dev doctor mcp-server navidrome seed-library migrate-playlists api web web-build lint format test test-unit test-fast test-integration test-data notebook init-db data-sync import-history resolve-ids train train-cat train-compare eval-ci eval-full eval-unit eval-trajectory eval-e2e pull status push quick-pr ship
 
 help:
 	@echo "listen-wiseer targets:"
-	@echo "  app          Chainlit UI (runs doctor first, non-fatal)"
+	@echo "  app          Player API + assistant (doctor first, non-fatal); run \`make web\` alongside for the UI"
 	@echo "  doctor       Check API keys (set/unset), DuckDB row counts, models/*.pkl"
 	@echo "  mcp-server   MCP server (agent tools for other MCP clients)"
-	@echo "  navidrome    Music server for data/library/ (http://localhost:4533)"
+	@echo "  navidrome    Music server for MUSIC_DIR (default data/library/, http://localhost:4533)"
+	@echo "  seed-library Download ~5 CC tracks from archive.org, create Navidrome admin, scan"
+	@echo "  api          Player API (FastAPI) on 127.0.0.1:8000, reload (API_PORT=8010 to move)"
+	@echo "  migrate-playlists  DuckDB local_playlists → Navidrome, report unmatched (ARGS=\"--dry-run\")"
+	@echo "  web          Player web UI dev server (Vite, proxies /api → VITE_API_TARGET, default :8000)"
+	@echo "  web-build    Build the web UI → web/dist (make api/app then serve it at /)"
+	@echo "  dev          api + web together (Ctrl-C stops both)"
 	@echo "  init-db      Migrate DuckDB schema; import data/archived/ CSVs if present"
 	@echo "  data-sync    Last.fm genre tags → genre profiles (archived library)"
 	@echo "  import-history  Spotify privacy-export JSON (data/listening_history/) → plays"
@@ -25,11 +33,11 @@ help:
 	@echo "  eval-e2e     Tier 3 RAGAS + tool-correctness eval (costs money)"
 	@echo "  lint         ruff check + format check + pyright (src/)"
 	@echo "  format       ruff fix + format"
-	@echo "  infra-up     Docker stack"
-	@echo "  infra-down   Docker stack teardown"
+	@echo "  infra-up     Docker stack: postgres, navidrome, api + web on http://localhost:\$$API_PORT (8000), mcp"
+	@echo "  infra-down   Docker stack teardown (volumes kept)"
 	@echo "  infra-build  Rebuild Docker images"
 	@echo "  infra-ps     Show container status"
-	@echo "  infra-smoke  Smoke-test running stack (postgres + app + mcp)"
+	@echo "  infra-smoke  Smoke-test running stack (postgres, api health/web/stream, mcp)"
 	@echo "  notebook     Jupyter Lab"
 	@echo "  pull         git pull origin main"
 	@echo "  status       Show branch, unpushed commits, staged changes, open PRs"
@@ -37,14 +45,15 @@ help:
 	@echo "  quick-pr     Create PR from current branch with auto-generated body"
 	@echo "  ship         lint → test → pull → push → PR"
 
-infra-up:
-	$(COMPOSE) up -d
+infra-up:  ## postgres + db-init + navidrome + api (web at http://localhost:$API_PORT) + mcp
+	mkdir -p data/library/downloads logs
+	$(COMPOSE_ENV) $(COMPOSE) up -d
 
-infra-down:
-	$(COMPOSE) down --volumes --remove-orphans
+infra-down:  ## keeps volumes (Navidrome users/playlists, Postgres); add -v by hand to wipe
+	$(COMPOSE) down --remove-orphans
 
 infra-build:
-	$(COMPOSE) build
+	$(COMPOSE_ENV) $(COMPOSE) build
 
 infra-ps:
 	$(COMPOSE) ps
@@ -52,29 +61,16 @@ infra-ps:
 infra-logs:
 	$(COMPOSE) logs -f
 
-infra-smoke:
-	@echo "=== Container status ==="
-	@$(COMPOSE) ps
-	@echo ""
-	@echo "=== Postgres ==="
-	@$(COMPOSE) exec -T postgres pg_isready -U wiseer -d listen_wiseer \
-		&& echo "✓ postgres ready" || echo "✗ postgres not ready"
-	@echo ""
-	@echo "=== App (port 8501) ==="
-	@curl -sf --max-time 5 http://localhost:8501 > /dev/null \
-		&& echo "✓ app responding" || echo "✗ app not responding (may still be starting)"
-	@echo ""
-	@echo "=== MCP (port 8765, streamable HTTP) ==="
-	@curl -sf --max-time 5 -X POST http://localhost:8765/mcp \
-		-H 'Content-Type: application/json' \
-		-H 'Accept: application/json, text/event-stream' \
-		-d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"infra-smoke","version":"0"}}}' \
-		| grep -q '"serverInfo"' \
-		&& echo "✓ mcp initialize ok" || echo "✗ mcp not responding"
+infra-smoke:  ## postgres, /api/health (navidrome:true), / (index.html), Range stream → 206, mcp
+	@COMPOSE="$(COMPOSE)" API_PORT=$$($(COMPOSE) port api 8000 | sed 's/.*://') \
+		infrastructure/containers/smoke.sh
 
 app:
 	-@PYTHONPATH=src uv run python -m utils.doctor
-	PYTHONPATH=src uv run chainlit run src/app/main.py
+	PYTHONPATH=src uv run uvicorn --factory api.app:create_app --host 127.0.0.1 --port $(API_PORT)
+
+dev:  ## api (reload) + web (Vite) in one terminal; Ctrl-C stops both
+	@trap 'kill 0' INT TERM; $(MAKE) --no-print-directory api & $(MAKE) --no-print-directory web & wait
 
 doctor:  ## Keys set (bool only), DuckDB row counts, models present, plays empty?
 	PYTHONPATH=src uv run python -m utils.doctor
@@ -82,9 +78,25 @@ doctor:  ## Keys set (bool only), DuckDB row counts, models present, plays empty
 mcp-server:
 	PYTHONPATH=src uv run python src/mcp_server/server.py
 
-navidrome:  ## Serve legal downloads in data/library/ to Subsonic apps
-	mkdir -p data/library
-	$(COMPOSE) --profile library up -d navidrome
+navidrome:  ## Serve MUSIC_DIR (default data/library/) to the web player + Subsonic apps
+	mkdir -p data/library/downloads
+	$(COMPOSE) up -d navidrome
+
+seed-library:  ## CC tracks → MUSIC_DIR/downloads/, first-run admin, startScan (ARGS="--no-record")
+	PYTHONPATH=src uv run python -m library.seed $(ARGS)
+
+migrate-playlists:  ## One-off: local_playlists → Navidrome via library.match (no-op if none)
+	PYTHONPATH=src uv run python -m library.migrate_playlists $(ARGS)
+
+API_PORT ?= 8000
+api:  ## FastAPI backend for web/ (Navidrome proxy); localhost only
+	PYTHONPATH=src uv run uvicorn --factory api.app:create_app --host 127.0.0.1 --port $(API_PORT) --reload --reload-dir src
+
+web:  ## API_PORT=8010 make web → proxies to the API on that port
+	VITE_API_TARGET=$${VITE_API_TARGET:-http://127.0.0.1:$(API_PORT)} npm --prefix web run dev
+
+web-build:
+	npm --prefix web run build
 
 lint:
 	uv run ruff check src/ --unsafe-fixes

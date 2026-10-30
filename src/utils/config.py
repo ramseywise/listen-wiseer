@@ -19,6 +19,7 @@ class Settings(BaseSettings):
 
     # App
     log_level: str = "INFO"
+    web_dist_dir: str = ""  # built web/ the API serves at /; empty = web/dist (dev: Vite serves)
 
     # MCP server (host/port only apply to streamable-http)
     mcp_transport: Literal["stdio", "streamable-http"] = "stdio"
@@ -39,6 +40,12 @@ class Settings(BaseSettings):
     listenbrainz_user: str = ""
     youtube_api_key: str = ""
     jamendo_client_id: str = ""  # legal CC downloads (S6)
+
+    # Navidrome (Subsonic API) — the player app's library server; creds stay server-side
+    navidrome_url: str = "http://localhost:4533"
+    navidrome_user: str = ""
+    navidrome_password: str = ""
+    music_dir: str = ""  # library root Navidrome serves; empty = data/library (absolute if set)
 
     # Web search (artist/genre context)
     tavily_api_key: str = ""

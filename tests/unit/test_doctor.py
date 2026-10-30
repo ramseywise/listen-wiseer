@@ -6,9 +6,11 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import duckdb
+import httpx
 import pytest
 
-from utils.doctor import API_KEYS, check_keys, main, render, run_checks
+from sources.subsonic import SubsonicClient
+from utils.doctor import API_KEYS, check_keys, main, navidrome_configured, render, run_checks
 
 SECRET = "sk-super-secret-value-123"
 
@@ -104,6 +106,63 @@ def test_main_exit_code(
 ) -> None:
     monkeypatch.setattr(
         "utils.doctor.run_checks",
-        lambda s: run_checks(s, tmp_path / "none.db", tmp_path, tmp_path),
+        lambda s, **_kw: run_checks(s, tmp_path / "none.db", tmp_path, tmp_path),
     )
     assert main(["--strict"] if strict else []) == expected
+
+
+def _navidrome(handler) -> SubsonicClient:
+    return SubsonicClient("http://nd.test", "u", "p", transport=httpx.MockTransport(handler))
+
+
+def test_navidrome_song_count(tmp_path: Path) -> None:
+    models, cache = _trained(tmp_path)
+    body = {"subsonic-response": {"status": "ok", "scanStatus": {"scanning": False, "count": 5}}}
+    nd = _navidrome(lambda _r: httpx.Response(200, json=body))
+    report = run_checks(_keys(anthropic_api_key="k"), _db(tmp_path / "a.db", 1), models, cache, nd)
+    assert report.navidrome_songs == 5
+    assert "reachable, 5 songs" in render(report)
+
+
+def test_navidrome_down_is_not_a_warning(tmp_path: Path) -> None:
+    models, cache = _trained(tmp_path)
+
+    def refused(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused", request=request)
+
+    report = run_checks(
+        _keys(anthropic_api_key="k"), _db(tmp_path / "a.db", 1), models, cache, _navidrome(refused)
+    )
+    assert report.navidrome_songs is None
+    assert report.warnings == []
+    assert "unreachable" in render(report)
+
+
+def test_navidrome_not_checked_by_default(tmp_path: Path) -> None:
+    models, cache = _trained(tmp_path)
+    report = run_checks(_keys(anthropic_api_key="k"), _db(tmp_path / "a.db", 1), models, cache)
+    assert report.navidrome_url is None
+    assert "Navidrome" not in render(report)
+
+
+@pytest.mark.parametrize(
+    "user,password,expected", [("", "", False), ("admin", "", False), ("admin", "pw", True)]
+)
+def test_navidrome_skipped_when_credentials_blank(user: str, password: str, expected: bool) -> None:
+    settings = SimpleNamespace(navidrome_user=user, navidrome_password=password)
+    assert navidrome_configured(settings) is expected
+
+
+def test_main_skips_navidrome_without_credentials(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    seen: dict[str, object] = {}
+
+    def _run(s, **kw):
+        seen.update(kw)
+        return run_checks(s, tmp_path / "none.db", tmp_path, tmp_path)
+
+    monkeypatch.setattr("utils.doctor.run_checks", _run)
+    monkeypatch.setattr("utils.config.settings.navidrome_user", "")
+    main([])
+    assert seen["navidrome"] is None

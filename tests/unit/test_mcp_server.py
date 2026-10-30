@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import asyncio
-from contextlib import contextmanager
 from unittest.mock import patch
 
+import httpx
 import pytest
 
 from agent.tools import ALL_TOOLS
 from mcp_server import server
 from sources.schemas import TrackRef
+from sources.subsonic import SubsonicClient
 
 
 def _tools() -> dict:
@@ -37,21 +38,48 @@ def test_content_and_artifact_tools_return_text_only():
 
 
 @pytest.fixture
-def fake_db(mem_conn):
-    @contextmanager
-    def _db():
-        yield mem_conn
+def isolated_save(tmp_path):
+    """JSPF export → tmp_path, no match cache (the project DB is never opened)."""
+    import agent.tools.discover as discover
 
-    with patch.object(server, "db", _db):
-        yield mem_conn
+    with (
+        patch.object(discover, "JSPF_DIR", tmp_path),
+        patch.object(discover, "match_cache", return_value=None),
+    ):
+        yield tmp_path
 
 
-def test_save_playlist_skips_interrupt(fake_db, tmp_path):
-    with patch.object(server, "JSPF_DIR", tmp_path):
-        out = server.save_playlist("Mix", [TrackRef(artist="A", title="x")])
-    assert out.startswith("Saved playlist 'Mix' with 1 tracks")
-    assert len(list(tmp_path.glob("*.jspf"))) == 1
-    assert fake_db.execute("SELECT count(*) FROM local_playlist_tracks").fetchone() == (1,)
+def test_save_playlist_skips_interrupt_and_saves_to_navidrome(isolated_save):
+    import library.navidrome_playlist as navidrome_playlist
+
+    created: list[list[str]] = []
+
+    def nd(request: httpx.Request) -> httpx.Response:
+        endpoint = request.url.path.removeprefix("/rest/")
+        body: dict = {}
+        if endpoint == "search3":
+            song = {"id": "s1", "title": "x", "artist": "A"}
+            body = {"searchResult3": {"song": [song]}}
+        elif endpoint == "createPlaylist":
+            created.append(request.url.params.get_list("songId"))
+            body = {"playlist": {"id": "pl1", "name": "Mix", "entry": []}}
+        return httpx.Response(200, json={"subsonic-response": {"status": "ok", **body}})
+
+    client = SubsonicClient("http://nd.test", "me", "pw", transport=httpx.MockTransport(nd))
+    with patch.object(navidrome_playlist, "_client_from_settings", return_value=client):
+        out = asyncio.run(server.save_playlist("Mix", [TrackRef(artist="A", title="x")]))
+    assert out.startswith("Saved playlist 'Mix' to the music library (Navidrome id pl1)")
+    assert created == [["s1"]]
+    assert len(list(isolated_save.glob("*.jspf"))) == 1
+
+
+def test_save_playlist_without_navidrome_fails_cleanly(isolated_save):
+    import library.navidrome_playlist as navidrome_playlist
+
+    with patch.object(navidrome_playlist, "navidrome_configured", return_value=False):
+        out = asyncio.run(server.save_playlist("Mix", [TrackRef(artist="A", title="x")]))
+    assert "Navidrome isn't configured" in out
+    assert len(list(isolated_save.glob("*.jspf"))) == 1  # the JSPF export still happens
 
 
 def test_http_bind_follows_settings():

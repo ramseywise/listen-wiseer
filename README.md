@@ -1,6 +1,6 @@
 # listen-wiseer
 
-A personal music copilot — LangGraph agent with Claude, ML recommendation models, and agentic web search for music context. Chat interface via Chainlit; the agent discovers music through free open sources (MusicBrainz, ListenBrainz, Last.fm, Deezer), plays it for free (YouTube + Deezer previews), and calls local ML tools directly. No Spotify account required.
+A personal music copilot — LangGraph agent with Claude, ML recommendation models, and agentic web search for music context. A React web player (`web/`, served by a FastAPI backend over Navidrome) with the assistant in a side panel; the agent discovers music through free open sources (MusicBrainz, ListenBrainz, Last.fm, Deezer), plays it for free (YouTube + Deezer previews), and calls local ML tools directly. No Spotify account required.
 
 ## The Product
 
@@ -27,7 +27,8 @@ The recent focus areas:
 
 ```
 ┌──────────────────────────────────────────────────────┐
-│            Chainlit Chat UI  :8501                   │
+│  Web player (web/, Vite) + assistant panel           │
+│  → FastAPI  /api/chat (SSE) · /api/playable  :8000   │
 └──────────────────────────────────────────────────────┘
                          │
 ┌──────────────────────────────────────────────────────┐
@@ -72,7 +73,7 @@ The recent focus areas:
 |---|---|
 | LLM | Anthropic Claude Haiku (`claude-haiku-4-5-20251001`) |
 | Agent orchestration | LangGraph (intent routing, persistent memory via langmem) |
-| Chat UI | Chainlit |
+| Player + chat UI | React (Vite) · FastAPI (SSE) · Navidrome (Subsonic) |
 | MCP server | FastMCP (re-exposes the agent's music tools) |
 | Music data | MusicBrainz · ListenBrainz · Last.fm · Deezer (free APIs) |
 | Playback | YouTube links + Deezer 30s previews (no downloads from either) |
@@ -91,7 +92,7 @@ The recent focus areas:
 ```
 listen-wiseer/
 ├── src/
-│   ├── app/              # Chainlit entry point
+│   ├── api/              # FastAPI backend: Navidrome proxy, /api/chat (SSE), /api/playable
 │   ├── agent/            # LangGraph workflow
 │   │   ├── graph.py            # compiled state graph + routing
 │   │   ├── graph_nodes.py      # node functions (intent, rewrite, agent)
@@ -145,20 +146,33 @@ uv sync                            # add --extra embeddings for semantic memory 
 cp .env.example .env               # fill in keys (ANTHROPIC_API_KEY required)
 make train                         # GMM + per-playlist classifiers from DuckDB → models/ (no CSVs needed)
 make doctor                        # keys set/unset, DuckDB row counts, models present
-make app                           # http://localhost:8501
+make app                           # player API on http://localhost:8000 (see "Run the player")
 ```
 
 `make doctor` never prints key values; `--strict` (`PYTHONPATH=src uv run python -m utils.doctor --strict`) exits 1 on any warning. `make app` runs it first, non-blocking.
+
+### Run the player (local dev)
+
+```bash
+make navidrome                     # music server for data/library/ (http://localhost:4533)
+make seed-library                  # ~5 CC tracks + first-run Navidrome admin (NAVIDROME_USER/PASSWORD)
+make api                           # FastAPI on 127.0.0.1:8000 (API_PORT=8010 to move), reload
+make web                           # Vite on http://localhost:5173, proxies /api → the API
+```
+
+`make dev` runs `api` + `web` in one terminal. After `make web-build`, `make api` also serves the built UI at `/`.
 
 ### Docker
 
 ```bash
 cp .env.example .env               # compose reads it via --env-file
 make train                         # models/ is bind-mounted; the containers don't train
-make infra-build && make infra-up  # postgres, db-init (schema migration), mcp, app
-make infra-smoke                   # postgres + app + mcp health
-open http://localhost:8501
+make infra-build && make infra-up  # postgres, db-init, navidrome, api (+ built web), mcp
+make infra-smoke                   # health (navidrome:true), / → index.html, Range stream → 206, mcp
+open http://localhost:${API_PORT:-8000}
 ```
+
+`API_PORT=8010 make infra-up` moves the host port (bound to 127.0.0.1). The `api` image builds `web/` with Node 22 and serves it from FastAPI; Navidrome is in the default stack and reachable from the API as `http://navidrome:4533`.
 
 Images are multi-stage and run as non-root uid 1000. On Linux, if `data/`, `models/` or `logs/` are owned by a different uid, `chown` them before `make infra-up`.
 
@@ -186,25 +200,27 @@ make train
 
 ```bash
 # Local dev
-make app              # Chainlit UI (localhost:8501); runs doctor first
+make app              # Player API + assistant (localhost:8000); runs doctor first
+make web              # Web player UI (Vite dev server, proxies /api → :8000)
 make doctor           # readiness: keys set/unset, DuckDB row counts, models
 make mcp-server       # MCP server (stdio by default; see MCP below)
 make init-db          # schema migration; CSV import only if data/archived/ exists
 make import-history   # Spotify privacy export → plays
 make resolve-ids      # plays → MusicBrainz/Deezer IDs
 make data-sync        # Last.fm genre tags → genre profiles
-make navidrome        # Serve data/library/ to Subsonic apps (localhost:4533)
+make navidrome        # Serve data/library/ to the player + Subsonic apps (localhost:4533)
+make api / make web   # Player API (:8000) + Vite UI (:5173); `make dev` runs both
 make train            # Fit GMM + LightGBM → models/*.pkl
 make train-cat        # Train with CatBoost instead
 make train-compare    # Head-to-head comparison (no models saved)
 
 # Docker stack
-make infra-up         # Start full stack (postgres, db-init, mcp, app)
-make infra-down       # Teardown + remove volumes
+make infra-up         # Start full stack (postgres, db-init, navidrome, api, mcp)
+make infra-down       # Teardown (volumes kept: Navidrome users/playlists, Postgres)
 make infra-build      # Rebuild images
 make infra-ps         # Container status
 make infra-logs       # Follow logs
-make infra-smoke      # Smoke-test: postgres + app + mcp
+make infra-smoke      # Smoke-test: postgres, api health/web/stream, mcp
 
 # Eval harness
 make eval-ci          # CI gate: heuristic graders vs baseline (no API cost, <30s)

@@ -91,7 +91,10 @@ def rank_normalise(items: list[SimilarItem]) -> list[float]:
     return [scales[(it.source, bool(it.title))][it.match] for it in items]
 
 
-def gather(
+SourceCall = tuple[str, Callable[[], list[SimilarItem]]]
+
+
+def source_calls(
     artist: str,
     title: str | None = None,
     *,
@@ -99,9 +102,10 @@ def gather(
     lastfm_client: SourceClient | None = None,
     lb_client: SourceClient | None = None,
     deezer_client: SourceClient | None = None,
-) -> list[SimilarItem]:
-    """All candidates for the seed. Each source fails soft."""
-    calls: list[tuple[str, Callable[[], list[SimilarItem]]]] = [
+) -> list[SourceCall]:
+    """One blocking call per source for the seed — ``gather`` runs them in turn; the API's
+    radio runs them in parallel under a deadline."""
+    calls: list[SourceCall] = [
         (
             "listenbrainz.lb_radio",
             lambda: listenbrainz.lb_radio(f"artist:({artist})", client=lb_client),
@@ -122,6 +126,27 @@ def gather(
                 lambda: lastfm.similar_tracks(artist, title, limit=limit, client=lastfm_client),
             )
         )
+    return calls
+
+
+def gather(
+    artist: str,
+    title: str | None = None,
+    *,
+    limit: int = 30,
+    lastfm_client: SourceClient | None = None,
+    lb_client: SourceClient | None = None,
+    deezer_client: SourceClient | None = None,
+) -> list[SimilarItem]:
+    """All candidates for the seed. Each source fails soft."""
+    calls = source_calls(
+        artist,
+        title,
+        limit=limit,
+        lastfm_client=lastfm_client,
+        lb_client=lb_client,
+        deezer_client=deezer_client,
+    )
     items: list[SimilarItem] = []
     for name, call in calls:
         try:

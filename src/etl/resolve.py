@@ -49,7 +49,8 @@ def pending_tracks(
         FROM plays
         WHERE ms_played >= ?
           AND track_key NOT IN (
-              SELECT track_key FROM track_xref WHERE NOT ? OR mbid IS NOT NULL
+              SELECT track_key FROM track_xref
+              WHERE resolved_at IS NOT NULL AND (NOT ? OR mbid IS NOT NULL)
           )
         GROUP BY track_key
         HAVING count(*) >= ?

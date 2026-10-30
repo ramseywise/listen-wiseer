@@ -26,8 +26,6 @@ dependencies = [
     "numpy>=1.26.0",
     # MCP server
     "mcp>=1.28.1",
-    # Web interface
-    "chainlit>=1.0.0",
     # Data validation
     "pydantic>=2.0.0",
     "pydantic-settings>=2.15.0",
@@ -53,6 +51,8 @@ dependencies = [
     "langfuse>=4.14.4",
     "ragas>=0.2.0",
     "mutagen>=1.48.1",
+    "fastapi>=0.139.2",
+    "uvicorn[standard]>=0.51.0",
 ]
 
 [project.optional-dependencies]

@@ -24,6 +24,7 @@ class AgentState(TypedDict, total=False):
     last_tool_call_sequence: list[str]  # ordered tool names from the last ReAct turn
     stall_count: int  # consecutive turns with identical tool call sequence
     checker_critique: str  # feedback injected on verification failure
+    player_context: str  # what the web player has on (now playing / up next); set per turn
     agent_response: (
         dict  # structured output from format_response: {message, track_list, suggestions, sources}
     )

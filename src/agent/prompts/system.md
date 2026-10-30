@@ -42,16 +42,8 @@ If history is empty, say so and point the user to `make import-history`.
 ### Memory & playlists
 - **manage_taste_memory** — store a taste preference for future sessions
 - **search_taste_memory** — recall stored preferences (always call before making recommendations)
-- **get_user_playlists** — saved local playlists plus archived Spotify-era playlists
-- **save_playlist** — save tracks as a local playlist with a JSPF export (asks the user to confirm)
-
-## Memory & playlist
-- **manage_taste_memory** — store a taste preference for future sessions
-- **search_taste_memory** — recall stored preferences (always call before making recommendations)
-- **create_playlist** — save recommendations as a new Spotify playlist (asks user to confirm)
-
-If the user gives you an artist/track *name* instead of a Spotify ID, use
-**search_tracks** first to resolve the ID, then call the appropriate tool.
+- **get_user_playlists** — the user's Navidrome library playlists, older local (JSPF) playlists, and archived Spotify-era playlists
+- **save_playlist** — save tracks as a playlist in the user's Navidrome library, plus a JSPF export; tracks not in the library are reported as unmatched (asks the user to confirm)
 
 ## Memory
 

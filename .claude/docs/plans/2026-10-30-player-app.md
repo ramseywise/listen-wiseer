@@ -1,7 +1,8 @@
 # Player app — own "Spotify" on top of Navidrome
 
-Status: PLAN DRAFTED — awaiting review (decisions D1–D4 below)
-Branch: `LIS-?-player-app` (cut after repo-audit A/B land; E overlaps — see Sequencing)
+Status: DONE — P0–P6 ✓ (862 py unit + 21 integration, 156 web tests; Chainlit retired; live smoke ok). Staged, not committed.
+Branch: `LIS-player-app` — worktree `../listen-wiseer-player` (no `.env`; `models/` symlinked)
+Decisions D1–D4 approved 2026-10-30.
 
 ## Research
 
@@ -63,18 +64,77 @@ src/library/match.py    → TrackRef → Navidrome song id (MBID first, then cas
 Navidrome (docker) ← MUSIC_DIR
 ```
 
-### Decisions (need sign-off)
-- **D1 — Music source.** Navidrome mounts `${MUSIC_DIR:-./data/library}`. Recommend: point it at your real collection (ideally Picard-tagged so MBIDs match); CC downloads go to a `free/` subfolder of the same root. Without files the app is a preview player.
-- **D2 — Playlist source of truth = Navidrome.** Playable playlists live in Navidrome (phone apps see them too). Agent `save_playlist` resolves `TrackRef`s via `match.py`; unmatched tracks are returned as "not in library" with preview / YouTube / free-download offers instead of silently dropped. DuckDB `local_playlists` becomes JSPF export only; one-off migration script for any existing rows.
-- **D3 — Retire Chainlit** after P4 parity (overrides repo-audit "out of scope: replacing Chainlit"). `make app` → API + web.
-- **D4 — Queue persistence** via Subsonic `savePlayQueue` (cross-device), localStorage only for UI prefs (panel open, volume).
+### API contract (frozen for round 1 — backend implements, web consumes)
+camelCase JSON. Durations in seconds. Errors: `{"detail": str}` with 4xx/5xx; Navidrome down → 503.
+```ts
+type Song = { id: string; title: string; artist: string; artistId: string; album: string; albumId: string;
+  track?: number; year?: number; duration: number; coverArt?: string; mbid?: string; suffix?: string; starred?: boolean }
+type AlbumSummary = { id: string; name: string; artist: string; artistId: string; year?: number; songCount: number; duration: number; coverArt?: string }
+type Album = AlbumSummary & { songs: Song[] }
+type ArtistSummary = { id: string; name: string; albumCount: number; coverArt?: string }
+type Artist = ArtistSummary & { albums: AlbumSummary[] }
+```
+| Route | Returns |
+|---|---|
+| `GET /api/health` | `{navidrome: boolean, songCount: number}` |
+| `GET /api/artists` | `ArtistSummary[]` |
+| `GET /api/artists/{id}` | `Artist` |
+| `GET /api/albums?type=recent\|newest\|frequent\|random\|alphabeticalByName&size=20&offset=0` | `AlbumSummary[]` |
+| `GET /api/albums/{id}` | `Album` |
+| `GET /api/search?q=&limit=20` | `{artists: ArtistSummary[], albums: AlbumSummary[], songs: Song[]}` |
+| `GET /api/cover/{coverArtId}?size=300` | image bytes |
+| `GET /api/stream/{songId}` | audio, honours `Range` (206) |
+
+#### Round 2 contract (P3 ∥ P4)
+```ts
+type PlaylistSummary = { id: string; name: string; songCount: number; duration: number; coverArt?: string; changed: string }
+type Playlist = PlaylistSummary & { songs: Song[] }
+type ArchivePlaylistSummary = { id: string; name: string; trackCount: number }
+type ArchiveTrack = { artist: string; title: string; album?: string; mbid?: string }
+type Playable = { artist: string; title: string; songId?: string /* in library */; previewUrl?: string; youtubeUrl?: string; coverUrl?: string }
+type ChatTrack = { artist: string; title: string; mbid?: string; playable: Playable }
+type ChatEvent =
+  | { type: "token"; text: string }                 // streamed assistant text
+  | { type: "tracks"; tracks: ChatTrack[] }
+  | { type: "suggestions"; items: string[] }
+  | { type: "interrupt"; kind: "confirm_playlist_create"; name: string; trackCount: number }
+  | { type: "done"; message: string }               // final full text
+  | { type: "error"; detail: string }
+```
+| Route | Owner | Body → Returns |
+|---|---|---|
+| `GET /api/playlists` | P3 | `PlaylistSummary[]` |
+| `POST /api/playlists` | P3 | `{name, songIds?: string[]}` → `Playlist` |
+| `GET /api/playlists/{id}` | P3 | `Playlist` |
+| `PATCH /api/playlists/{id}` | P3 | `{name?, songIds?: string[] /* full new order */, add?: string[], removeIndexes?: number[]}` → `Playlist` |
+| `DELETE /api/playlists/{id}` | P3 | 204 |
+| `GET /api/starred` | P3 | `Song[]` |
+| `PUT/DELETE /api/starred/{songId}` | P3 | 204 |
+| `POST /api/player/scrobble` | P3 | `{songId, submission: boolean, playedSeconds?: number, skipped?: boolean}` → 204 |
+| `GET /api/player/queue` | P3 | `{songIds: string[], current?: string, position: number}` |
+| `PUT /api/player/queue` | P3 | same body → 204 (library items only; preview items are not persisted) |
+| `GET /api/archive/playlists` | P3 | `ArchivePlaylistSummary[]` |
+| `GET /api/archive/playlists/{id}` | P3 | `{id, name, tracks: ArchiveTrack[]}` |
+| `POST /api/archive/playlists/{id}/copy` | P3 | `{name?}` → `{playlist: Playlist, unmatched: ArchiveTrack[]}` |
+| `GET /api/playable?artist=&title=&mbid=` | P4 (P3 consumes) | `Playable` |
+| `POST /api/chat` (SSE `text/event-stream`, `data: ChatEvent` per line) | P4 | `{threadId?: string, message: string, nowPlaying?: {artist, title, album?}, upNext?: {artist,title}[]}`; first event `{type:"thread", threadId}` |
+| `POST /api/chat/resume` (SSE) | P4 | `{threadId, confirmed: boolean}` |
+
+Shared files in round 2: `src/api/app.py` (router includes — add one line each), `web/src` nav + router (add entries only). P4 owns `library/match.py`; P3 imports it — P3 must not create its own matcher (use a temporary stub import if P4 hasn't landed; P4 lands match.py first thing).
+
+### Decisions
+- **D1 — Music source. ✓** Navidrome mounts `${MUSIC_DIR:-./data/library}`; CC downloads go to `data/library/downloads/`. **No mp3s exist yet** — only the DuckDB archive (2,182 tracks, 80 playlists). P0 seeds a handful of CC tracks so streaming is testable; archived playlists are browsable and play via Deezer previews (P3.6).
+- **D2 ✓ — Playlist source of truth = Navidrome.** Playable playlists live in Navidrome (phone apps see them too). Agent `save_playlist` resolves `TrackRef`s via `match.py`; unmatched tracks are returned as "not in library" with preview / YouTube / free-download offers instead of silently dropped. DuckDB `local_playlists` becomes JSPF export only; one-off migration script for any existing rows.
+- **D3 ✓ — Retire Chainlit** after P4 parity (overrides repo-audit "out of scope: replacing Chainlit"). `make app` → API + web.
+- **D4 ✓ — Queue persistence** via Subsonic `savePlayQueue` (cross-device), localStorage only for UI prefs (panel open, volume).
 
 ### P0 — Library + Navidrome ready (small)
 1. Compose: `MUSIC_DIR` env for the Navidrome volume; bump image to current stable (check release notes for breaking config); `ND_` settings for scan interval.
 2. `.env.example`: `NAVIDROME_URL`, `NAVIDROME_USER`, `NAVIDROME_PASSWORD`, `MUSIC_DIR`. `utils/config.py` fields.
 3. `library/downloads.py`: write under `MUSIC_DIR/free/` (keep `local_path` lookups working).
 4. `make doctor`: Navidrome reachable (`ping`), song/album counts via `getScanStatus`.
-5. **Gate:** admin user created, library scanned, ≥1 album visible.
+5. Seed: `scripts/seed_library.py` (or make target) downloads ~5 CC tracks via existing `library/downloads.py` into `data/library/downloads/` and triggers `startScan`.
+6. **Gate:** admin user created, library scanned, ≥1 album visible.
 
 ### P1 — API skeleton + Subsonic client
 1. Deps: `fastapi`, `uvicorn[standard]` (uvicorn already transitive — pin explicitly).
@@ -97,6 +157,7 @@ Navidrome (docker) ← MUSIC_DIR
 3. `/api/player/scrobble` → Navidrome + insert into DuckDB `plays` (`ts`, `track_key`, artist/title/album, `ms_played`, `skipped` = advanced before 30s). Schema: add nullable `navidrome_id`, `source='navidrome'`.
 4. `/api/player/queue` GET/PUT → `getPlayQueue`/`savePlayQueue` (debounced from the store).
 5. Migration script: DuckDB `local_playlists` → Navidrome via `match.py` (report unmatched).
+6. Archived Spotify playlists (DuckDB `playlists` / `playlist_tracks` / `tracks`, read-only): `/api/archive/playlists`, `/api/archive/playlists/{id}`; UI section "Archive" in nav. Tracks play as `preview` queue items resolved lazily via `/api/playable?artist=&title=` (library match first, then Deezer preview, YouTube link shown when neither). "Copy to library playlist" = match + create Navidrome playlist with what matched.
 
 ### P4 — Assistant panel
 1. `library/match.py`: MBID → `search3` artist+title (casefold, strip "feat."/remaster suffixes) → confidence; cache in DuckDB `track_xref.navidrome_id`. Fixture-tested.

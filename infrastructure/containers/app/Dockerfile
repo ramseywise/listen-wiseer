@@ -1,6 +1,16 @@
 # syntax=docker/dockerfile:1
+# Player app image: FastAPI (src/api) + the built web/ it serves at /. Also runs db-init.
 # Build context: repo root (see docker-compose.yml). Dockerfile.dockerignore alongside
-# limits the context to pyproject.toml, uv.lock and src/.
+# limits the context to pyproject.toml, uv.lock, src/ and web/ sources.
+
+# ── web: Vite build → /web/dist ──────────────────────────────────────────────
+FROM node:22-slim AS web
+
+WORKDIR /web
+COPY web/package.json web/package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci --no-audit --no-fund
+COPY web/ ./
+RUN npm run build
 
 # ── builder: compile wheels into /app/.venv ──────────────────────────────────
 FROM python:3.11-slim AS builder
@@ -18,13 +28,14 @@ RUN pip install --no-cache-dir uv
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
 # Code runs from src/ via PYTHONPATH, so the project itself is not installed.
-# `embeddings` extra: semantic memory search (sentence-transformers). torch resolves to
-# the CPU-only wheel on Linux via [tool.uv.sources] in pyproject.toml.
+# `embeddings` extra: semantic memory search for the agent (sentence-transformers; torch
+# resolves to the CPU-only wheel on Linux via [tool.uv.sources]). UV_EXTRAS= drops it.
+ARG UV_EXTRAS="--extra embeddings"
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-install-project --extra embeddings
+    uv sync --frozen --no-dev --no-install-project ${UV_EXTRAS}
 
 # ── runtime ──────────────────────────────────────────────────────────────────
-FROM python:3.11-slim
+FROM python:3.11-slim AS runtime
 
 # libgomp1: OpenMP runtime for LightGBM; curl: HEALTHCHECK
 RUN apt-get update \
@@ -39,16 +50,18 @@ ENV PATH=/app/.venv/bin:$PATH \
 
 COPY --from=builder /app/.venv /app/.venv
 COPY src/ ./src/
+# paths.WEB_DIST_DIR = REPO_ROOT/web/dist = /app/web/dist
+COPY --from=web /web/dist ./web/dist
 
-RUN mkdir -p data/listening_history data/cache logs models infrastructure/db \
+RUN mkdir -p data/listening_history data/cache data/library logs models infrastructure/db \
     && chown -R app:app /app/data /app/logs /app/models /app/infrastructure \
     && chown app:app /app
 
 USER app
 
-EXPOSE 8501
+EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:8501/ || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+    CMD curl -fsS http://localhost:8000/api/health || exit 1
 
-CMD ["chainlit", "run", "src/app/main.py", "--host", "0.0.0.0", "--port", "8501"]
+CMD ["uvicorn", "api.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
