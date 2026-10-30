@@ -8,6 +8,9 @@ Loads:
   data/archived/faves.csv            → faves
   data/archived/my_playlists.csv     → playlists
 
+If data/archived/ is absent (fresh clone — it is gitignored), only the schema is
+migrated; existing tables in the committed DB are left as they are.
+
 Run:
   PYTHONPATH=src uv run python -m etl.bootstrap
   make init-db
@@ -370,10 +373,7 @@ def _train_if_needed() -> None:
         log.info("bootstrap.train.done")
 
 
-def main() -> None:
-    conn = get_connection()
-    init_schema(conn)
-
+def _load_archived_csvs(conn) -> None:
     load_playlists(conn)
     load_genre_map(conn)
     load_enoa_coordinates(conn)
@@ -381,6 +381,23 @@ def main() -> None:
     load_artists(conn)
     load_faves(conn)
     load_playlist_tracks(conn)
+
+
+def main() -> None:
+    conn = get_connection()
+    init_schema(conn)
+
+    if ARCHIVED.is_dir():
+        _load_archived_csvs(conn)
+    else:
+        # Fresh clones have no data/archived/ (gitignored). The committed DuckDB already
+        # holds the archive, so this run is a schema migration only — never wipe tables.
+        log.warning(
+            "bootstrap.archived.missing",
+            path=str(ARCHIVED),
+            action="schema_only",
+            detail="CSV import skipped; existing DuckDB tables left untouched",
+        )
 
     n_tracks = fetch_one(conn, "SELECT COUNT(*) FROM tracks")[0]
     n_genres = fetch_one(conn, "SELECT COUNT(*) FROM genre_map")[0]

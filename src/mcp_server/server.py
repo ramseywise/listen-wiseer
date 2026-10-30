@@ -1,11 +1,23 @@
 """
 MCP server exposing the agent's music tools to other LLM clients (e.g. Claude Code).
 Run with: uv run python src/mcp_server/server.py
+Transport via MCP_TRANSPORT: "stdio" (default, Claude Code / .mcp.json) or
+"streamable-http" (binds MCP_SERVER_HOST:MCP_SERVER_PORT, endpoint /mcp — used by Docker).
 
 Tools are the agent's own StructuredTools, so behaviour stays in parity. Exceptions:
 memory tools need the LangGraph store (agent only), and save_playlist skips the HITL
 interrupt — MCP clients confirm tool calls themselves.
 """
+
+# ruff: noqa: E402
+import sys
+
+import structlog
+
+if __name__ == "__main__":
+    # stdout is the protocol channel under stdio; tool modules log at import time, so
+    # route structlog to stderr before importing them. Skipped when imported (tests).
+    structlog.configure(logger_factory=structlog.PrintLoggerFactory(file=sys.stderr))
 
 import inspect
 import json
@@ -42,11 +54,12 @@ from agent.tools.discover import JSPF_DIR, db
 from library.playlists import save_playlist as save_playlist_db
 from library.playlists import to_jspf
 from sources.schemas import TrackRef
+from utils.config import settings
 from utils.logging import get_logger
 
 log = get_logger(__name__)
 
-mcp = FastMCP("listen-wiseer")
+mcp = FastMCP("listen-wiseer", host=settings.mcp_server_host, port=settings.mcp_server_port)
 
 _EXPOSED: list[StructuredTool] = [
     discover_tracks_tool,
@@ -108,4 +121,10 @@ def save_playlist(name: str, tracks: list[TrackRef], description: str = "") -> s
 
 
 if __name__ == "__main__":
-    mcp.run()
+    log.info(
+        "mcp_server.start",
+        transport=settings.mcp_transport,
+        host=settings.mcp_server_host,
+        port=settings.mcp_server_port,
+    )
+    mcp.run(transport=settings.mcp_transport)

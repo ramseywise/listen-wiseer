@@ -1,14 +1,17 @@
 COMPOSE = docker compose -f infrastructure/containers/docker-compose.yml
 
-.PHONY: help infra-up infra-down infra-build infra-ps infra-logs infra-smoke app mcp-server navidrome lint format test test-unit test-fast test-integration test-data notebook init-db data-sync train train-cat train-compare eval-ci eval-full eval-unit eval-trajectory eval-e2e pull status push quick-pr ship
+.PHONY: help infra-up infra-down infra-build infra-ps infra-logs infra-smoke app doctor mcp-server navidrome lint format test test-unit test-fast test-integration test-data notebook init-db data-sync import-history resolve-ids train train-cat train-compare eval-ci eval-full eval-unit eval-trajectory eval-e2e pull status push quick-pr ship
 
 help:
 	@echo "listen-wiseer targets:"
-	@echo "  app          Chainlit UI"
+	@echo "  app          Chainlit UI (runs doctor first, non-fatal)"
+	@echo "  doctor       Check API keys (set/unset), DuckDB row counts, models/*.pkl"
 	@echo "  mcp-server   MCP server (agent tools for other MCP clients)"
 	@echo "  navidrome    Music server for data/library/ (http://localhost:4533)"
-	@echo "  init-db      Bootstrap DuckDB from CSVs"
+	@echo "  init-db      Migrate DuckDB schema; import data/archived/ CSVs if present"
 	@echo "  data-sync    Last.fm genre tags → genre profiles (archived library)"
+	@echo "  import-history  Spotify privacy-export JSON (data/listening_history/) → plays"
+	@echo "  resolve-ids  Match played tracks to MusicBrainz/Deezer IDs (ARGS=\"--limit 500\")"
 	@echo "  train        Fit GMM + LightGBM → models/*.pkl"
 	@echo "  test         Full test suite"
 	@echo "  test-unit    Unit tests (with coverage)"
@@ -61,7 +64,11 @@ infra-smoke:
 		&& echo "✓ app responding" || echo "✗ app not responding (may still be starting)"
 
 app:
+	-@PYTHONPATH=src uv run python -m utils.doctor
 	PYTHONPATH=src uv run chainlit run src/app/main.py
+
+doctor:  ## Keys set (bool only), DuckDB row counts, models present, plays empty?
+	PYTHONPATH=src uv run python -m utils.doctor
 
 mcp-server:
 	PYTHONPATH=src uv run python src/mcp_server/server.py
@@ -97,7 +104,7 @@ notebook:
 	uv run jupyter lab notebooks/
 
 init-db:
-	@echo "Bootstrapping DuckDB from archived CSVs..."
+	@echo "Bootstrapping DuckDB (schema migration; CSV import only if data/archived/ exists)..."
 	PYTHONPATH=src uv run python -m etl.bootstrap
 
 data-sync:

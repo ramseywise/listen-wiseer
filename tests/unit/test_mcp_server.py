@@ -52,3 +52,24 @@ def test_save_playlist_skips_interrupt(fake_db, tmp_path):
     assert out.startswith("Saved playlist 'Mix' with 1 tracks")
     assert len(list(tmp_path.glob("*.jspf"))) == 1
     assert fake_db.execute("SELECT count(*) FROM local_playlist_tracks").fetchone() == (1,)
+
+
+def test_http_bind_follows_settings():
+    from utils.config import settings
+
+    assert server.mcp.settings.host == settings.mcp_server_host
+    assert server.mcp.settings.port == settings.mcp_server_port
+
+
+def test_transport_defaults_to_stdio_and_rejects_unknown(monkeypatch):
+    from pydantic import ValidationError
+
+    from utils.config import Settings
+
+    monkeypatch.delenv("MCP_TRANSPORT", raising=False)
+    assert Settings(_env_file=None).mcp_transport == "stdio"
+    monkeypatch.setenv("MCP_TRANSPORT", "streamable-http")
+    assert Settings(_env_file=None).mcp_transport == "streamable-http"
+    monkeypatch.setenv("MCP_TRANSPORT", "sse")
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)

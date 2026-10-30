@@ -6,8 +6,12 @@ Complements recommend/engine.py (closed-world, corpus only). Candidates:
   - artist-level: Last.fm artist.getSimilar, Deezer related — boost tracks by those artists
 LB CF recs are recording-MBID only (no artist/title) and need history; S3b.
 
+Source scales differ (Last.fm match is absolute similarity; LB Radio and Deezer are
+positional 1 − i/n), so each source's match is first rank-normalised within its own
+list — (n − rank) / n, ties share the better rank, track- and artist-level separately.
+
 S3a heuristic, per track (deduped on track_key):
-  W_AGREE · (track sources − 1) + W_MATCH · mean per-source match
+  W_AGREE · (track sources − 1) + W_MATCH · mean per-source rank-normalised match
   + W_ARTIST · artist-level support − W_PLAYED · log1p(own plays)
 then cap tracks per artist and mix known vs new artists.
 """
@@ -66,6 +70,25 @@ def load_history(conn: duckdb.DuckDBPyConnection) -> History:
         play_counts={key: n for key, _, n in rows},
         known_artists={_artist_key(artist) for _, artist, _ in rows},
     )
+
+
+def rank_normalise(items: list[SimilarItem]) -> list[float]:
+    """Per-source rank scale aligned with ``items``: top of each list → 1.0, last → 1/n.
+
+    Groups by (source, track-level vs artist-level); equal raw matches get equal scores.
+    """
+    groups: dict[tuple[str, bool], list[float]] = defaultdict(list)
+    for it in items:
+        groups[(it.source, bool(it.title))].append(it.match)
+    scales: dict[tuple[str, bool], dict[float, float]] = {}
+    for key, matches in groups.items():
+        ordered = sorted(matches, reverse=True)
+        n = len(ordered)
+        scale: dict[float, float] = {}
+        for i, m in enumerate(ordered):
+            scale.setdefault(m, (n - i) / n)
+        scales[key] = scale
+    return [scales[(it.source, bool(it.title))][it.match] for it in items]
 
 
 def gather(
@@ -141,9 +164,12 @@ def rank(
 
     tracks: dict[str, list[SimilarItem]] = defaultdict(list)
     artist_support: dict[str, dict[str, float]] = defaultdict(dict)  # artist → source → match
+    items = [it for it in items if it.artist]  # MBID-only (LB CF) — needs resolution first
+    items = [
+        it.model_copy(update={"match": m})
+        for it, m in zip(items, rank_normalise(items), strict=True)
+    ]
     for it in items:
-        if not it.artist:
-            continue  # MBID-only (LB CF) — needs resolution first
         if it.title:
             tracks[track_key(it.artist, it.title)].append(it)
         else:

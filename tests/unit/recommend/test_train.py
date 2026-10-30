@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
+import duckdb
 import numpy as np
 import polars as pl
 import pytest
@@ -16,6 +17,7 @@ from recommend.modules.clustering import fit_gmm
 from recommend.train import (
     MIN_POSITIVES,
     _load_corpus,
+    _load_enoa,
     _playlist_slug,
     compare_models,
     load_data,
@@ -129,7 +131,7 @@ def test_load_data_missing_enoa_raises(tmp_path: Path) -> None:
         patch("recommend.train.CORPUS_CSV", corpus),
         patch("recommend.train.ENOA_CSV", missing),
     ):
-        with pytest.raises(FileNotFoundError, match="ENOA CSV not found"):
+        with pytest.raises(FileNotFoundError, match="No ENOA source available"):
             load_data()
 
 
@@ -146,6 +148,117 @@ def test_load_data_success(tmp_path: Path) -> None:
         corpus_df, enoa_df = load_data()
     assert len(corpus_df) == 2
     assert len(enoa_df) == 1
+
+
+# ---------------------------------------------------------------------------
+# _load_enoa (DuckDB playlists ⋈ playlist_tracks)
+# ---------------------------------------------------------------------------
+
+
+def _enoa_db(path: Path) -> Path:
+    """Synthetic DuckDB with active/archived/excluded playlists and one removed track."""
+    conn = duckdb.connect(str(path))
+    conn.execute(
+        "CREATE TABLE playlists (playlist_id VARCHAR, playlist_name VARCHAR, status VARCHAR)"
+    )
+    conn.execute(
+        "CREATE TABLE playlist_tracks (playlist_id VARCHAR, track_id VARCHAR, removed_at TIMESTAMP)"
+    )
+    conn.execute(
+        "INSERT INTO playlists VALUES "
+        "('p1', 'Alpha', 'active'), ('p2', 'Beta', 'active'), "
+        "('p3', 'Gamma', 'archived'), ('p4', 'Delta', 'excluded')"
+    )
+    conn.execute(
+        "INSERT INTO playlist_tracks VALUES "
+        "('p1', 't1', NULL), ('p1', 't2', NULL), ('p1', 't9', TIMESTAMP '2024-01-01'), "
+        "('p2', 't3', NULL), ('p3', 't4', NULL), ('p4', 't5', NULL)"
+    )
+    conn.close()
+    return path
+
+
+def _connect_to(path: Path):
+    return lambda read_only=False: duckdb.connect(str(path), read_only=read_only)
+
+
+def test_load_enoa_from_duckdb_active_only(tmp_path: Path) -> None:
+    db = _enoa_db(tmp_path / "test.db")
+    with (
+        patch("recommend.train.get_connection", side_effect=_connect_to(db)),
+        patch("recommend.train.ENOA_CSV", tmp_path / "absent.csv"),
+    ):
+        enoa = _load_enoa()
+
+    assert enoa.columns == ["playlist_name", "id"]
+    assert enoa.schema == {"playlist_name": pl.Utf8, "id": pl.Utf8}
+    assert sorted(enoa.iter_rows()) == [("Alpha", "t1"), ("Alpha", "t2"), ("Beta", "t3")]
+
+
+def test_load_enoa_empty_db_falls_back_to_csv(tmp_path: Path) -> None:
+    db = tmp_path / "empty.db"
+    conn = duckdb.connect(str(db))
+    conn.execute(
+        "CREATE TABLE playlists (playlist_id VARCHAR, playlist_name VARCHAR, status VARCHAR)"
+    )
+    conn.execute(
+        "CREATE TABLE playlist_tracks (playlist_id VARCHAR, track_id VARCHAR, removed_at TIMESTAMP)"
+    )
+    conn.close()
+    csv = tmp_path / "enoa.csv"
+    csv.write_text("playlist_name,id\ncsv_pl,123\n")
+    with (
+        patch("recommend.train.get_connection", side_effect=_connect_to(db)),
+        patch("recommend.train.ENOA_CSV", csv),
+    ):
+        enoa = _load_enoa()
+
+    assert enoa["id"].dtype == pl.Utf8
+    assert enoa.row(0) == ("csv_pl", "123")
+
+
+def test_load_enoa_missing_tables_falls_back_to_csv(tmp_path: Path) -> None:
+    db = tmp_path / "bare.db"
+    duckdb.connect(str(db)).close()
+    csv = tmp_path / "enoa.csv"
+    csv.write_text("playlist_name,id\ncsv_pl,t1\n")
+    with (
+        patch("recommend.train.get_connection", side_effect=_connect_to(db)),
+        patch("recommend.train.ENOA_CSV", csv),
+    ):
+        enoa = _load_enoa()
+
+    assert len(enoa) == 1
+
+
+def test_load_enoa_db_shape_feeds_train_classifiers(
+    corpus: pl.DataFrame, gmm_and_scaler: tuple, tmp_path: Path
+) -> None:
+    """DB-loaded enoa trains a classifier exactly like the CSV shape did."""
+    db = tmp_path / "train.db"
+    conn = duckdb.connect(str(db))
+    conn.execute(
+        "CREATE TABLE playlists (playlist_id VARCHAR, playlist_name VARCHAR, status VARCHAR)"
+    )
+    conn.execute(
+        "CREATE TABLE playlist_tracks (playlist_id VARCHAR, track_id VARCHAR, removed_at TIMESTAMP)"
+    )
+    conn.execute("INSERT INTO playlists VALUES ('p1', 'DB Playlist', 'active')")
+    ids = corpus["id"].head(MIN_POSITIVES + 5).to_list()
+    conn.executemany("INSERT INTO playlist_tracks VALUES ('p1', ?, NULL)", [[i] for i in ids])
+    conn.close()
+    gmm, scaler = gmm_and_scaler
+    models_dir = tmp_path / "models"
+    with (
+        patch("recommend.train.get_connection", side_effect=_connect_to(db)),
+        patch("recommend.train.MODELS_DIR", models_dir),
+        patch("recommend.train.REPO_ROOT", tmp_path),
+    ):
+        enoa = _load_enoa()
+        n_trained, n_skipped = train_classifiers(corpus, enoa, scaler, gmm, scaler)
+
+    assert (n_trained, n_skipped) == (1, 0)
+    assert (models_dir / "classifier_db_playlist.pkl").exists()
 
 
 # ---------------------------------------------------------------------------

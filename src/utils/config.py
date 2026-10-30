@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings
 
@@ -17,10 +19,9 @@ class Settings(BaseSettings):
 
     # App
     log_level: str = "INFO"
-    enable_tracing: bool = False
-    jaeger_endpoint: str = "http://localhost:14268/api/traces"
 
-    # MCP server
+    # MCP server (host/port only apply to streamable-http)
+    mcp_transport: Literal["stdio", "streamable-http"] = "stdio"
     mcp_server_port: int = 8765
     mcp_server_host: str = "localhost"
 
@@ -29,14 +30,8 @@ class Settings(BaseSettings):
     track_features_cache: str = "./data/cache/track_features.parquet"
     genre_metadata_cache: str = "./data/cache/genre_metadata.parquet"
 
-    # Similarity
-    similarity_method: str = "hybrid"
-    audio_feature_weight: float = 0.6
-    genre_weight: float = 0.4
-
     # Last.fm
     last_fm_api_key: str = ""
-    last_fm_id: str = ""
 
     # Free music sources (MusicBrainz, ListenBrainz, Deezer, YouTube)
     source_user_agent: str = "listen-wiseer/0.1 (https://github.com/ramseywise/listen-wiseer)"
