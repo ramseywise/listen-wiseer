@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import duckdb
 import pytest
 
 from agent.tools import discover as tools
+from library.navidrome_playlist import NavidromeNotConfigured, SavedPlaylist
 from recommend.discover import Candidate
 from sources.schemas import PlayableTrack, TrackRef
+from sources.subsonic import PlaylistSummary, SubsonicUnavailable
 
 
 @pytest.fixture
@@ -61,28 +63,71 @@ class TestPlayTrack:
         assert artifact["playable"][0]["artist"] == "A"
 
 
+@pytest.fixture
+def no_navidrome():
+    with patch.object(tools, "list_navidrome_playlists_sync", return_value=None):
+        yield
+
+
 class TestSavePlaylist:
-    TRACKS = [TrackRef(artist="A", title="x", mbid="m1")]
+    TRACKS = [TrackRef(artist="A", title="x", mbid="m1"), TrackRef(artist="B", title="y")]
 
-    def test_cancelled(self, fake_db):
-        with patch.object(tools, "interrupt", return_value=False):
-            assert "cancelled" in tools._save_local_playlist("Mix", self.TRACKS)
-        assert tools._list_local_playlists() == "No saved playlists yet."
+    @pytest.fixture(autouse=True)
+    def _isolate(self, tmp_path, no_navidrome):
+        with (
+            patch.object(tools, "JSPF_DIR", tmp_path),
+            patch.object(tools, "match_cache", return_value=None),
+        ):
+            yield
 
-    def test_saves_and_exports(self, fake_db, tmp_path):
+    async def test_cancelled_writes_nothing(self, tmp_path):
+        with (
+            patch.object(tools, "interrupt", return_value=False),
+            patch.object(tools, "save_to_navidrome", new_callable=AsyncMock) as save,
+        ):
+            text, artifact = await tools._save_playlist("Mix", self.TRACKS)
+        assert (text, artifact) == ("Playlist 'Mix' creation cancelled.", {})
+        save.assert_not_awaited()
+        assert list(tmp_path.glob("*.jspf")) == []
+
+    async def test_saves_to_navidrome_and_reports_unmatched(self, tmp_path):
+        saved = SavedPlaylist(
+            name="Mix", n_tracks=2, playlist_id="pl1", matched=1, unmatched=[self.TRACKS[1]]
+        )
         with (
             patch.object(tools, "interrupt", return_value=True),
-            patch.object(tools, "JSPF_DIR", tmp_path),
+            patch.object(tools, "save_to_navidrome", new_callable=AsyncMock, return_value=saved),
         ):
-            out = tools._save_local_playlist("Mix", self.TRACKS)
-        assert "Saved playlist 'Mix' with 1 tracks" in out
+            text, artifact = await tools._save_playlist("Mix", self.TRACKS)
         [jspf] = tmp_path.glob("*.jspf")
         assert '"creator": "A"' in jspf.read_text()
-        assert tools._list_local_playlists().startswith("Saved playlists:\n- Mix (1 tracks")
+        assert "Saved playlist 'Mix'" in text and "1 of 2 tracks matched" in text
+        assert "- B — y" in text and f"JSPF export: {jspf}" in text
+        assert artifact == {"tracks": [{"artist": "B", "title": "y", "mbid": ""}]}
+
+    async def test_navidrome_not_configured_keeps_jspf(self, tmp_path):
+        boom = AsyncMock(side_effect=NavidromeNotConfigured("no creds"))
+        with (
+            patch.object(tools, "interrupt", return_value=True),
+            patch.object(tools, "save_to_navidrome", boom),
+        ):
+            text, artifact = await tools._save_playlist("Mix", self.TRACKS)
+        assert "Navidrome isn't configured" in text and "JSPF export:" in text
+        assert artifact == {}
+        assert len(list(tmp_path.glob("*.jspf"))) == 1
+
+    async def test_navidrome_down_fails_cleanly(self):
+        boom = AsyncMock(side_effect=SubsonicUnavailable("refused"))
+        with (
+            patch.object(tools, "interrupt", return_value=True),
+            patch.object(tools, "save_to_navidrome", boom),
+        ):
+            text, _ = await tools._save_playlist("Mix", self.TRACKS)
+        assert text.startswith("Failed to save playlist 'Mix' to the music library")
 
 
 class TestListPlaylists:
-    def test_lists_archived_but_not_excluded(self, fake_db):
+    def test_lists_archived_but_not_excluded(self, fake_db, no_navidrome):
         fake_db.execute(
             "INSERT INTO playlists (playlist_id, playlist_name, status) VALUES "
             "('p1', 'Zouk', 'archived'), ('p2', 'Junk', 'excluded')"
@@ -91,3 +136,9 @@ class TestListPlaylists:
         assert out.startswith("No saved playlists yet.")
         assert "- Zouk" in out
         assert "Junk" not in out
+
+    def test_navidrome_playlists_first(self, fake_db):
+        summary = PlaylistSummary(id="pl1", name="Mix", songCount=3)
+        with patch.object(tools, "list_navidrome_playlists_sync", return_value=[summary]):
+            out = tools._list_local_playlists()
+        assert out == "Music library playlists:\n- Mix (3 tracks, id pl1)"

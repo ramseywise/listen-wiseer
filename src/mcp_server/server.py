@@ -1,18 +1,32 @@
 """
 MCP server exposing the agent's music tools to other LLM clients (e.g. Claude Code).
 Run with: uv run python src/mcp_server/server.py
+Transport via MCP_TRANSPORT: "stdio" (default, Claude Code / .mcp.json) or
+"streamable-http" (binds MCP_SERVER_HOST:MCP_SERVER_PORT, endpoint /mcp — used by Docker).
 
 Tools are the agent's own StructuredTools, so behaviour stays in parity. Exceptions:
 memory tools need the LangGraph store (agent only), and save_playlist skips the HITL
-interrupt — MCP clients confirm tool calls themselves.
+interrupt — MCP clients confirm tool calls themselves. save_playlist writes to Navidrome with
+its own short-lived Subsonic client from settings (this process is not the API).
+
+DuckDB is single-writer across processes and the player API is the writer: this server opens
+it read-only (cache writes skipped); download_track's one write fails clearly when locked.
 """
 
+# ruff: noqa: E402
+import sys
+
+import structlog
+
+if __name__ == "__main__":
+    # stdout is the protocol channel under stdio; tool modules log at import time, so
+    # route structlog to stderr before importing them. Skipped when imported (tests).
+    structlog.configure(logger_factory=structlog.PrintLoggerFactory(file=sys.stderr))
+
 import inspect
-import json
 from collections.abc import Callable
 from functools import wraps
 
-import duckdb
 from langchain_core.tools import StructuredTool
 from mcp.server.fastmcp import FastMCP
 
@@ -38,15 +52,14 @@ from agent.tools import (
     recommend_similar_tracks,
     search_tracks_tool,
 )
-from agent.tools.discover import JSPF_DIR, db
-from library.playlists import save_playlist as save_playlist_db
-from library.playlists import to_jspf
+from agent.tools.discover import save_playlist_to_library, use_read_only_db
 from sources.schemas import TrackRef
+from utils.config import settings
 from utils.logging import get_logger
 
 log = get_logger(__name__)
 
-mcp = FastMCP("listen-wiseer")
+mcp = FastMCP("listen-wiseer", host=settings.mcp_server_host, port=settings.mcp_server_port)
 
 _EXPOSED: list[StructuredTool] = [
     discover_tracks_tool,
@@ -93,19 +106,24 @@ for _tool in _EXPOSED:
 
 
 @mcp.tool()
-def save_playlist(name: str, tracks: list[TrackRef], description: str = "") -> str:
-    """Save tracks (artist, title, optional MusicBrainz mbid) as a local playlist and
-    export it as JSPF (importable into ListenBrainz)."""
-    try:
-        with db() as conn:
-            pid = save_playlist_db(conn, name, tracks, description)
-    except duckdb.IOException as exc:
-        return f"Failed to save playlist: {exc}"
-    JSPF_DIR.mkdir(parents=True, exist_ok=True)
-    path = JSPF_DIR / f"{pid}.jspf"
-    path.write_text(json.dumps(to_jspf(name, tracks, description), indent=2))
-    return f"Saved playlist '{name}' with {len(tracks)} tracks (id {pid}). JSPF export: {path}"
+async def save_playlist(name: str, tracks: list[TrackRef], description: str = "") -> str:
+    """Save tracks (artist, title, optional MusicBrainz mbid) as a playlist in the music
+    library (Navidrome) plus a JSPF export. Tracks not in the library are listed in the result."""
+    text, _unmatched = await save_playlist_to_library(name, tracks, description)
+    return text
+
+
+def main() -> None:
+    use_read_only_db()
+    log.info(
+        "mcp_server.start",
+        transport=settings.mcp_transport,
+        host=settings.mcp_server_host,
+        port=settings.mcp_server_port,
+        db_read_only=True,
+    )
+    mcp.run(transport=settings.mcp_transport)
 
 
 if __name__ == "__main__":
-    mcp.run()
+    main()

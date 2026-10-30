@@ -1,6 +1,6 @@
 # listen-wiseer
 
-A personal music copilot — LangGraph agent with Claude, ML recommendation models, and agentic web search for music context. Chat interface via Chainlit; the agent discovers music through free open sources (MusicBrainz, ListenBrainz, Last.fm, Deezer), plays it for free (YouTube + Deezer previews), and calls local ML tools directly. No Spotify account required.
+A personal music copilot — LangGraph agent with Claude, ML recommendation models, and agentic web search for music context. A React web player (`web/`, served by a FastAPI backend over Navidrome) with the assistant in a side panel; the agent discovers music through free open sources (MusicBrainz, ListenBrainz, Last.fm, Deezer), plays it for free (YouTube + Deezer previews), and calls local ML tools directly. No Spotify account required.
 
 ## The Product
 
@@ -27,7 +27,8 @@ The recent focus areas:
 
 ```
 ┌──────────────────────────────────────────────────────┐
-│            Chainlit Chat UI  :8501                   │
+│  Web player (web/, Vite) + assistant panel           │
+│  → FastAPI  /api/chat (SSE) · /api/playable  :8000   │
 └──────────────────────────────────────────────────────┘
                          │
 ┌──────────────────────────────────────────────────────┐
@@ -72,7 +73,7 @@ The recent focus areas:
 |---|---|
 | LLM | Anthropic Claude Haiku (`claude-haiku-4-5-20251001`) |
 | Agent orchestration | LangGraph (intent routing, persistent memory via langmem) |
-| Chat UI | Chainlit |
+| Player + chat UI | React (Vite) · FastAPI (SSE) · Navidrome (Subsonic) |
 | MCP server | FastMCP (re-exposes the agent's music tools) |
 | Music data | MusicBrainz · ListenBrainz · Last.fm · Deezer (free APIs) |
 | Playback | YouTube links + Deezer 30s previews (no downloads from either) |
@@ -91,7 +92,7 @@ The recent focus areas:
 ```
 listen-wiseer/
 ├── src/
-│   ├── app/              # Chainlit entry point
+│   ├── api/              # FastAPI backend: Navidrome proxy, /api/chat (SSE), /api/playable
 │   ├── agent/            # LangGraph workflow
 │   │   ├── graph.py            # compiled state graph + routing
 │   │   ├── graph_nodes.py      # node functions (intent, rewrite, agent)
@@ -100,6 +101,7 @@ listen-wiseer/
 │   │   ├── intent.py           # keyword intent classifier, decompose/complexity
 │   │   ├── state.py            # AgentState schema
 │   │   ├── dependencies.py     # checkpointer factory (Postgres / MemorySaver)
+│   │   ├── checker.py          # runtime HeuristicChecker (verification loop, no LLM)
 │   │   ├── memory_store.py     # procedural prompt management
 │   │   ├── memory_helpers.py   # episodic recall/store, memory stats
 │   │   └── tools/        # domain tool modules
@@ -114,20 +116,21 @@ listen-wiseer/
 │   ├── etl/              # DuckDB bootstrap, history import, ID resolution, Last.fm genres
 │   ├── sources/          # httpx clients: MusicBrainz, ListenBrainz, Last.fm, Deezer, YouTube, Jamendo, Internet Archive
 │   ├── library/          # local playlists (JSPF export), playback resolution, legal downloads
-│   └── utils/            # config, schemas, logging, constants
+│   └── utils/            # config, schemas, logging, constants, doctor (readiness check)
 ├── evals/                # Evaluation harness
 │   ├── agent/            # trajectory eval, intent eval, graders, cost gate
-│   ├── graders/          # answer quality graders
-│   ├── tasks/            # golden set, synthetic generation, models
-│   ├── metrics/          # retrieval scoring
-│   └── datasets/         # golden_intent.jsonl (50 hand-crafted samples)
+│   ├── graders/          # offline LLM-as-judge (re-exports agent/checker.py)
+│   ├── tasks/            # models.py — golden sample schema
+│   └── datasets/         # golden_intent.jsonl (61 samples), eval_baseline.json
 ├── infrastructure/
-│   └── containers/       # docker-compose.yml (postgres, db-init, mcp, app)
+│   ├── containers/       # docker-compose.yml (postgres, db-init, mcp, app, navidrome)
+│   └── db/               # listen_wiseer.db (Git LFS)
 ├── data/
-│   ├── archived/              # source CSVs (gitignored)
-│   └── spotify_train_data.csv # external training corpus (gitignored, ~200MB)
-├── models/               # trained artifacts (gitignored)
-├── notebooks/            # exploration (gitignored)
+│   ├── archived/         # optional source CSVs (gitignored; only `make init-db` reads them)
+│   ├── listening_history/  # Spotify privacy-export JSON → `make import-history`
+│   └── library/          # legal downloads (gitignored)
+├── models/               # trained artifacts (gitignored — `make train`)
+├── notebooks/            # EDA / model comparison (tracked; scipy etc. in the dev group)
 ├── pyproject.toml
 ├── Makefile
 └── setup.sh
@@ -135,54 +138,61 @@ listen-wiseer/
 
 ## Quickstart
 
-### Docker (recommended)
+### Fresh clone (first time)
 
 ```bash
-# 1. Copy and fill credentials
-cp .env.example .env
-# Required: ANTHROPIC_API_KEY, TAVILY_API_KEY, LAST_FM_API_KEY, YOUTUBE_API_KEY
-# Optional: LISTENBRAINZ_TOKEN, LISTENBRAINZ_USER, JAMENDO_CLIENT_ID, USER_ID, LANGFUSE_*
-
-# 2. Build + start the full stack
-make infra-build
-make infra-up
-
-# 3. Smoke-test the running stack
-make infra-smoke
-
-# 4. Open the chat
-open http://localhost:8501
+git lfs pull                       # infrastructure/db/listen_wiseer.db — the committed DB is the bootstrap
+uv sync                            # add --extra embeddings for semantic memory search (pulls torch)
+cp .env.example .env               # fill in keys (ANTHROPIC_API_KEY required)
+make train                         # GMM + per-playlist classifiers from DuckDB → models/ (no CSVs needed)
+make doctor                        # keys set/unset, DuckDB row counts, models present
+make app                           # player API on http://localhost:8000 (see "Run the player")
 ```
 
-The `db-init` container bootstraps the DuckDB schema and trains models on first run. Subsequent starts skip training if `models/` is already populated.
+`make doctor` never prints key values; `--strict` (`PYTHONPATH=src uv run python -m utils.doctor --strict`) exits 1 on any warning. `make app` runs it first, non-blocking.
 
-### Local dev
+### Run the player (local dev)
 
 ```bash
-# 1. Install deps
-uv sync
+make navidrome                     # music server for data/library/ (http://localhost:4533)
+make seed-library                  # ~5 CC tracks + first-run Navidrome admin (NAVIDROME_USER/PASSWORD)
+make api                           # FastAPI on 127.0.0.1:8000 (API_PORT=8010 to move), reload
+make web                           # Vite on http://localhost:5173, proxies /api → the API
+```
 
-# 2. Copy and fill credentials
-cp .env.example .env
+`make dev` runs `api` + `web` in one terminal. After `make web-build`, `make api` also serves the built UI at `/`.
 
-# 3. Import listening history (Spotify privacy export JSON → data/listening_history/)
+### Docker
+
+```bash
+cp .env.example .env               # compose reads it via --env-file
+make train                         # models/ is bind-mounted; the containers don't train
+make infra-build && make infra-up  # postgres, db-init, navidrome, api (+ built web), mcp
+make infra-smoke                   # health (navidrome:true), / → index.html, Range stream → 206, mcp
+open http://localhost:${API_PORT:-8000}
+```
+
+`API_PORT=8010 make infra-up` moves the host port (bound to 127.0.0.1). The `api` image builds `web/` with Node 22 and serves it from FastAPI; Navidrome is in the default stack and reachable from the API as `http://navidrome:4533`.
+
+Images are multi-stage and run as non-root uid 1000. On Linux, if `data/`, `models/` or `logs/` are owned by a different uid, `chown` them before `make infra-up`.
+
+### Listening history (optional)
+
+History tools and the discovery play-penalty read the `plays` table, which is empty until you import the Spotify extended streaming history:
+
+```bash
+# Spotify → Privacy → request Extended streaming history; drop the JSON in data/listening_history/
 make import-history
-make resolve-ids        # match plays to MusicBrainz/Deezer IDs (resumable)
-
-# 4. Train recommendation models
-make train
-
-# 5. Run the chat app
-make app
+make resolve-ids ARGS="--limit 500"   # plays → MusicBrainz/Deezer IDs (resumable)
 ```
 
-### Fresh machine / full rebuild
+### Rebuild DuckDB from archived CSVs
 
-Only needed if you want to rebuild DuckDB from archived CSVs:
+Only if you have the gitignored `data/archived/` CSVs. Without them `make init-db` is an idempotent schema migration and leaves the data alone.
 
 ```bash
-make init-db                                       # bootstrap from archived CSVs
-PYTHONPATH=src uv run python -m etl.genre_tables   # populate genre profile tables
+make init-db
+PYTHONPATH=src uv run python -m etl.genre_tables   # genre profile tables
 make train
 ```
 
@@ -190,23 +200,27 @@ make train
 
 ```bash
 # Local dev
-make app              # Chainlit UI (localhost:8501)
-make mcp-server       # MCP server for Claude Desktop / Code (localhost:8765)
+make app              # Player API + assistant (localhost:8000); runs doctor first
+make web              # Web player UI (Vite dev server, proxies /api → :8000)
+make doctor           # readiness: keys set/unset, DuckDB row counts, models
+make mcp-server       # MCP server (stdio by default; see MCP below)
+make init-db          # schema migration; CSV import only if data/archived/ exists
 make import-history   # Spotify privacy export → plays
 make resolve-ids      # plays → MusicBrainz/Deezer IDs
 make data-sync        # Last.fm genre tags → genre profiles
-make navidrome        # Serve data/library/ to Subsonic apps (localhost:4533)
+make navidrome        # Serve data/library/ to the player + Subsonic apps (localhost:4533)
+make api / make web   # Player API (:8000) + Vite UI (:5173); `make dev` runs both
 make train            # Fit GMM + LightGBM → models/*.pkl
 make train-cat        # Train with CatBoost instead
 make train-compare    # Head-to-head comparison (no models saved)
 
 # Docker stack
-make infra-up         # Start full stack (postgres, db-init, mcp, app)
-make infra-down       # Teardown + remove volumes
+make infra-up         # Start full stack (postgres, db-init, navidrome, api, mcp)
+make infra-down       # Teardown (volumes kept: Navidrome users/playlists, Postgres)
 make infra-build      # Rebuild images
 make infra-ps         # Container status
 make infra-logs       # Follow logs
-make infra-smoke      # Smoke-test: postgres + app health
+make infra-smoke      # Smoke-test: postgres, api health/web/stream, mcp
 
 # Eval harness
 make eval-ci          # CI gate: heuristic graders vs baseline (no API cost, <30s)
@@ -224,24 +238,33 @@ make eval-e2e         # Tier 3 — RAGAS faithfulness + tool correctness
 #   Run locally with `make eval-full` or `make eval-e2e`. Never auto-triggered in CI.
 
 # Code quality
-make lint             # ruff check + format check
+make lint             # ruff check + format check + pyright (src/)
 make format           # ruff fix + format
 make test             # full pytest suite
 make test-unit        # unit tests with coverage
 make test-fast        # unit tests, no coverage
 ```
 
+CI (`.github/workflows/ci.yml`) runs ruff, `pyright src` and unit tests with `--cov-fail-under=80`.
+
+## MCP
+
+`src/mcp_server/server.py` re-exposes the agent's music tools (minus memory). `MCP_TRANSPORT` picks the transport:
+
+- `stdio` (default) — Claude Code launches it via `.mcp.json`. Server logs go to stderr so stdout stays JSON-RPC.
+- `streamable-http` — serves `http://MCP_SERVER_HOST:MCP_SERVER_PORT/mcp` (default `localhost:8765`). The Docker `mcp` service uses this: `http://localhost:8765/mcp`.
+
 ## Database
 
-`infrastructure/db/listen_wiseer.db` is a DuckDB file committed to the repo (~7MB). Run `make init-db` to rebuild it from the archived CSVs and `make import-history` to load listening history.
+`infrastructure/db/listen_wiseer.db` is a DuckDB file committed via Git LFS (~11MB) — `git lfs pull` after cloning. Schema lives in `src/etl/db.py` (`init_schema`, idempotent). `make import-history` loads listening history.
 
 | Table | Description |
 |---|---|
 | `plays` | Listening history from the Spotify privacy export |
-| `track_ids` | Cross-source identity (MusicBrainz MBID canonical, Deezer ID) |
+| `track_xref` | Cross-source identity per track (MusicBrainz MBID canonical; Spotify, Deezer, ISRC, YouTube IDs) |
 | `local_playlists` / `local_playlist_tracks` | Playlists saved by the agent (stored by artist/title/MBID) |
 | `playable_cache` | Cached YouTube video lookups |
-| `library` | Legally downloaded files in `data/library/` (source, licence, MBID) |
+| `library` | Legally downloaded files in `data/library/` (source, licence, MBID); created by `init_schema` on first use |
 | `tracks` | Core track metadata, archived from Spotify (~2200 rows) |
 | `artists` | Artist metadata (~1700 rows) |
 | `playlists` | Archived Spotify playlists (~80 rows) |

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Annotated, TypedDict
+from typing import Annotated, Required, TypedDict
 
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
@@ -14,7 +14,7 @@ class AgentState(TypedDict, total=False):
     ``state.get("field", default)`` — never direct key access.
     """
 
-    messages: Annotated[list[BaseMessage], add_messages]
+    messages: Required[Annotated[list[BaseMessage], add_messages]]
     intent: str  # "artist_info", "recommendation", etc.
     intent_confidence: float  # 0.0–1.0 from keyword classifier
     entities: dict  # {"mood": [...], "time_period": [...]}
@@ -24,6 +24,7 @@ class AgentState(TypedDict, total=False):
     last_tool_call_sequence: list[str]  # ordered tool names from the last ReAct turn
     stall_count: int  # consecutive turns with identical tool call sequence
     checker_critique: str  # feedback injected on verification failure
+    player_context: str  # what the web player has on (now playing / up next); set per turn
     agent_response: (
         dict  # structured output from format_response: {message, track_list, suggestions, sources}
     )

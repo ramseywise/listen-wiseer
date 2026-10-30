@@ -1,4 +1,4 @@
-"""Spotify-free discovery, playback and local playlists.
+"""Spotify-free discovery, playback and playlists (saved to Navidrome, exported as JSPF).
 
 Tools return content + artifact: the artifact carries structured tracks so
 format_response can hand them to the UI (play buttons, save-as-playlist).
@@ -6,40 +6,73 @@ format_response can hand them to the UI (play buttons, save-as-playlist).
 
 from __future__ import annotations
 
+import asyncio
 import json
+import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
+from pathlib import Path
 
 import duckdb
 from langchain_core.tools import StructuredTool
 from langgraph.types import interrupt
 
 from etl.db import get_connection, init_schema
+from library.match import DuckDBMatchCache
+from library.navidrome_playlist import (
+    NavidromeNotConfigured,
+    describe,
+    list_navidrome_playlists_sync,
+    save_to_navidrome,
+)
 from library.playback import playable
-from library.playlists import list_playlists, save_playlist, to_jspf
+from library.playlists import list_playlists, to_jspf
 from paths import DATA_DIR
 from recommend.discover import discover
 from sources.schemas import PlayableTrack, TrackRef
+from utils.exceptions import SourceError
 from utils.logging import get_logger
 
 log = get_logger(__name__)
 
 JSPF_DIR = DATA_DIR / "playlists"
 _schema_ready = False
+_read_only = False
+
+
+def use_read_only_db() -> None:
+    """Process-wide: ``db()`` opens read-only and cache writes are skipped.
+
+    Called by the MCP server — the player API process is the DuckDB writer. Explicit
+    writes (``db(write=True)``) still open read-write and fail on the lock.
+    """
+    global _read_only  # noqa: PLW0603
+    _read_only = True
 
 
 @contextmanager
-def db() -> Iterator[duckdb.DuckDBPyConnection]:
-    """Short-lived connection — the MCP server / ETL may hold the file between calls."""
+def db(*, write: bool = False) -> Iterator[duckdb.DuckDBPyConnection]:
+    """Short-lived connection — another process (API, MCP, ETL) may want the file next."""
     global _schema_ready  # noqa: PLW0603
-    conn = get_connection()
+    read_only = _read_only and not write
+    conn = get_connection(read_only=read_only)
     try:
-        if not _schema_ready:
+        if not _schema_ready and not read_only:
             init_schema(conn)  # adds S4 tables to existing DBs
             _schema_ready = True
         yield conn
     finally:
         conn.close()
+
+
+def match_cache() -> DuckDBMatchCache:
+    """Navidrome match cache over the same short-lived connections as ``db()``."""
+    read_only = _read_only
+
+    def connect() -> duckdb.DuckDBPyConnection:
+        return get_connection(read_only=read_only)
+
+    return DuckDBMatchCache(connect, read_only=read_only)
 
 
 def format_playable(p: PlayableTrack) -> str:
@@ -112,7 +145,40 @@ play_track_tool = StructuredTool.from_function(
 )
 
 
-def _save_local_playlist(name: str, tracks: list[TrackRef], description: str = "") -> str:
+def write_jspf(name: str, tracks: list[TrackRef], description: str = "") -> Path:
+    """JSPF export (importable into ListenBrainz and most players)."""
+    JSPF_DIR.mkdir(parents=True, exist_ok=True)
+    path = JSPF_DIR / f"{uuid.uuid4().hex[:12]}.jspf"
+    path.write_text(json.dumps(to_jspf(name, tracks, description), indent=2))
+    return path
+
+
+async def save_playlist_to_library(
+    name: str, tracks: list[TrackRef], description: str = ""
+) -> tuple[str, list[TrackRef]]:
+    """Navidrome playlist from the matched tracks + JSPF export; fails soft to JSPF only.
+
+    Returns the tool text and the tracks that are not in the library.
+    """
+    jspf = await asyncio.to_thread(write_jspf, name, tracks, description)
+    try:
+        saved = await save_to_navidrome(name, tracks, cache=match_cache())
+    except NavidromeNotConfigured:
+        text = (
+            f"Playlist '{name}' not saved to the music library: Navidrome isn't configured "
+            f"(NAVIDROME_USER / NAVIDROME_PASSWORD). JSPF export: {jspf}"
+        )
+        return text, []
+    except SourceError as exc:
+        log.error("agent.tools.save_playlist.failed", error=str(exc))
+        text = f"Failed to save playlist '{name}' to the music library: {exc}. JSPF export: {jspf}"
+        return text, []
+    return f"{describe(saved)}\nJSPF export: {jspf}", saved.unmatched
+
+
+async def _save_playlist(
+    name: str, tracks: list[TrackRef], description: str = ""
+) -> tuple[str, dict]:
     confirmed = interrupt(
         {
             "type": "confirm_playlist_create",
@@ -122,34 +188,32 @@ def _save_local_playlist(name: str, tracks: list[TrackRef], description: str = "
         }
     )
     if not confirmed:
-        return f"Playlist '{name}' creation cancelled."
-    try:
-        with db() as conn:
-            pid = save_playlist(conn, name, tracks, description)
-    except duckdb.IOException as exc:
-        log.error("agent.tools.save_playlist.failed", error=str(exc))
-        return f"Failed to save playlist: {exc}"
-    JSPF_DIR.mkdir(parents=True, exist_ok=True)
-    path = JSPF_DIR / f"{pid}.jspf"
-    path.write_text(json.dumps(to_jspf(name, tracks, description), indent=2))
-    return (
-        f"Saved playlist '{name}' with {len(tracks)} tracks (id {pid}). "
-        f"JSPF export: {path} — importable into ListenBrainz."
-    )
+        return f"Playlist '{name}' creation cancelled.", {}
+    text, unmatched = await save_playlist_to_library(name, tracks, description)
+    # unmatched tracks become the UI's track cards ("not in library" → preview / YouTube)
+    return text, {"tracks": [t.model_dump() for t in unmatched]} if unmatched else {}
 
 
 save_playlist_tool = StructuredTool.from_function(
-    _save_local_playlist,
+    coroutine=_save_playlist,
     name="save_playlist",
     description=(
-        "Save tracks (artist, title, optional MusicBrainz mbid) as a local playlist and "
-        "export it as JSPF. Call only when the user explicitly asks to save or create a "
-        "playlist. Always interrupts to ask the user for confirmation first."
+        "Save tracks (artist, title, optional MusicBrainz mbid) as a playlist in the user's "
+        "music library (Navidrome), plus a JSPF export. Tracks not in the library are listed "
+        "in the result — offer previews or free downloads for those. Call only when the user "
+        "explicitly asks to save or create a playlist. Always interrupts to ask the user for "
+        "confirmation first."
     ),
+    response_format="content_and_artifact",
 )
 
 
 def _list_local_playlists() -> str:
+    lines: list[str] = []
+    library = list_navidrome_playlists_sync()
+    if library:
+        lines.append("Music library playlists:")
+        lines += [f"- {p.name} ({p.song_count} tracks, id {p.id})" for p in library]
     try:
         with db() as conn:
             rows = list_playlists(conn)
@@ -157,8 +221,11 @@ def _list_local_playlists() -> str:
                 "SELECT playlist_name FROM playlists WHERE status != 'excluded' ORDER BY 1"
             ).fetchall()
     except duckdb.IOException as exc:
-        return f"Could not open the library database: {exc}"
-    lines = ["Saved playlists:"] if rows else ["No saved playlists yet."]
+        return "\n".join([*lines, f"Could not open the library database: {exc}"])
+    if rows:
+        lines.append("Older local playlists (JSPF-era):")
+    elif not library:
+        lines.append("No saved playlists yet.")
     lines += [
         f"- {r['name']} ({r['n_tracks']} tracks, id {r['id']}, {r['created_at']:%Y-%m-%d})"
         for r in rows
@@ -173,7 +240,7 @@ list_playlists_tool = StructuredTool.from_function(
     _list_local_playlists,
     name="get_user_playlists",
     description=(
-        "List the user's saved playlists, plus archived Spotify-era playlists that "
+        "List the user's playlists (music library + older local ones), plus archived Spotify-era playlists that "
         "recommend_for_playlist can use as seeds."
     ),
 )

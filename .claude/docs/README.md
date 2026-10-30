@@ -31,12 +31,11 @@ Active and upcoming implementation plans.
 
 | Plan | Status | What it covers |
 |---|---|---|
-| [phase7a-exploration-tools.md](plans/phase7a-exploration-tools.md) | ✓ DONE | 6 new fetch functions, 7 new agent tools, MCP parity, 22 tests |
-| [phase7b-intent-refactor-ux.md](plans/phase7b-intent-refactor-ux.md) | PLANNED | Add `explore_my_taste` + `discover` to classifier; wire suggestions → Chainlit chips |
-| [phase7c-memory-genre-polish.md](plans/phase7c-memory-genre-polish.md) | PLANNED | Genre lineage tool, taste drift analysis, swap InMemoryStore → Postgres |
+| [2026-10-30-repo-audit.md](plans/2026-10-30-repo-audit.md) | A–E ✓ · F data-gated | Backlog completeness + local production readiness: fresh clone, docs, dep diet, coverage, Docker; carries S3b reranker |
+| [2026-10-30-player-app.md](plans/2026-10-30-player-app.md) | PLAN DRAFTED | Player app — own "Spotify" on top of Navidrome |
 
 ---
 
 ## archive/
 
-Completed phase plans (phases 1–6) and superseded research. Read-only reference.
+Completed phase plans (phases 1–9, incl. `2026-10-28-free-music-stack.md`) and superseded research. Read-only reference.

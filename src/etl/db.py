@@ -220,6 +220,10 @@ CREATE TABLE IF NOT EXISTS plays (
     reason_end  VARCHAR,
     PRIMARY KEY (ts, track_key)
 );
+-- Migrate existing installs: plays recorded by the web player (api/player.py) via Navidrome.
+-- source NULL = Spotify export; 'navidrome' = scrobbled through the player.
+ALTER TABLE plays ADD COLUMN IF NOT EXISTS navidrome_id VARCHAR;
+ALTER TABLE plays ADD COLUMN IF NOT EXISTS source VARCHAR;
 
 -- Cross-source track identity; MusicBrainz recording MBID is canonical.
 -- A row with mbid NULL = attempted, unmatched (not retried unless asked).
@@ -237,6 +241,11 @@ CREATE TABLE IF NOT EXISTS track_xref (
     youtube_video_id VARCHAR,
     resolved_at      TIMESTAMP
 );
+-- Navidrome song id from library/match.py; only hits are cached (misses retry later).
+-- Rows match.py inserts have resolved_at NULL, so etl.resolve still treats them as pending.
+ALTER TABLE track_xref ADD COLUMN IF NOT EXISTS navidrome_id VARCHAR;
+ALTER TABLE track_xref ADD COLUMN IF NOT EXISTS navidrome_confidence DOUBLE;
+ALTER TABLE track_xref ADD COLUMN IF NOT EXISTS navidrome_matched_at TIMESTAMP;
 
 -- Local playlists (Spotify-free). Tracks stored by identity, not by source ID.
 CREATE TABLE IF NOT EXISTS local_playlists (
@@ -356,6 +365,14 @@ def fetch_one(conn: duckdb.DuckDBPyConnection, sql: str, params: object = None) 
     """
     rows = conn.execute(sql, params).fetchall()
     return rows[0] if rows else None
+
+
+def fetch_count(conn: duckdb.DuckDBPyConnection, sql: str, params: object = None) -> int:
+    """Scalar of an aggregate ``SELECT COUNT(*) ...`` query, which always returns one row."""
+    row = fetch_one(conn, sql, params)
+    if row is None:
+        raise RuntimeError(f"aggregate query returned no rows: {sql}")
+    return int(row[0])
 
 
 def init_schema(conn: duckdb.DuckDBPyConnection) -> None:

@@ -5,6 +5,7 @@ Import/config tests only — no real DB connections.
 
 from __future__ import annotations
 
+import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -32,6 +33,32 @@ async def test_get_store_returns_in_memory_without_url():
             store = await ms.get_store()
 
     assert isinstance(store, InMemoryStore)
+
+
+async def test_get_store_indexes_with_embeddings_when_available():
+    import agent.memory_store as ms
+
+    with patch.object(ms.settings, "memory_store_url", None):
+        with patch.object(ms, "SentenceTransformerEmbeddings", return_value=MagicMock()):
+            store = await ms.get_store()
+
+    assert isinstance(store, InMemoryStore)
+    assert store.index_config is not None
+
+
+async def test_get_store_falls_back_to_plain_store_without_extra():
+    """No sentence-transformers installed → unindexed InMemoryStore, still searchable."""
+    import agent.memory_store as ms
+
+    with patch.object(ms.settings, "memory_store_url", None):
+        with patch.dict(sys.modules, {"sentence_transformers": None}):
+            store = await ms.get_store()
+
+    assert isinstance(store, InMemoryStore)
+    assert store.index_config is None
+    await store.aput(("enoa", "u", "sessions"), "s1", {"request": "zouk"})
+    hits = await store.asearch(("enoa", "u", "sessions"), query="zouk")
+    assert [h.key for h in hits] == ["s1"]
 
 
 async def test_get_store_returns_cached_store():

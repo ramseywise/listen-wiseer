@@ -1,6 +1,10 @@
 """Unit tests for sources.lastfm and sources.listenbrainz."""
 
+import httpx
+import pytest
+
 from sources import lastfm, listenbrainz
+from utils.exceptions import SourceError
 
 
 class TestLastfmSimilarTracks:
@@ -92,3 +96,51 @@ class TestLbRadio:
     def test_no_token_returns_empty(self, monkeypatch):
         monkeypatch.setattr(listenbrainz, "default_client", lambda: None)
         assert listenbrainz.lb_radio("tag:(jazz)") == []
+
+    def test_identifier_without_recording_prefix_has_no_mbid(self, json_client):
+        client, _ = json_client(
+            {
+                "payload": {
+                    "jspf": {
+                        "playlist": {"track": [{"title": "T", "identifier": ["https://other/x"]}]}
+                    }
+                }
+            }
+        )
+        [item] = listenbrainz.lb_radio("tag:(x)", client=client)
+        assert (item.artist, item.mbid) == ("", "")
+
+    def test_empty_playlist(self, json_client):
+        client, _ = json_client({"payload": {"jspf": {}}})
+        assert listenbrainz.lb_radio("tag:(x)", client=client) == []
+
+
+class TestListenbrainzErrors:
+    def test_server_error_raises(self, make_client):
+        client = make_client(lambda _r: httpx.Response(500))
+        with pytest.raises(SourceError):
+            listenbrainz.cf_recommendations("me", client=client)
+
+    def test_not_found_is_empty(self, make_client):
+        client = make_client(lambda _r: httpx.Response(404))
+        assert listenbrainz.lb_radio("tag:(x)", client=client) == []
+
+
+class TestListenbrainzDefaultClient:
+    def test_no_token_is_none(self, monkeypatch):
+        listenbrainz.default_client.cache_clear()
+        monkeypatch.setattr(listenbrainz.settings, "listenbrainz_token", "")
+        try:
+            assert listenbrainz.default_client() is None
+        finally:
+            listenbrainz.default_client.cache_clear()
+
+    def test_token_sent_as_auth_header(self, monkeypatch):
+        listenbrainz.default_client.cache_clear()
+        monkeypatch.setattr(listenbrainz.settings, "listenbrainz_token", "fake-token")
+        try:
+            client = listenbrainz.default_client()
+        finally:
+            listenbrainz.default_client.cache_clear()
+        assert client is not None
+        assert client._http.headers["Authorization"] == "Token fake-token"

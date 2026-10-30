@@ -18,7 +18,7 @@ from pathlib import Path
 
 import polars as pl
 
-from etl.db import fetch_one, get_connection, init_schema
+from etl.db import fetch_count, get_connection, init_schema
 from utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -67,11 +67,11 @@ def populate_track_genre(conn) -> None:
         """
     )
 
-    total = fetch_one(conn, "SELECT COUNT(*) FROM track_genre")[0]
-    manual = fetch_one(conn, "SELECT COUNT(*) FROM track_genre WHERE genre_source = 'manual'")[0]
-    lookup = fetch_one(conn, "SELECT COUNT(*) FROM track_genre WHERE genre_source = 'lookup'")[0]
-    unknown = fetch_one(conn, "SELECT COUNT(*) FROM track_genre WHERE genre_source = 'unknown'")[0]
-    no_coords = fetch_one(conn, "SELECT COUNT(*) FROM track_genre WHERE top IS NULL")[0]
+    total = fetch_count(conn, "SELECT COUNT(*) FROM track_genre")
+    manual = fetch_count(conn, "SELECT COUNT(*) FROM track_genre WHERE genre_source = 'manual'")
+    lookup = fetch_count(conn, "SELECT COUNT(*) FROM track_genre WHERE genre_source = 'lookup'")
+    unknown = fetch_count(conn, "SELECT COUNT(*) FROM track_genre WHERE genre_source = 'unknown'")
+    no_coords = fetch_count(conn, "SELECT COUNT(*) FROM track_genre WHERE top IS NULL")
 
     log.info(
         "genre_tables.track_genre.done",
@@ -377,7 +377,7 @@ def load_external_tracks(conn) -> None:
         FROM _external
         """
     )
-    n = fetch_one(conn, "SELECT COUNT(*) FROM external_tracks")[0]
+    n = fetch_count(conn, "SELECT COUNT(*) FROM external_tracks")
     log.info("genre_tables.external_tracks.done", n=n)
 
 
@@ -396,10 +396,10 @@ def main() -> None:
 
     log.info(
         "genre_tables.done",
-        track_genre=fetch_one(conn, "SELECT COUNT(*) FROM track_genre")[0],
-        artist_genre=fetch_one(conn, "SELECT COUNT(*) FROM artist_genre")[0],
-        playlist_genre=fetch_one(conn, "SELECT COUNT(*) FROM playlist_genre")[0],
-        external_tracks=fetch_one(conn, "SELECT COUNT(*) FROM external_tracks")[0],
+        track_genre=fetch_count(conn, "SELECT COUNT(*) FROM track_genre"),
+        artist_genre=fetch_count(conn, "SELECT COUNT(*) FROM artist_genre"),
+        playlist_genre=fetch_count(conn, "SELECT COUNT(*) FROM playlist_genre"),
+        external_tracks=fetch_count(conn, "SELECT COUNT(*) FROM external_tracks"),
     )
     conn.close()
 

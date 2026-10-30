@@ -6,7 +6,7 @@ import httpx
 import pytest
 
 from etl.history import track_key
-from recommend.discover import History, discover, gather, load_history, rank
+from recommend.discover import History, discover, gather, load_history, rank, rank_normalise
 from sources.http import SourceClient
 from sources.schemas import SimilarItem
 
@@ -77,6 +77,55 @@ class TestRank:
     def test_mix_backfills_when_one_side_short(self):
         items = [_t("lastfm", f"N{i}", "n") for i in range(5)]
         assert len(rank(items, n=4, new_artist_ratio=0.25)) == 4
+
+
+class TestRankNormalise:
+    def test_top_is_one_and_scale_is_positional(self):
+        items = [
+            _t("lastfm", "A", "a", 0.2),
+            _t("lastfm", "B", "b", 0.05),
+            _t("lastfm", "C", "c", 0.1),
+        ]
+        assert rank_normalise(items) == pytest.approx([1.0, 1 / 3, 2 / 3])
+
+    def test_ties_share_better_rank(self):
+        items = [
+            _t("lastfm", "A", "a", 0.5),
+            _t("lastfm", "B", "b", 0.5),
+            _t("lastfm", "C", "c", 0.1),
+        ]
+        assert rank_normalise(items) == pytest.approx([1.0, 1.0, 1 / 3])
+
+    def test_sources_and_levels_normalised_independently(self):
+        items = [
+            _t("lastfm", "A", "a", 0.01),  # only lastfm track → 1.0
+            _a("lastfm", "X", 0.9),  # artist-level lastfm is its own list
+            _a("lastfm", "Y", 0.3),
+            _t("listenbrainz", "B", "b", 1.0),
+            _t("listenbrainz", "C", "c", 0.5),
+        ]
+        assert rank_normalise(items) == pytest.approx([1.0, 1.0, 0.5, 1.0, 0.5])
+
+    def test_empty(self):
+        assert rank_normalise([]) == []
+
+
+class TestRankSourceBalance:
+    def test_lastfm_absolute_scores_not_dominated_by_lb_positions(self):
+        """LB Radio's positional 1 − i/n used to swamp Last.fm's low absolute similarity."""
+        lb = [_t("listenbrainz", f"L{i}", "lb", 1.0 - i / 10) for i in range(10)]
+        lfm = [_t("lastfm", f"F{i}", "fm", m) for i, m in enumerate([0.2, 0.1, 0.05])]
+        out = rank(lb + lfm, n=13, new_artist_ratio=1.0)
+        score = {c.artist: c.score for c in out}
+        assert score["F0"] == score["L0"] == pytest.approx(1.0)
+        assert score["F0"] > score["L1"]
+        assert score["F2"] == pytest.approx(1 / 3, abs=1e-4)
+
+    def test_raw_scale_does_not_change_order_within_source(self):
+        a = rank([_t("lastfm", "A", "x", 0.9), _t("lastfm", "B", "y", 0.1)])
+        b = rank([_t("lastfm", "A", "x", 0.02), _t("lastfm", "B", "y", 0.01)])
+        assert _titles(a) == _titles(b) == ["x", "y"]
+        assert [c.score for c in a] == [c.score for c in b]
 
 
 def _client(handler) -> SourceClient:

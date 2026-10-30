@@ -1,0 +1,7 @@
+# Allow-list: the image only needs the lockfile and source.
+*
+!pyproject.toml
+!uv.lock
+!src/
+**/__pycache__
+**/*.pyc

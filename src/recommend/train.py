@@ -151,18 +151,54 @@ def _load_corpus() -> pl.DataFrame:
     return corpus
 
 
+_ENOA_SQL = """
+SELECT p.playlist_name, pt.track_id AS id
+FROM playlists p
+JOIN playlist_tracks pt USING (playlist_id)
+WHERE p.status = 'active' AND pt.removed_at IS NULL
+ORDER BY p.playlist_name, pt.track_id
+"""
+
+
+def _load_enoa_from_db(conn: duckdb.DuckDBPyConnection) -> pl.DataFrame:
+    """Active-playlist membership as ``(playlist_name, id)`` — same shape as the old enoa.csv."""
+    return conn.sql(_ENOA_SQL).pl().cast({"playlist_name": pl.Utf8, "id": pl.Utf8})
+
+
 def _load_enoa() -> pl.DataFrame:
-    """Load ENOA playlist membership from CSV."""
+    """Load ENOA playlist membership: DuckDB first, archived CSV fallback."""
+    try:
+        conn = get_connection(read_only=True)
+        try:
+            enoa = _load_enoa_from_db(conn)
+        finally:
+            conn.close()
+        if enoa.is_empty():
+            raise ValueError("no active playlist tracks in DuckDB")
+        log.info(
+            "train.enoa.source",
+            source="duckdb",
+            n_rows=len(enoa),
+            n_playlists=enoa["playlist_name"].n_unique(),
+        )
+        return enoa
+    except (duckdb.Error, FileNotFoundError, ValueError) as exc:
+        log.info("train.enoa.db_fallback", reason=str(exc))
+
     if not ENOA_CSV.exists():
-        raise FileNotFoundError(f"ENOA CSV not found: {ENOA_CSV}")
-    return pl.read_csv(ENOA_CSV, null_values=["", "NA", "NaN"])
+        raise FileNotFoundError(
+            f"No ENOA source available. DuckDB not usable and CSV not found at {ENOA_CSV}"
+        )
+    enoa = pl.read_csv(ENOA_CSV, null_values=["", "NA", "NaN"], schema_overrides={"id": pl.Utf8})
+    log.info("train.enoa.source", source="csv", n_rows=len(enoa))
+    return enoa
 
 
 def load_data() -> tuple[pl.DataFrame, pl.DataFrame]:
     """Load corpus and enoa DataFrames.
 
-    Tries DuckDB first (build_feature_matrix), falls back to archived CSVs.
-    ENOA always loaded from CSV (no DB table yet).
+    Both try DuckDB first (build_feature_matrix; active playlists ⋈ playlist_tracks)
+    and fall back to the archived CSVs.
 
     Returns:
         Tuple of (corpus, enoa) as Polars DataFrames.
@@ -253,7 +289,7 @@ def train_classifiers(
     gmm_scaler: MinMaxScaler,
     model_type: ModelType = "lightgbm",
 ) -> tuple[int, int]:
-    """Train one classifier per playlist in enoa.csv.
+    """Train one classifier per active playlist in enoa.
 
     Args:
         corpus: Full training corpus DataFrame.

@@ -19,7 +19,7 @@ from pathlib import Path
 import duckdb
 import polars as pl
 
-from etl.db import fetch_one, get_connection, init_schema
+from etl.db import fetch_count, get_connection, init_schema
 from utils.config import settings
 from utils.logging import get_logger
 
@@ -150,13 +150,13 @@ def import_history(conn: duckdb.DuckDBPyConnection, plays: pl.DataFrame | None =
     plays = load_plays() if plays is None else plays
     if plays.is_empty():
         return 0
-    before = fetch_one(conn, "SELECT count(*) FROM plays")[0]
+    before = fetch_count(conn, "SELECT count(*) FROM plays")
     conn.register("plays_df", plays)
     cols = ", ".join(PLAYS_COLUMNS)
     # cols is the PLAYS_COLUMNS constant — no user input interpolated
     conn.execute(f"INSERT OR IGNORE INTO plays ({cols}) SELECT {cols} FROM plays_df")  # noqa: S608
     conn.unregister("plays_df")
-    after = fetch_one(conn, "SELECT count(*) FROM plays")[0]
+    after = fetch_count(conn, "SELECT count(*) FROM plays")
     log.info("history.imported", new_rows=after - before, total=after)
     return after - before
 

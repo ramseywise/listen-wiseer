@@ -49,10 +49,13 @@ def playable(
         except SourceError as exc:
             log.warning("playback.youtube_failed", artist=artist, title=title, error=str(exc))
         else:
-            conn.execute(
-                "INSERT OR REPLACE INTO playable_cache VALUES (?, ?, ?)",
-                [key, video_id, datetime.now()],
-            )
+            try:
+                conn.execute(
+                    "INSERT OR REPLACE INTO playable_cache VALUES (?, ?, ?)",
+                    [key, video_id, datetime.now()],
+                )
+            except duckdb.InvalidInputException:  # read-only conn (MCP server): no caching
+                log.debug("playback.cache_write_skipped", artist=artist, title=title)
     p = resolve_playable(
         artist,
         title,

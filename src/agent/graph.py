@@ -101,6 +101,6 @@ def build_graph(
     )
 
 
-# Default graph instance — used by Chainlit and smoke tests.
-# For Redis-backed sessions, main.py builds a fresh graph with the async checkpointer.
+# Default graph instance — used by smoke tests.
+# The API (api/chat.py) builds a fresh graph with the async checkpointer + store.
 graph = build_graph()

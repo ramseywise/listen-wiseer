@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 from langchain_anthropic import ChatAnthropic
+from langchain_core.language_models import LanguageModelInput
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, trim_messages
-from langchain_core.runnables import RunnableConfig
+from langchain_core.runnables import Runnable, RunnableConfig
 from langgraph.config import get_store
 from langgraph.store.base import BaseStore
+from pydantic import SecretStr
 
+from agent.checker import HeuristicChecker
 from agent.intent import QueryAnalyzer
 from agent.memory_helpers import (
     build_memory_stats,
@@ -20,7 +23,6 @@ from agent.memory_store import get_procedural_prompt
 from agent.prompts import load_prompt
 from agent.state import AgentState
 from agent.tools import ALL_TOOLS
-from evals.graders.answer_eval import HeuristicChecker
 from utils.config import settings
 from utils.logging import get_logger
 
@@ -68,20 +70,23 @@ _INTENT_TOOL_HINTS: dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 _llm_instance: ChatAnthropic | None = None
-_llm_with_tools_instance: ChatAnthropic | None = None
+_llm_with_tools_instance: Runnable[LanguageModelInput, AIMessage] | None = None
 
 
 def _get_llm() -> ChatAnthropic:
     global _llm_instance
     if _llm_instance is None:
+        # Request timeout lives on the client: RunnableConfig has no "timeout" key.
         _llm_instance = ChatAnthropic(
-            model=settings.anthropic_model,
-            api_key=settings.anthropic_api_key,
+            model_name=settings.anthropic_model,
+            api_key=SecretStr(settings.anthropic_api_key),
+            timeout=float(settings.agent_timeout_seconds),
+            stop=None,
         )
     return _llm_instance
 
 
-def _get_llm_with_tools() -> ChatAnthropic:
+def _get_llm_with_tools() -> Runnable[LanguageModelInput, AIMessage]:
     global _llm_with_tools_instance
     if _llm_with_tools_instance is None:
         _llm_with_tools_instance = _get_llm().bind_tools(ALL_TOOLS)
@@ -201,6 +206,8 @@ async def rewrite_query(state: AgentState) -> dict:
         f"{'User' if isinstance(m, HumanMessage) else 'Assistant'}: {m.content}"
         for m in messages[-5:]
     )
+    if player_context := state.get("player_context", ""):
+        history = f"Player:\n{player_context}\n\n{history}"
     prompt = (
         "Rewrite the following question as a standalone question that doesn't "
         "require the conversation history to understand. Only output the "
@@ -209,10 +216,7 @@ async def rewrite_query(state: AgentState) -> dict:
         f"Question: {query}\n\n"
         "Standalone question:"
     )
-    response = await _get_llm().ainvoke(
-        [HumanMessage(content=prompt)],
-        config={"timeout": settings.agent_timeout_seconds},
-    )
+    response = await _get_llm().ainvoke([HumanMessage(content=prompt)])
     rewritten = str(response.content).strip()
     log.info("agent.rewrite_query", original=query, rewritten=rewritten)
 
@@ -227,6 +231,9 @@ def route_after_classify(state: AgentState) -> str:
 
     # Chit-chat always proceeds (no clarification needed)
     if intent == "chit_chat":
+        return "rewrite_query"
+    # "What is this?" / "more like this" are vague alone, but not with the player's context
+    if state.get("player_context"):
         return "rewrite_query"
 
     if confidence < settings.intent_confidence_threshold:
@@ -316,6 +323,15 @@ async def agent_node(
         if stats:
             prompt_parts.append(stats)
 
+    # --- Web player context (now playing / up next), refreshed every turn ---
+    player_context = state.get("player_context", "")
+    if player_context:
+        prompt_parts.append(
+            "<player_context>\nWhat the user's player has on right now — resolve "
+            '"this", "this track", "what\'s on", "more like this" against it.\n'
+            f"{player_context}\n</player_context>"
+        )
+
     # --- Intent hint (from classify_intent_node) ---
     intent = state.get("intent", "")
     entities = state.get("entities", {})
@@ -328,10 +344,7 @@ async def agent_node(
         prompt_parts.append(intent_block)
 
     messages = [SystemMessage(content="\n\n".join(prompt_parts))] + state["messages"]
-    response = await _get_llm_with_tools().ainvoke(
-        messages,
-        config={"timeout": settings.agent_timeout_seconds},
-    )
+    response = await _get_llm_with_tools().ainvoke(messages)
 
     # --- Episodic store (after successful recommendation) ---
     if store is not None and not getattr(response, "tool_calls", None):
@@ -353,7 +366,7 @@ def route_after_agent(state: AgentState) -> str:
     if not state["messages"]:
         return "format_response"
     last = state["messages"][-1]
-    if hasattr(last, "tool_calls") and last.tool_calls:
+    if isinstance(last, AIMessage) and last.tool_calls:
         return "call_tools"
     return "format_response"
 

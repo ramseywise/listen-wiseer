@@ -1,6 +1,7 @@
 """
-Legal downloads into the local library (data/library/<artist>/<title>.mp3), which
-Navidrome serves to phone apps. Sources: Jamendo (CC) then Internet Archive.
+Legal downloads into the local library ($MUSIC_DIR/downloads/<artist>/<title>.mp3; MUSIC_DIR
+defaults to data/library), which Navidrome serves to the web player and phone apps.
+Sources: Jamendo (CC) then Internet Archive.
 Never YouTube or Deezer — their terms forbid downloading.
 """
 
@@ -16,16 +17,25 @@ from mutagen.id3 import ID3, TIT2, TPE1, UFID, WCOP, ID3NoHeaderError
 
 from etl.db import fetch_one
 from etl.history import track_key
-from paths import DATA_DIR
+from paths import DATA_DIR, REPO_ROOT
 from sources import archive_org, jamendo
 from sources.http import SourceClient
 from sources.schemas import FreeTrack
+from utils.config import settings
 from utils.exceptions import SourceError
 from utils.logging import get_logger
 
 log = get_logger(__name__)
 
-LIBRARY_DIR = DATA_DIR / "library"
+
+def resolve_music_dir(value: str) -> Path:
+    """MUSIC_DIR setting → library root; empty = data/library, relative = repo-relative."""
+    path = Path(value).expanduser() if value else DATA_DIR / "library"
+    return path if path.is_absolute() else REPO_ROOT / path
+
+
+MUSIC_DIR = resolve_music_dir(settings.music_dir)
+LIBRARY_DIR = MUSIC_DIR / "downloads"  # kept apart from hand-curated music in MUSIC_DIR
 _MB_UFID_OWNER = "http://musicbrainz.org"  # Picard's recording-MBID frame
 
 _Finder = Callable[..., list[FreeTrack]]

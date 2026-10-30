@@ -48,7 +48,7 @@ services:
       - listen-wiseer-network
     restart: no
 
-  # ── MCP server (agent music tools) ─────────────────────────────────────────
+  # ── MCP server (agent music tools over streamable HTTP: http://localhost:8765/mcp) ──
   mcp:
     build:
       context: ../..
@@ -58,33 +58,50 @@ services:
       - "8765:8765"
     environment:
       - PYTHONPATH=/app/src
+      - MCP_TRANSPORT=streamable-http
+      - MCP_SERVER_HOST=0.0.0.0
+      - MCP_SERVER_PORT=8765
       - USER_ID=${USER_ID:-default}
+      - NAVIDROME_URL=http://navidrome:4533  # save_playlist
+      - NAVIDROME_USER=${NAVIDROME_USER}
+      - NAVIDROME_PASSWORD=${NAVIDROME_PASSWORD}
       - LAST_FM_API_KEY=${LAST_FM_API_KEY}
       - LISTENBRAINZ_TOKEN=${LISTENBRAINZ_TOKEN}
       - LISTENBRAINZ_USER=${LISTENBRAINZ_USER}
       - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
       - JAMENDO_CLIENT_ID=${JAMENDO_CLIENT_ID}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-haiku-4-5-20251001}
+      - TAVILY_API_KEY=${TAVILY_API_KEY}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - MCP_SERVER_HOST=0.0.0.0
-      - MCP_SERVER_PORT=8765
     volumes:
       - ../../data:/app/data
+      - ../../infrastructure/db:/app/infrastructure/db
+      - ../../models:/app/models
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
     networks:
       - listen-wiseer-network
-    restart: "no"
+    restart: unless-stopped
 
-  # ── Chainlit app (chat UI + LangGraph agent) ─────────────────────────────────
-  app:
+  # ── Player app: FastAPI (/api) + built web/ (/) + LangGraph agent ────────────
+  # http://localhost:${API_PORT:-8000} — localhost-only (single user, no app auth).
+  # The DuckDB writer (plays, track_xref, caches); mcp opens the file read-only.
+  api:
     build:
       context: ../..
       dockerfile: infrastructure/containers/app/Dockerfile
-    container_name: listen-wiseer-app
+    container_name: listen-wiseer-api
     ports:
-      - "8501:8501"
+      - "127.0.0.1:${API_PORT:-8000}:8000"
     environment:
       - PYTHONPATH=/app/src
       - USER_ID=${USER_ID:-default}
+      - NAVIDROME_URL=http://navidrome:4533
+      - NAVIDROME_USER=${NAVIDROME_USER}
+      - NAVIDROME_PASSWORD=${NAVIDROME_PASSWORD}
+      - MUSIC_DIR=/app/data/library
       - LAST_FM_API_KEY=${LAST_FM_API_KEY}
       - LISTENBRAINZ_TOKEN=${LISTENBRAINZ_TOKEN}
       - LISTENBRAINZ_USER=${LISTENBRAINZ_USER}
@@ -96,20 +113,13 @@ services:
       - POSTGRES_URL=postgresql+psycopg://wiseer:${POSTGRES_PASSWORD:-changeme}@postgres:5432/listen_wiseer
       - EMBEDDING_MODEL=${EMBEDDING_MODEL:-all-MiniLM-L6-v2}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - ENABLE_TRACING=${ENABLE_TRACING:-false}
-      - JAEGER_ENDPOINT=${JAEGER_ENDPOINT:-http://jaeger:14268/api/traces}
-      - MCP_SERVER_HOST=mcp
-      - MCP_SERVER_PORT=8765
       - LISTENING_HISTORY_PATH=/app/data/listening_history
-      - TRACK_FEATURES_CACHE=/app/data/cache/track_features.parquet
-      - GENRE_METADATA_CACHE=/app/data/cache/genre_metadata.parquet
-      - SIMILARITY_METHOD=${SIMILARITY_METHOD:-hybrid}
-      - AUDIO_FEATURE_WEIGHT=${AUDIO_FEATURE_WEIGHT:-0.6}
-      - GENRE_WEIGHT=${GENRE_WEIGHT:-0.4}
       - MAX_AGENT_ITERATIONS=${MAX_AGENT_ITERATIONS:-10}
       - AGENT_TIMEOUT_SECONDS=${AGENT_TIMEOUT_SECONDS:-60}
     volumes:
       - ../../data:/app/data
+      # Same library Navidrome serves, so downloads land where it scans them.
+      - ${MUSIC_DIR:-../../data/library}:/app/data/library
       - ../../infrastructure/db:/app/infrastructure/db
       - ../../models:/app/models
       - ../../logs:/app/logs
@@ -118,37 +128,31 @@ services:
         condition: service_healthy
       db-init:
         condition: service_completed_successfully
-      mcp:
-        condition: service_started
+      navidrome:
+        condition: service_started  # /api/health reports navidrome:false until it's up
     networks:
       - listen-wiseer-network
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8501/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+    # healthcheck: Dockerfile HEALTHCHECK (curl /api/health)
 
-  # ── Optional: Navidrome music server (--profile library) ─────────────────────
-  # Serves data/library/ (legal downloads) over the Subsonic API → phone apps
-  # (Symfonium, Substreamer) cache offline. Web UI: http://localhost:4533
+  # ── Navidrome music server (default stack — the player is a front-end for it) ──
+  # Serves MUSIC_DIR (default data/library/; CC downloads in downloads/) over the Subsonic
+  # API → the web player (src/api) and phone apps (Symfonium, Substreamer). UI: http://localhost:4533
+  # MUSIC_DIR must be absolute when set — relative paths resolve against this file's directory.
   navidrome:
-    image: deluan/navidrome:0.53.3
+    image: deluan/navidrome:0.64.2
     container_name: listen-wiseer-navidrome
     ports:
       - "4533:4533"
     environment:
-      - ND_SCANSCHEDULE=1h
+      - ND_SCANNER_SCHEDULE=1h  # file watcher picks up new downloads; this is the backstop
       - ND_LOGLEVEL=info
     volumes:
-      - ../../data/library:/music:ro
+      - ${MUSIC_DIR:-../../data/library}:/music:ro
       - navidrome-data:/data
     networks:
       - listen-wiseer-network
     restart: unless-stopped
-    profiles:
-      - library
 
   # ── Optional: Jaeger tracing (--profile observability) ───────────────────────
   jaeger:

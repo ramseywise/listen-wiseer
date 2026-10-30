@@ -16,7 +16,7 @@ FREE = FreeTrack(source="archive_org", source_id="show1/a.mp3", artist="Band A",
 
 
 @contextmanager
-def _db():
+def _db(**_kw):
     yield None
 
 
