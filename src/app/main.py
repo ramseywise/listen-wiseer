@@ -13,6 +13,7 @@ import uuid
 import chainlit as cl
 import duckdb
 from langchain_core.messages import HumanMessage
+from langchain_core.runnables import RunnableConfig
 from langgraph.store.base import BaseStore
 from langgraph.types import Command
 
@@ -86,7 +87,7 @@ async def start() -> None:
 async def on_message(message: cl.Message) -> None:
     thread_id = cl.user_session.get("thread_id")
     user_id = settings.user_id or "default"
-    config = {
+    config: RunnableConfig = {
         "configurable": {
             "thread_id": thread_id,
             "langgraph_user_id": user_id,
@@ -157,7 +158,8 @@ async def on_message(message: cl.Message) -> None:
                     )  # fmt: skip
                 )
             elements += [a for p in agent_resp.get("playable", []) if (a := _audio(p))]
-            schedule_optimization(user_id, result["messages"], _store)
+            if _store is not None:  # set by _get_graph() above
+                schedule_optimization(user_id, result["messages"], _store)
     except Exception as exc:
         log.error("app.on_message.failed", error=str(exc), thread_id=thread_id)
         reply = "Something went wrong — please try again."

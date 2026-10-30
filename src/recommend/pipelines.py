@@ -518,7 +518,9 @@ class PlaylistPipeline:
 
         mean_tempo = 0.0
         if "tempo" in playlist_tracks.columns:
-            mean_tempo = float(playlist_tracks["tempo"].mean())
+            tempo_mean = playlist_tracks["tempo"].mean()
+            if isinstance(tempo_mean, int | float):
+                mean_tempo = float(tempo_mean)
 
         playlist_profile = {
             "centroid": centroid,

@@ -1,8 +1,10 @@
 """Shared memory store for the ENOA agent.
 
-Provides a vector-indexed store backed by the local sentence-transformers model.
 When MEMORY_STORE_URL is set, uses AsyncPostgresStore for persistence across restarts.
-Otherwise falls back to InMemoryStore (dev / single-session use).
+Otherwise falls back to InMemoryStore (dev / single-session use), vector-indexed by the
+local sentence-transformers model when the optional ``embeddings`` extra is installed
+(``uv sync --extra embeddings``). Without it the store is unindexed: ``asearch(query=...)``
+still filters by namespace but returns items unranked.
 
 Namespaces:
     ("enoa", user_id, "sessions")   — episodic: past recommendation sessions
@@ -25,7 +27,7 @@ from utils.logging import get_logger
 log = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
-# Embedding wrapper — reuses sentence-transformers already in the venv
+# Embedding wrapper — sentence-transformers is an optional extra (`embeddings`)
 # ---------------------------------------------------------------------------
 
 # Embedding dimension for all-MiniLM-L6-v2
@@ -36,7 +38,8 @@ class SentenceTransformerEmbeddings(Embeddings):
     """Thin LangChain-compatible wrapper around sentence-transformers."""
 
     def __init__(self, model_name: str = settings.embedding_model) -> None:
-        from sentence_transformers import SentenceTransformer
+        # Optional extra (`embeddings`); ImportError is handled by _load_embeddings().
+        from sentence_transformers import SentenceTransformer  # pyright: ignore[reportMissingImports]
 
         self._model = SentenceTransformer(model_name)
 
@@ -47,6 +50,19 @@ class SentenceTransformerEmbeddings(Embeddings):
     def embed_query(self, text: str) -> list[float]:
         """Embed a single query string."""
         return self._model.encode(text).tolist()
+
+
+def _load_embeddings() -> Embeddings | None:
+    """Return the sentence-transformers embedder, or None if the extra is not installed."""
+    try:
+        return SentenceTransformerEmbeddings()
+    except ImportError as exc:
+        log.warning(
+            "agent.memory_store.embeddings_unavailable",
+            reason=str(exc),
+            hint="uv sync --extra embeddings for semantic memory search",
+        )
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -75,11 +91,15 @@ async def get_store() -> BaseStore:
         _store = store
         log.info("agent.memory_store.postgres")
     else:
-        embeddings = SentenceTransformerEmbeddings()
-        _store = InMemoryStore(
-            index={"embed": embeddings, "dims": _EMBEDDING_DIMS},
-        )
-        log.info("agent.memory_store.init", embedding_model=settings.embedding_model)
+        embeddings = _load_embeddings()
+        if embeddings is None:
+            _store = InMemoryStore()
+            log.info("agent.memory_store.init", embedding_model=None)
+        else:
+            _store = InMemoryStore(
+                index={"embed": embeddings, "dims": _EMBEDDING_DIMS},
+            )
+            log.info("agent.memory_store.init", embedding_model=settings.embedding_model)
 
     return _store
 

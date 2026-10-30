@@ -21,7 +21,7 @@ Run `make help` for the full list.
 
 ```
 src/
-  utils/        — config, schemas, exceptions, constants, logging
+  utils/        — config, schemas, exceptions, constants, logging, doctor (`make doctor`)
   sources/      — free-source httpx clients (musicbrainz, listenbrainz, lastfm, deezer, youtube, jamendo, archive_org)
   library/      — local playlists (JSPF export), cached playback resolution, legal downloads (data/library/)
   etl/          — DuckDB bootstrap/sync, Polars loader
@@ -31,7 +31,7 @@ src/
   mcp_server/   — agent tools re-exposed over MCP (minus memory tools)
   agent/        — LangGraph agent + Chainlit app
     graph.py, graph_nodes.py, memory_helpers.py, validation.py, response.py,
-    state.py, memory_store.py, intent.py, tools/
+    state.py, memory_store.py, intent.py, checker.py (runtime HeuristicChecker), tools/
   app/          — Chainlit entry point
 
 models/         — serialized artifacts (gitignored)
@@ -53,17 +53,19 @@ models/         — serialized artifacts (gitignored)
 | 7b — Intent taxonomy (explore_my_taste + discover), Chainlit suggestion chips | ✓ DONE |
 | 7c — Genre lineage tool, taste drift analysis, Postgres memory store | ✓ DONE |
 | 8 — RAG right-sizing (deleted `rag_core/`), agentic web search, HITL/eval hardening | ✓ DONE |
-| 9 — Free music stack: S0–S5 Spotify removed (free sources, YouTube/Deezer playback, local playlists) · S6 legal downloads · S7 evals | S6–S7 ✓ |
+| 9 — Free music stack: S0–S5 Spotify removed (free sources, YouTube/Deezer playback, local playlists) · S6 legal downloads · S7 evals | ✓ DONE (S3b reranker → audit F) |
+| Audit (2026-10-30) — A fresh-clone/doctor · B docs · C dep diet + pyright gate · D coverage 83% · E Docker/MCP HTTP · F data-gated | A–E ✓ · F partial (needs Spotify export) |
 
 ## Active gotchas
 
-- `listen_wiseer.db` via Git LFS — other environments can't pull; run `make init-db && make train` on first clone
+- First clone: `git lfs pull` (the committed `listen_wiseer.db` *is* the bootstrap) → `uv sync` → `make train` (reads DuckDB; no CSVs) → `make doctor` → `make app`. `make init-db` is only an idempotent schema migration (CSV import only if the optional, gitignored `data/archived/` exists); `enoa.csv` is a legacy fallback
 - `models/` and `data/cache/` gitignored — regenerate after pull (`make train`)
 - Spotify removed entirely (S5): Premium cancelled, Dev Mode dead. `tracks`/`playlists`/`audio_features` tables are a frozen archive keyed by legacy Spotify IDs; listening history comes from the privacy export (`make import-history`)
 - Last.fm error 10 = pending manual activation (not wrong key) — just wait
 - `pyproject.toml` pins `requires-python = ">=3.11"` with no upper bound — `uv sync` on a newer default interpreter (3.13+) will pick it and fail to build `gensim` (Cython uses removed CPython internals). A committed `.python-version` (3.11) pins this; don't remove it.
 - `deepeval` removed (2026-07-19) — it was never imported anywhere in `src/`, `evals/`, or `tests/`, but its pytest plugin autoloaded and broke collection: `deepeval.models.gpt_model` imports `langchain.schema`, gone in langchain 1.x. `ragas` + `langfuse` (both actually used) carry the eval harness. Don't re-add deepeval without checking it supports langchain 1.x.
-- LightGBM and torch (via `sentence-transformers`) each vendor their own `libomp.dylib`, and they are *different builds*. Whichever loads first wins; if torch's wins, LightGBM training segfaults in its C library — a hard crash, no Python traceback. `tests/conftest.py` imports `lightgbm` at module scope to pin load order. Don't remove that import, and be aware the same trap applies to any script importing torch before training. `KMP_DUPLICATE_LIB_OK` does *not* help (that's Intel MKL; these are LLVM builds).
+- LightGBM and torch (via `sentence-transformers`, only installed with `uv sync --extra embeddings`) each vendor their own `libomp.dylib`, and they are *different builds*. Whichever loads first wins; if torch's wins, LightGBM training segfaults in its C library — a hard crash, no Python traceback. `tests/conftest.py` imports `lightgbm` at module scope to pin load order. Don't remove that import, and be aware the same trap applies to any script importing torch before training. `KMP_DUPLICATE_LIB_OK` does *not* help (that's Intel MKL; these are LLVM builds).
+- `[tool.uv.sources]` only applies to *direct* deps: `torch` must stay listed in the `embeddings` extra or Linux/Docker builds pull the ~6 GB CUDA wheels instead of the `pytorch-cpu` index. Without the extra, memory search is unranked (no torch)
 - `rag_core/` deleted (Phase 8) — was an unfinished retrofit of a Danish support-bot RAG (OpenSearch/e5-large lineage), never fully adapted to music. Web/artist/genre context is Tavily-only now (`get_artist_context_tool`, `get_genre_context_tool`); set `TAVILY_API_KEY`. Intent classification (`QueryAnalyzer`) moved to `agent/intent.py` — it was the one music-relevant piece.
 - `InMemoryStore` used for cross-session memory in dev; Redis/Postgres for prod (Phase 6 Phase 3)
 

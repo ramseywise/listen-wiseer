@@ -1,8 +1,9 @@
 """Unit tests for etl.db connection safety."""
 
 import duckdb
+import pytest
 
-from etl.db import _is_duckdb_file
+from etl.db import _is_duckdb_file, fetch_count
 
 
 class TestIsDuckdbFile:
@@ -20,3 +21,15 @@ class TestIsDuckdbFile:
         path = tmp_path / "empty.db"
         path.touch()
         assert not _is_duckdb_file(path)
+
+
+class TestFetchCount:
+    def test_returns_int(self):
+        conn = duckdb.connect()
+        conn.execute("CREATE TABLE t AS SELECT * FROM range(3)")
+        assert fetch_count(conn, "SELECT COUNT(*) FROM t") == 3
+
+    def test_no_rows_raises(self):
+        conn = duckdb.connect()
+        with pytest.raises(RuntimeError, match="no rows"):
+            fetch_count(conn, "SELECT 1 WHERE false")

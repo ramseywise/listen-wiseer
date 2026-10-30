@@ -30,6 +30,12 @@ if TYPE_CHECKING:
 
 log = get_logger(__name__)
 
+
+def _as_float(value: object) -> float | None:
+    """Narrow a Polars scalar aggregate (min/max/median of a numeric column) to float."""
+    return float(value) if isinstance(value, int | float) else None
+
+
 # Audio features that can be imputed via the cascade
 IMPUTABLE_AUDIO_FEATURES: list[str] = [
     "danceability",
@@ -133,7 +139,7 @@ def compute_track2vec(
     )
 
     embeddings: dict[str, np.ndarray] = {
-        tid: model.wv[tid].astype(np.float64) for tid in model.wv.index_to_key
+        str(tid): model.wv[tid].astype(np.float64) for tid in model.wv.index_to_key
     }
     log.info("preprocessing.track2vec.done", n_embeddings=len(embeddings))
     return embeddings
@@ -307,8 +313,7 @@ def impute_missing_features(
     spotify_corpus = corpus.filter(pl.col("features_source") == "spotify")
     global_medians: dict[str, float] = {}
     for f in IMPUTABLE_AUDIO_FEATURES:
-        med = spotify_corpus[f].median()
-        global_medians[f] = float(med) if med is not None else 0.0
+        global_medians[f] = _as_float(spotify_corpus[f].median()) or 0.0
 
     result_rows: list[pl.DataFrame] = []
 
@@ -466,8 +471,8 @@ def add_temporal_features(corpus: pl.DataFrame) -> pl.DataFrame:
     # year_normalized: (year - min) / (max - min), NULLs → 0.5
     if "year" in corpus.columns:
         year_col = corpus["year"].cast(pl.Float64, strict=False)
-        min_year = year_col.min()
-        max_year = year_col.max()
+        min_year = _as_float(year_col.min())
+        max_year = _as_float(year_col.max())
         year_range = (
             (max_year - min_year)
             if (min_year is not None and max_year is not None and max_year != min_year)
@@ -504,8 +509,8 @@ def add_temporal_features(corpus: pl.DataFrame) -> pl.DataFrame:
     # duration_ms_normalized: (duration_ms - min) / (max - min), NULLs → 0.5
     if "duration_ms" in result.columns:
         dur_col = result["duration_ms"].cast(pl.Float64, strict=False)
-        min_dur = dur_col.min()
-        max_dur = dur_col.max()
+        min_dur = _as_float(dur_col.min())
+        max_dur = _as_float(dur_col.max())
         dur_range = (
             (max_dur - min_dur)
             if (min_dur is not None and max_dur is not None and max_dur != min_dur)

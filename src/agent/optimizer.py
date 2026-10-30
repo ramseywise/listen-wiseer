@@ -11,9 +11,17 @@ from __future__ import annotations
 
 import asyncio
 
-from langchain_core.messages import BaseMessage
+from langchain_core.messages import (
+    AIMessage,
+    AnyMessage,
+    BaseMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
 from langgraph.store.base import BaseStore
 from langmem import Prompt, create_multi_prompt_optimizer
+from langmem.prompts.types import AnnotatedTrajectory
 
 from agent.memory_store import get_procedural_prompt, update_procedural_prompt
 from utils.config import settings
@@ -54,13 +62,17 @@ async def optimize_prompt(
     current = await get_procedural_prompt(user_id, store) or _DEFAULT_INSTRUCTIONS
 
     # Filter to content-bearing messages for the trajectory
-    trajectory_messages = [msg for msg in messages if getattr(msg, "content", "")]
+    trajectory_messages: list[AnyMessage] = [
+        msg
+        for msg in messages
+        if isinstance(msg, HumanMessage | AIMessage | ToolMessage | SystemMessage) and msg.content
+    ]
 
     try:
         optimizer = _get_optimizer()
         result = await optimizer.ainvoke(
             {
-                "trajectories": [{"messages": trajectory_messages}],
+                "trajectories": [AnnotatedTrajectory(messages=trajectory_messages)],
                 "prompts": [
                     Prompt(
                         name="user_strategy",

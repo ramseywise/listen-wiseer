@@ -93,7 +93,7 @@ class ListeningHistoryEntry(BaseModel):
 
     @field_validator("track_name", "artist_name", "album_name", mode="before")
     @classmethod
-    def coerce_none(cls, v: object) -> str:
+    def coerce_none(cls, v: object) -> object:
         return v if v is not None else ""
 
     model_config = {"populate_by_name": True}

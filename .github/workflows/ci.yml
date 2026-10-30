@@ -13,4 +13,8 @@ jobs:
       # which is a mutating flag and is deliberately dropped for the CI check.
       lint-paths: "src"
       # `ruff check src/` is clean as of 2026-07-19, so lint gates from day one.
-      test-command: "uv run pytest tests/unit -q"
+      # Coverage floor: measured 82% on 2026-10-30 after audit phase D1; floor is
+      # that value rounded down to the nearest 5. Raise it as coverage grows.
+      # pyright gates too (0 errors in src/ as of 2026-10-30); runs without the
+      # `embeddings` extra — the optional sentence-transformers import has a targeted ignore.
+      test-command: "uv run pyright src && uv run pytest tests/unit -q --cov=src --cov-fail-under=80"

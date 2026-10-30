@@ -1,7 +1,7 @@
 # Repo audit — backlog completeness + local production readiness
 
-Status: RESEARCH DONE — plan drafted, awaiting review
-Branch: main (clean at audit time, `69a41f5`)
+Status: A–E DONE · F partial (rank-normalisation done; rest gated on the Spotify export)
+Branch: `repo-audit-hardening` (audited at `main` `69a41f5`)
 
 ## Research
 
@@ -118,3 +118,21 @@ Ordered by payoff. Each phase is one PR; A and B are small enough to do in one s
 ### Out of scope / deliberately not proposed
 - Replacing Chainlit, LangGraph, or DuckDB — all working and tested.
 - Postgres memory store in dev — InMemoryStore is adequate until multi-session use matters.
+
+## Execution
+
+Branch `repo-audit-hardening`, 2026-10-30. CHANGELOG has the full entry.
+
+| Phase | Delivered |
+|---|---|
+| A | `train.py` reads active-playlist membership from DuckDB (CSV fallback); `etl.bootstrap` = idempotent schema migration when `data/archived/` absent; `make doctor` (`utils/doctor.py`, `--strict`), run non-blocking by `make app`. Fresh clone → `make train` → 17 classifiers + GMM. |
+| B | `.env.example`, `setup.sh`, README, CLAUDE.md, `.claude/docs` README/CHANGELOG updated; free-music-stack plan archived; deleted `ttd.md`, `.deepeval/`, `.spotify_cache/`, `evals/{metrics,trials}`, `notebooks/00_test_functions.ipynb`. Kept `evals/tasks/models.py` (imported by evals + tests). |
+| C | 6 unused deps dropped, scipy/imbalanced-learn → dev group, `embeddings` extra (sentence-transformers + CPU torch on Linux); pyright 53 → 0, gated in `make lint` + CI; `agent/checker.py` (src/ no longer imports evals/); fixed LLM timeout, langmem `AnnotatedTrajectory`, langfuse handler. |
+| D | Coverage 77 → 83 %, CI floor 80; wiring modules at 100 %; scripted HITL `save_playlist` integration test. 672 passed. |
+| E | `MCP_TRANSPORT` stdio/streamable-http; dead settings + compose env removed; multi-stage non-root images (app 10.5 → 3.84 GB, mcp 2.61 GB); `make infra-smoke` passes postgres + app + mcp. |
+| F | F2 rank-normalisation per source in `discover.py` done (scores changed scale). |
+
+**Remaining**
+- F1, F2 reranker, F3 — user-gated on the Spotify extended streaming history export (then LB import, `make import-history && make resolve-ids`, LightGBM on `plays`, `make eval-trajectory` / `make eval-e2e`, re-cut baseline).
+- mcp image still 2.61 GB (lightgbm/catboost/gensim via the shared dependency set); a per-service dependency split would shrink it.
+- Images run as uid 1000: on Linux hosts where the bind-mounted `data/`, `models/`, `logs/` are owned by another uid, `chown` them first.

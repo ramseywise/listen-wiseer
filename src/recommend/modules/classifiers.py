@@ -439,9 +439,10 @@ def train_playlist_classifier(
     y_proba = pipeline.predict_proba(X_test)[:, 1]
 
     accuracy = float(accuracy_score(y_test, y_pred))
-    precision = float(precision_score(y_test, y_pred, zero_division=0))
-    recall = float(recall_score(y_test, y_pred, zero_division=0))
-    f1 = float(f1_score(y_test, y_pred, zero_division=0))
+    # sklearn infers `zero_division: str` from its "warn" default; 0 is a documented value.
+    precision = float(precision_score(y_test, y_pred, zero_division=0))  # pyright: ignore[reportArgumentType]
+    recall = float(recall_score(y_test, y_pred, zero_division=0))  # pyright: ignore[reportArgumentType]
+    f1 = float(f1_score(y_test, y_pred, zero_division=0))  # pyright: ignore[reportArgumentType]
 
     # roc_auc requires at least one positive in test set
     if len(np.unique(y_test)) > 1:

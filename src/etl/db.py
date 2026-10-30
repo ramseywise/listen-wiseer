@@ -358,6 +358,14 @@ def fetch_one(conn: duckdb.DuckDBPyConnection, sql: str, params: object = None) 
     return rows[0] if rows else None
 
 
+def fetch_count(conn: duckdb.DuckDBPyConnection, sql: str, params: object = None) -> int:
+    """Scalar of an aggregate ``SELECT COUNT(*) ...`` query, which always returns one row."""
+    row = fetch_one(conn, sql, params)
+    if row is None:
+        raise RuntimeError(f"aggregate query returned no rows: {sql}")
+    return int(row[0])
+
+
 def init_schema(conn: duckdb.DuckDBPyConnection) -> None:
     """Create all tables and the track_profile view (idempotent)."""
     conn.execute(_DDL)

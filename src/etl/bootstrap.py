@@ -22,7 +22,7 @@ from pathlib import Path
 
 import polars as pl
 
-from etl.db import fetch_one, get_connection, init_schema
+from etl.db import fetch_count, get_connection, init_schema
 from paths import PLAYLIST_CONFIG_PATH
 from utils.logging import get_logger
 
@@ -145,7 +145,7 @@ def load_enoa_coordinates(conn) -> None:
         WHERE genre_map.first_genre = e.first_genre
     """
     )
-    updated = fetch_one(conn, "SELECT COUNT(*) FROM genre_map WHERE top IS NOT NULL")[0]
+    updated = fetch_count(conn, "SELECT COUNT(*) FROM genre_map WHERE top IS NOT NULL")
     log.info("bootstrap.enoa.done", n_updated=updated)
 
 
@@ -170,7 +170,7 @@ def load_genre_xy(conn) -> None:
         SELECT first_genre, top, "left", color FROM _genre_xy
     """
     )
-    n = fetch_one(conn, "SELECT COUNT(*) FROM genre_xy")[0]
+    n = fetch_count(conn, "SELECT COUNT(*) FROM genre_xy")
     log.info("bootstrap.genre_xy.done", n=n)
 
 
@@ -399,9 +399,9 @@ def main() -> None:
             detail="CSV import skipped; existing DuckDB tables left untouched",
         )
 
-    n_tracks = fetch_one(conn, "SELECT COUNT(*) FROM tracks")[0]
-    n_genres = fetch_one(conn, "SELECT COUNT(*) FROM genre_map")[0]
-    n_profile = fetch_one(conn, "SELECT COUNT(*) FROM track_profile")[0]
+    n_tracks = fetch_count(conn, "SELECT COUNT(*) FROM tracks")
+    n_genres = fetch_count(conn, "SELECT COUNT(*) FROM genre_map")
+    n_profile = fetch_count(conn, "SELECT COUNT(*) FROM track_profile")
     from etl.db import DB_PATH
 
     log.info(

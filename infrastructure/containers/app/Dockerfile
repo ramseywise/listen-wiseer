@@ -18,15 +18,17 @@ RUN pip install --no-cache-dir uv
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
 # Code runs from src/ via PYTHONPATH, so the project itself is not installed.
-# Optional extras would be added here, e.g. `--extra <name>`.
+# `embeddings` extra: semantic memory search (sentence-transformers). torch resolves to
+# the CPU-only wheel on Linux via [tool.uv.sources] in pyproject.toml.
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-install-project
+    uv sync --frozen --no-dev --no-install-project --extra embeddings
 
 # ── runtime ──────────────────────────────────────────────────────────────────
 FROM python:3.11-slim
 
+# libgomp1: OpenMP runtime for LightGBM; curl: HEALTHCHECK
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl \
+    && apt-get install -y --no-install-recommends curl libgomp1 \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 1000 app
 

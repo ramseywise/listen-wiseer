@@ -1,4 +1,5 @@
-COMPOSE = docker compose -f infrastructure/containers/docker-compose.yml
+# Compose resolves ${VARS} from .env next to the compose file, not the repo root — pass it explicitly.
+COMPOSE = docker compose $(if $(wildcard .env),--env-file .env) -f infrastructure/containers/docker-compose.yml
 
 .PHONY: help infra-up infra-down infra-build infra-ps infra-logs infra-smoke app doctor mcp-server navidrome lint format test test-unit test-fast test-integration test-data notebook init-db data-sync import-history resolve-ids train train-cat train-compare eval-ci eval-full eval-unit eval-trajectory eval-e2e pull status push quick-pr ship
 
@@ -22,13 +23,13 @@ help:
 	@echo "  eval-unit    Tier 1 intent/route eval (free, CI-safe)"
 	@echo "  eval-trajectory  Tier 2 trajectory eval (costs money)"
 	@echo "  eval-e2e     Tier 3 RAGAS + tool-correctness eval (costs money)"
-	@echo "  lint         ruff check + format check"
+	@echo "  lint         ruff check + format check + pyright (src/)"
 	@echo "  format       ruff fix + format"
 	@echo "  infra-up     Docker stack"
 	@echo "  infra-down   Docker stack teardown"
 	@echo "  infra-build  Rebuild Docker images"
 	@echo "  infra-ps     Show container status"
-	@echo "  infra-smoke  Smoke-test running stack (postgres + app)"
+	@echo "  infra-smoke  Smoke-test running stack (postgres + app + mcp)"
 	@echo "  notebook     Jupyter Lab"
 	@echo "  pull         git pull origin main"
 	@echo "  status       Show branch, unpushed commits, staged changes, open PRs"
@@ -56,12 +57,20 @@ infra-smoke:
 	@$(COMPOSE) ps
 	@echo ""
 	@echo "=== Postgres ==="
-	@$(COMPOSE) exec -T postgres pg_isready -U postgres -d listenwise \
+	@$(COMPOSE) exec -T postgres pg_isready -U wiseer -d listen_wiseer \
 		&& echo "✓ postgres ready" || echo "✗ postgres not ready"
 	@echo ""
 	@echo "=== App (port 8501) ==="
 	@curl -sf --max-time 5 http://localhost:8501 > /dev/null \
 		&& echo "✓ app responding" || echo "✗ app not responding (may still be starting)"
+	@echo ""
+	@echo "=== MCP (port 8765, streamable HTTP) ==="
+	@curl -sf --max-time 5 -X POST http://localhost:8765/mcp \
+		-H 'Content-Type: application/json' \
+		-H 'Accept: application/json, text/event-stream' \
+		-d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"infra-smoke","version":"0"}}}' \
+		| grep -q '"serverInfo"' \
+		&& echo "✓ mcp initialize ok" || echo "✗ mcp not responding"
 
 app:
 	-@PYTHONPATH=src uv run python -m utils.doctor
@@ -80,6 +89,7 @@ navidrome:  ## Serve legal downloads in data/library/ to Subsonic apps
 lint:
 	uv run ruff check src/ --unsafe-fixes
 	uv run ruff format --check src/
+	uv run pyright src
 
 format:
 	uv run ruff check --fix src/

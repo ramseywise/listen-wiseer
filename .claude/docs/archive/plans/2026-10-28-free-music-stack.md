@@ -1,6 +1,6 @@
 # Free music stack — move off Spotify
 
-Status: IN PROGRESS — S0–S2, S3a, S4, S5 done; S6 code done (Jamendo untested live — client_id set, not yet visible to settings); S7 ✓; left: S3b
+Status: DONE — S0–S7 complete (Jamendo live-verified 2026-10-30) except S3b learned reranker, carried into `plans/2026-10-30-repo-audit.md` phase F (per-source rank normalisation landed there; LightGBM reranker data-gated on the Spotify export)
 Branch: `free-music-stack`
 
 ## Research

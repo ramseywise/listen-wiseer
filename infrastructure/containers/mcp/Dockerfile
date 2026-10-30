@@ -18,14 +18,18 @@ RUN pip install --no-cache-dir uv
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
 # Code runs from src/ via PYTHONPATH, so the project itself is not installed.
-# Optional extras would be added here, e.g. `--extra <name>`.
+# No `embeddings` extra: the MCP server has no memory store (no torch).
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-project
 
 # ── runtime ──────────────────────────────────────────────────────────────────
 FROM python:3.11-slim
 
-RUN useradd --create-home --uid 1000 app
+# libgomp1: OpenMP runtime for LightGBM (build-essential pulled it in implicitly before)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgomp1 \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --create-home --uid 1000 app
 
 WORKDIR /app
 ENV PATH=/app/.venv/bin:$PATH \

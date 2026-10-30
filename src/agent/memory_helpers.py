@@ -71,7 +71,7 @@ def extract_recommendation_summary(messages: list) -> str | None:
     """
     for msg in reversed(messages):
         if isinstance(msg, AIMessage) and msg.content:
-            content = msg.content
+            content = msg.text
             # Heuristic: recommendations contain numbered lists
             if any(f"{i}." in content for i in range(1, 6)):
                 # Take first 500 chars as summary
@@ -83,7 +83,7 @@ def find_user_request(messages: list) -> str | None:
     """Find the first human message in the conversation."""
     for msg in messages:
         if isinstance(msg, HumanMessage):
-            return msg.content
+            return msg.text
     return None
 
 
